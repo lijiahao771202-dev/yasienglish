@@ -9,7 +9,8 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
     const {
         theme, setTheme,
         font, setFont,
-        fontSize, setFontSize
+        fontSize, setFontSize,
+        phraseDisplayMode, setPhraseDisplayMode,
     } = useReadingSettings();
 
     type ThemeOption = {
@@ -21,6 +22,11 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
         id: Parameters<typeof setFont>[0];
         name: string;
         fontClass: string;
+    };
+    type PhraseDisplayOption = {
+        id: Parameters<typeof setPhraseDisplayMode>[0];
+        name: string;
+        description: string;
     };
 
     const themes: ThemeOption[] = [
@@ -91,6 +97,10 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
     ];
 
     const sizes: Array<Parameters<typeof setFontSize>[0]> = ['text-base', 'text-lg', 'text-xl', 'text-2xl'];
+    const phraseDisplayOptions: PhraseDisplayOption[] = [
+        { id: 'capsule', name: 'Mode 1', description: '短语胶囊' },
+        { id: 'inline_wavy', name: 'Mode 2', description: '原文波浪线' },
+    ];
 
     const handleIncreaseSize = () => {
         const currentIndex = sizes.indexOf(fontSize);
@@ -189,6 +199,30 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
                     >
                         <Plus className="w-5 h-5 stroke-[3]" />
                     </button>
+                </div>
+            </div>
+
+            <div className="h-1 bg-theme-border/10 rounded-full" />
+
+            <div className="space-y-3">
+                <span className="text-xs font-black text-theme-text-muted uppercase tracking-widest pl-1 relative z-10 bg-theme-card-bg pb-1 w-full block">Phrase Display</span>
+                <div className="grid grid-cols-2 gap-2">
+                    {phraseDisplayOptions.map((option) => (
+                        <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setPhraseDisplayMode(option.id)}
+                            className={cn(
+                                "rounded-xl border-[3px] px-3 py-3 text-left transition-all",
+                                phraseDisplayMode === option.id
+                                    ? "bg-theme-active-bg border-theme-border text-theme-active-text shadow-[0_3px_0_var(--theme-shadow)]"
+                                    : "bg-theme-base-bg text-theme-text-muted border-transparent hover:border-theme-text-muted/30 hover:text-theme-text"
+                            )}
+                        >
+                            <div className="text-[12px] font-black">{option.name}</div>
+                            <div className="mt-1 text-[11px] font-semibold opacity-80">{option.description}</div>
+                        </button>
+                    ))}
                 </div>
             </div>
         </div>

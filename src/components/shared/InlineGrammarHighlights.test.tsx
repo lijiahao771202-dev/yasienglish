@@ -119,4 +119,40 @@ describe("InlineGrammarHighlights", () => {
         expect(coreHtml).not.toContain("aria-label=\"状语：补充动作方式\"");
         expect(fullHtml).toContain("aria-label=\"状语：补充动作方式\"");
     });
+
+    it("keeps RAG underlines visible when rendering grammar-highlighted text", () => {
+        const html = renderToStaticMarkup(
+            <InlineGrammarHighlights
+                text="Affordable housing depends on public trust and careful allocation."
+                ragAppliedWords={["public trust", "allocation"]}
+                sentences={[
+                    {
+                        sentence: "Affordable housing depends on public trust and careful allocation.",
+                        translation: "可负担住房依赖公众信任和谨慎配置。",
+                        highlights: [
+                            {
+                                substring: "Affordable housing",
+                                type: "主语",
+                                explanation: "动作发出者。",
+                                segment_translation: "可负担住房",
+                            },
+                            {
+                                substring: "depends on",
+                                type: "谓语",
+                                explanation: "核心动作。",
+                                segment_translation: "依赖于",
+                            },
+                        ],
+                    },
+                ]}
+                displayMode="full"
+                showSegmentTranslation
+            />,
+        );
+
+        expect(html).toContain("underline");
+        expect(html).toContain("decoration-slate-400/80");
+        expect(html).toContain("public trust");
+        expect(html).toContain("allocation");
+    });
 });

@@ -1,12 +1,26 @@
 import { create } from 'zustand';
 import { db } from './db';
 
+export interface SentenceTranslationItem {
+    sentence: string;
+    translation: string;
+    phraseTranslations?: Array<{
+        source: string;
+        translation: string;
+    }>;
+}
+
+export interface StoredTranslationPayload {
+    translation: string;
+    sentenceTranslations?: SentenceTranslationItem[];
+}
+
 interface AnalysisState {
     // We keep a small in-memory cache for immediate access, but primary source is DB
-    translations: Record<string, string>;
+    translations: Record<string, StoredTranslationPayload | string>;
     grammarAnalyses: Record<string, unknown>;
 
-    setTranslation: (text: string, translation: string) => Promise<void>;
+    setTranslation: (text: string, translation: StoredTranslationPayload | string) => Promise<void>;
     setGrammarAnalysis: (cacheKey: string, analysis: unknown) => Promise<void>;
 
     // These now return Promises or we use a hook in the component

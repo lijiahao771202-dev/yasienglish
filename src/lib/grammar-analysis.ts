@@ -467,6 +467,9 @@ OBJECTIVE:
    - After labeling a clause such as 宾语从句 / 定语从句 / 状语从句, continue exposing its internal backbone when that backbone is still pedagogically important.
    - Prefer 5-12 meaningful chunks for a long complex sentence rather than 2-4 oversized chunks.
    - Never merge a clause label and all of its internal content into one giant chunk when the internal structure is still analyzable.
+8. Overlap control:
+   - For the same substring span, return only ONE best grammar label.
+   - Do NOT stack competing labels onto the same text span.
 
 Target sentences:
 ${sentences.map((sentence, index) => `${index + 1}. ${sentence}`).join("\n")}
@@ -500,6 +503,7 @@ CONSTRAINTS:
 - For long sentences, at least one highlight should capture the clause backbone, not only isolated words.
 - Do NOT stop at the outer clause boundary for long sentences.
 - Avoid oversized chunks.
+- Do NOT return duplicate labels for the exact same substring span.
 - Long noun phrases must be decomposed when they include internal modifiers or source/time tails.
 - Explanations should sound like a teacher speaking to a learner in simple Chinese.
 - Keep each explanation compact and easy to scan.

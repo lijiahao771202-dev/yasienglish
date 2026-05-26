@@ -108,6 +108,7 @@ function extractDictionaryData(data: unknown) {
     const simple = (payload.simple as { word?: Array<{ usphone?: string; ukphone?: string; usspeech?: string }> } | undefined)?.word?.[0];
     const ec = (payload.ec as { word?: Array<{ trs?: unknown[] }> } | undefined)?.word?.[0];
     const ee = payload.ee as { word?: { trs?: YoudaoEeGroup[]; phone?: string; speech?: string } } | undefined;
+    const eeWord = ee?.word;
 
     if (simple) {
         phonetic = simple.usphone || simple.ukphone || "";
@@ -116,8 +117,9 @@ function extractDictionaryData(data: unknown) {
         }
     }
 
-    if (ec?.trs?.length > 0) {
-        const trsLines = ec.trs
+    const ecTranslations = Array.isArray(ec?.trs) ? ec.trs : [];
+    if (ecTranslations.length > 0) {
+        const trsLines = ecTranslations
             .map((trItem: unknown) => {
                 if (!trItem || typeof trItem !== "object") return "";
                 const tr0 = (trItem as { tr?: Array<{ l?: { i?: string[] } }> }).tr?.[0];
@@ -138,8 +140,9 @@ function extractDictionaryData(data: unknown) {
         }
     }
 
-    if ((!definition || !translation) && ee?.trs?.length > 0) {
-        const eeGroups = ee.trs
+    const eeTranslations = Array.isArray(eeWord?.trs) ? eeWord.trs : [];
+    if ((!definition || !translation) && eeTranslations.length > 0) {
+        const eeGroups = eeTranslations
             .map((group: YoudaoEeGroup) => {
                 const pos = typeof group?.pos === "string" ? group.pos.trim() : "";
                 const meanings = Array.isArray(group?.tr)
@@ -168,11 +171,11 @@ function extractDictionaryData(data: unknown) {
             if (!translation) {
                 translation = eeGroups[0]?.meanings?.slice(0, 2).join("；") || "";
             }
-            if (!phonetic && typeof ee.phone === "string") {
-                phonetic = ee.phone;
+            if (!phonetic && typeof eeWord?.phone === "string") {
+                phonetic = eeWord.phone;
             }
-            if (!audio && typeof ee.speech === "string" && ee.speech.trim()) {
-                audio = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(ee.speech.trim())}&type=2`;
+            if (!audio && typeof eeWord?.speech === "string" && eeWord.speech.trim()) {
+                audio = `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(eeWord.speech.trim())}&type=2`;
             }
         }
     }

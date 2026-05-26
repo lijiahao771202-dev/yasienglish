@@ -2,14 +2,15 @@ import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallba
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Play, Pause, BookOpen, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, RefreshCw } from "lucide-react";
+import { Play, Pause, BookOpen, BookPlus, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
+import { useReadingSettings, type PhraseDisplayMode } from "@/contexts/ReadingSettingsContext";
 import { useTTS } from "@/hooks/useTTS";
 import { usePretextMeasuredLayout } from "@/hooks/usePretextMeasuredLayout";
 import { SpeakingPanel } from "./SpeakingPanel";
 import { useAnalysisStore } from "@/lib/analysis-store";
+import type { SentenceTranslationItem, StoredTranslationPayload } from "@/lib/analysis-store";
 import { bionicText } from "@/lib/bionic";
 import { InlineGrammarHighlights } from "@/components/shared/InlineGrammarHighlights";
 import { PretextTextarea } from "@/components/ui/PretextTextarea";
@@ -108,6 +109,23 @@ interface GrammarBasicCachePayload {
     difficult_sentences?: GrammarSentenceAnalysis[];
 }
 
+interface TranslateSentenceResult {
+    sentence: string;
+    translation: string;
+    phraseTranslations?: Array<{
+        source: string;
+        translation: string;
+    }>;
+}
+
+interface TranslateApiResponse {
+    translation?: string;
+    sentenceTranslations?: TranslateSentenceResult[];
+    readingCoins?: unknown;
+    error?: string;
+    errorCode?: string;
+}
+
 interface GrammarSentenceApiResult extends GrammarBasicCachePayload {
     sentence: string;
     cacheKey: string;
@@ -199,6 +217,12 @@ interface SentenceGrammarUiState {
 type SelectionPopupMode = "selection" | "ask" | "ask-replay";
 type AskAnswerMode = "default" | "short" | "detailed";
 
+interface InlinePhraseRange {
+    start: number;
+    end: number;
+    item: { source: string; translation: string };
+}
+
 interface PinnedAskSnapshot {
     rect: DOMRect;
     text: string;
@@ -237,6 +261,307 @@ function isAskRateLimitPayload(payload: unknown) {
 
 function escapeRegExp(input: string) {
     return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isStoredTranslationPayload(value: StoredTranslationPayload | string | undefined): value is StoredTranslationPayload {
+    return Boolean(value && typeof value === "object" && "translation" in value);
+}
+
+function normalizeSentenceTranslationItems(items: unknown): SentenceTranslationItem[] {
+    if (!Array.isArray(items)) return [];
+
+    return items
+        .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const sentence = typeof (item as { sentence?: unknown }).sentence === "string"
+                ? (item as { sentence: string }).sentence.trim()
+                : "";
+            const translation = typeof (item as { translation?: unknown }).translation === "string"
+                ? (item as { translation: string }).translation.trim()
+                : "";
+            if (!sentence || !translation) return null;
+            return {
+                sentence,
+                translation,
+                phraseTranslations: normalizePhraseTranslationItems((item as { phraseTranslations?: unknown }).phraseTranslations),
+            } satisfies SentenceTranslationItem;
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item));
+}
+
+function normalizePhraseTranslationItems(value: unknown) {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const source = typeof (item as { source?: unknown }).source === "string"
+                ? (item as { source: string }).source.trim()
+                : "";
+            const translation = typeof (item as { translation?: unknown }).translation === "string"
+                ? (item as { translation: string }).translation.trim()
+                : "";
+            if (!source || !translation) return null;
+            return { source, translation };
+        })
+        .filter((item): item is NonNullable<SentenceTranslationItem["phraseTranslations"]>[number] => Boolean(item));
+}
+
+function buildSentenceTranslationLookup(items: SentenceTranslationItem[]) {
+    const lookup = new Map<string, string>();
+    items.forEach((item) => {
+        const key = sentenceIdentity(item.sentence);
+        if (!key || lookup.has(key)) return;
+        lookup.set(key, item.translation);
+    });
+    return lookup;
+}
+
+function buildSentenceTranslationItemLookup(items: SentenceTranslationItem[]) {
+    const lookup = new Map<string, SentenceTranslationItem>();
+    items.forEach((item) => {
+        const key = sentenceIdentity(item.sentence);
+        if (!key) return;
+        lookup.set(key, {
+            sentence: item.sentence,
+            translation: item.translation,
+            phraseTranslations: normalizePhraseTranslationItems(item.phraseTranslations),
+        });
+    });
+    return lookup;
+}
+
+function mergeSentenceTranslationLookups(
+    ...sources: Array<Map<string, string>>
+) {
+    const merged = new Map<string, string>();
+    sources.forEach((source) => {
+        source.forEach((translation, key) => {
+            if (!translation || merged.has(key)) return;
+            merged.set(key, translation);
+        });
+    });
+    return merged;
+}
+
+function renderSentenceTranslationLine(translation: string) {
+    return (
+        <div
+            data-translation-line="true"
+            className="mt-2 text-[13px] leading-6 text-stone-500"
+        >
+            {translation}
+        </div>
+    );
+}
+
+function renderTranslationAside(
+    translation: string,
+    phraseItems: Array<{ source: string; translation: string }> = [],
+    onPhraseClick?: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>) => void,
+    inlinePhraseNode?: React.ReactNode,
+) {
+    return (
+        <div
+            data-translation-aside="true"
+            className="mt-2.5 inline-flex max-w-[min(100%,44rem)] flex-col gap-2.5 border-l border-stone-200/90 pl-3.5 pr-0.5 align-top"
+        >
+            <div
+                data-translation-line="true"
+                className="font-serif text-[13.5px] leading-[1.9] text-stone-500/95"
+            >
+                {translation}
+            </div>
+            {inlinePhraseNode ?? renderPhraseTranslationList(phraseItems, onPhraseClick)}
+        </div>
+    );
+}
+
+function renderPhraseTranslationList(
+    items: Array<{ source: string; translation: string }>,
+    onPhraseClick?: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>) => void,
+) {
+    if (items.length === 0) return null;
+
+    return (
+        <div data-translation-phrases="true" className="flex flex-wrap gap-2">
+            {items.map((item) => (
+                <button
+                    key={`${item.source}-${item.translation}`}
+                    type="button"
+                    data-translation-phrase-tag="true"
+                    onMouseDown={onPhraseClick ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                    } : undefined}
+                    onClick={onPhraseClick ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onPhraseClick(item, event);
+                    } : undefined}
+                    className={cn(
+                        "group/phrase inline-flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1.5 text-left text-[11.5px] leading-5 transition",
+                        onPhraseClick
+                            ? "cursor-pointer border-stone-200/80 bg-white/70 text-stone-600 shadow-[0_1px_0_rgba(255,255,255,0.75)_inset] hover:border-stone-300 hover:bg-white hover:text-stone-800 hover:shadow-[0_6px_18px_rgba(28,25,23,0.06)] focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300/70 focus-visible:ring-offset-1 active:scale-[0.985]"
+                            : "border-stone-200/70 bg-white/60 text-stone-600",
+                    )}
+                    aria-label={`${item.source}，${item.translation}。点击查看并加入生词本`}
+                    title={onPhraseClick ? "查看短语并加入生词本" : undefined}
+                >
+                    <span className="min-w-0 font-semibold tracking-[0.01em] text-stone-700">{item.source}</span>
+                    <span className="text-stone-300">·</span>
+                    <span className="min-w-0 text-stone-500">{item.translation}</span>
+                    {onPhraseClick ? (
+                        <BookPlus className="h-3.5 w-3.5 shrink-0 text-stone-300 opacity-0 transition group-hover/phrase:opacity-100 group-hover/phrase:text-stone-500 group-focus-visible/phrase:opacity-100 group-focus-visible/phrase:text-stone-500" />
+                    ) : null}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+function buildInlinePhraseRanges(
+    sentence: string,
+    items: Array<{ source: string; translation: string }>,
+): InlinePhraseRange[] {
+    if (!sentence.trim() || items.length === 0) return [];
+
+    const occupied: Array<{ start: number; end: number }> = [];
+    const ranges: InlinePhraseRange[] = [];
+    const uniqueItems = Array.from(new Map(
+        items
+            .map((item) => [item.source.trim().toLowerCase(), item] as const)
+            .filter(([key]) => key.length > 0),
+    ).values()).sort((left, right) => right.source.length - left.source.length);
+
+    for (const item of uniqueItems) {
+        const matcher = new RegExp(`(^|\\W)(${escapeRegExp(item.source.trim())})(?=$|\\W)`, "gi");
+        let match: RegExpExecArray | null = null;
+        while ((match = matcher.exec(sentence)) !== null) {
+            const prefix = match[1] ?? "";
+            const matched = match[2] ?? "";
+            if (!matched) continue;
+            const start = match.index + prefix.length;
+            const end = start + matched.length;
+            const overlaps = occupied.some((range) => !(end <= range.start || start >= range.end));
+            if (overlaps) continue;
+            occupied.push({ start, end });
+            ranges.push({ start, end, item });
+        }
+    }
+
+    return ranges.sort((left, right) => left.start - right.start);
+}
+
+function renderInlinePhraseText(
+    sentence: string,
+    items: Array<{ source: string; translation: string }>,
+    options: {
+        phraseDisplayMode: PhraseDisplayMode;
+        hoveredPhraseKey: string | null;
+        hoveredPhraseSaveState: Record<string, "idle" | "saving" | "saved" | "exists" | "error">;
+        onHoverPhrase: React.Dispatch<React.SetStateAction<string | null>>;
+        onSavePhrase: (phrase: string, translation: string, sentenceContext: string) => Promise<void>;
+        onClickPhrase: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>, sentenceContext?: string) => void;
+    },
+) {
+    if (options.phraseDisplayMode !== "inline_wavy" || items.length === 0) {
+        return null;
+    }
+
+    const ranges = buildInlinePhraseRanges(sentence, items);
+    if (ranges.length === 0) return null;
+
+    const nodes: React.ReactNode[] = [];
+    let cursor = 0;
+
+    ranges.forEach((range) => {
+        if (range.start > cursor) {
+            nodes.push(
+                <span key={`plain-${cursor}-${range.start}`}>
+                    {sentence.slice(cursor, range.start)}
+                </span>,
+            );
+        }
+
+        const phraseText = sentence.slice(range.start, range.end);
+        const hoverKey = `${sentence}::${range.item.source.trim().replace(/\s+/g, " ")}`;
+        const saveState = options.hoveredPhraseSaveState[hoverKey] ?? "idle";
+        const isOpen = options.hoveredPhraseKey === hoverKey;
+
+        nodes.push(
+            <span
+                key={`phrase-${range.start}-${range.end}`}
+                className="relative inline-block"
+                onMouseEnter={() => options.onHoverPhrase(hoverKey)}
+                onMouseLeave={() => options.onHoverPhrase((current) => (current === hoverKey ? null : current) as unknown as string | null)}
+            >
+                <button
+                    type="button"
+                    data-translation-inline-phrase="true"
+                    className="rounded-[3px] text-stone-700 decoration-[1.6px] underline decoration-transparent underline-offset-[3px] transition hover:text-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300/70 focus-visible:ring-offset-1"
+                    style={{ textDecorationLine: "underline", textDecorationStyle: "wavy", textDecorationColor: "rgba(99,102,241,0.65)" }}
+                    onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        options.onClickPhrase(range.item, event, sentence);
+                    }}
+                    aria-label={`${range.item.source}，${range.item.translation}。悬浮查看，点击打开词卡`}
+                >
+                    {phraseText}
+                </button>
+                <div
+                    data-translation-inline-hover-card={isOpen ? "open" : "closed"}
+                    className={cn(
+                        "absolute left-0 top-full z-30 mt-2 w-[min(18rem,calc(100vw-3rem))] rounded-2xl border border-stone-200/90 bg-white/95 p-3 text-left shadow-[0_16px_36px_rgba(28,25,23,0.12)] backdrop-blur-sm transition",
+                        isOpen ? "pointer-events-auto opacity-100 translate-y-0" : "pointer-events-none opacity-0 -translate-y-1",
+                    )}
+                    onMouseEnter={() => options.onHoverPhrase(hoverKey)}
+                    onMouseLeave={() => options.onHoverPhrase(null)}
+                >
+                    <div className="text-[12px] font-semibold text-stone-800">{range.item.source}</div>
+                    <div className="mt-1 text-[12px] leading-5 text-stone-500">{range.item.translation}</div>
+                    <div className="mt-3 flex items-center justify-between gap-3">
+                        <button
+                            type="button"
+                            className={cn(
+                                "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                                saveState === "saved" || saveState === "exists"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    : saveState === "error"
+                                        ? "border-rose-200 bg-rose-50 text-rose-600"
+                                        : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:text-stone-800",
+                            )}
+                            disabled={saveState === "saving"}
+                            onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                void options.onSavePhrase(range.item.source, range.item.translation, sentence);
+                            }}
+                        >
+                            {saveState === "saving" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookPlus className="h-3.5 w-3.5" />}
+                            {saveState === "saved" ? "已加入" : saveState === "exists" ? "已存在" : saveState === "error" ? "重试保存" : "加入生词本"}
+                        </button>
+                        <span className="text-[10px] font-medium text-stone-400">点击短语看完整词卡</span>
+                    </div>
+                </div>
+            </span>,
+        );
+        cursor = range.end;
+    });
+
+    if (cursor < sentence.length) {
+        nodes.push(
+            <span key={`plain-${cursor}-${sentence.length}`}>
+                {sentence.slice(cursor)}
+            </span>,
+        );
+    }
+
+    return (
+        <span data-translation-inline-phrases="true" className="font-serif text-[15px] leading-[1.95] text-stone-700/95">
+            {nodes}
+        </span>
+    );
 }
 
 function buildRagUnderlineMarkers(paragraphText: string, ragAppliedWords: string[]) {
@@ -438,7 +763,7 @@ export function ParagraphCard({
 }: ParagraphCardProps) {
     const router = useRouter();
     const sessionUser = useAuthSessionUser();
-    const { fontSizeClass, isBionicMode } = useReadingSettings();
+    const { fontSizeClass, isBionicMode, phraseDisplayMode } = useReadingSettings();
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
     const grammarExecutionSignature = useMemo(() => buildReadingGrammarExecutionSignature(profile), [profile]);
     const {
@@ -463,7 +788,19 @@ export function ParagraphCard({
     }, [text, loadFromDB]);
 
     // Derived data from store
-    const translation = translations[text];
+    const translationEntry = translations[text];
+    const translation = isStoredTranslationPayload(translationEntry) ? translationEntry.translation : translationEntry;
+    const sentenceTranslationItems = useMemo(
+        () => normalizeSentenceTranslationItems(isStoredTranslationPayload(translationEntry) ? translationEntry.sentenceTranslations : []),
+        [translationEntry],
+    );
+    const sentenceTranslationLookup = useMemo(
+        () => buildSentenceTranslationLookup(sentenceTranslationItems),
+        [sentenceTranslationItems],
+    );
+    const sentenceTranslationItemLookup = useMemo(() => {
+        return buildSentenceTranslationItemLookup(sentenceTranslationItems);
+    }, [sentenceTranslationItems]);
     const paragraphAskCacheKey = useMemo(() => {
         const normalizedUrl = typeof articleUrl === "string" ? articleUrl.trim() : "";
         const normalizedTitle = typeof articleTitle === "string" ? articleTitle.trim().toLowerCase() : "";
@@ -546,6 +883,8 @@ export function ParagraphCard({
     const [, setHoveredNoteId] = useState<number | null>(null);
     const [pressedAskNoteId, setPressedAskNoteId] = useState<number | null>(null);
     const [readingCoinHint, setReadingCoinHint] = useState<string | null>(null);
+    const [hoveredPhraseKey, setHoveredPhraseKey] = useState<string | null>(null);
+    const [hoveredPhraseSaveState, setHoveredPhraseSaveState] = useState<Record<string, "idle" | "saving" | "saved" | "exists" | "error">>({});
 
     const pRef = useRef<HTMLDivElement>(null);
     const sentenceAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -631,6 +970,37 @@ export function ParagraphCard({
         sentenceUnitsRef.current = sentenceUnits;
     }, [sentenceUnits]);
     const hasUsableGrammarAnalysis = grammarSentenceEntries.some((entry) => entry.hasUsableAnalysis);
+    const grammarSentenceTranslationLookup = useMemo(() => {
+        const items = grammarSentenceEntries.flatMap((entry) => {
+            const sentence = entry.assessment.data.difficult_sentences[0];
+            if (!sentence?.translation?.trim()) return [];
+            return [{
+                sentence: sentence.sentence || entry.sentence,
+                translation: sentence.translation.trim(),
+            }];
+        });
+        return buildSentenceTranslationLookup(items);
+    }, [grammarSentenceEntries]);
+    const effectiveSentenceTranslationItemLookup = useMemo(() => {
+        const merged = new Map(sentenceTranslationItemLookup);
+        grammarSentenceEntries.forEach((entry) => {
+            const identity = sentenceIdentity(entry.unit.text);
+            if (!identity || merged.has(identity)) return;
+            const sentence = entry.assessment.data.difficult_sentences[0];
+            const normalizedTranslation = sentence?.translation?.trim() ?? "";
+            if (!normalizedTranslation) return;
+            merged.set(identity, {
+                sentence: entry.unit.text.trim(),
+                translation: normalizedTranslation,
+                phraseTranslations: [],
+            });
+        });
+        return merged;
+    }, [grammarSentenceEntries, sentenceTranslationItemLookup]);
+    const effectiveSentenceTranslationLookup = useMemo(
+        () => mergeSentenceTranslationLookups(grammarSentenceTranslationLookup, sentenceTranslationLookup),
+        [grammarSentenceTranslationLookup, sentenceTranslationLookup],
+    );
 
     const activeSentenceUnit = sentenceUnits[activeListenSentenceIndex] ?? null;
 
@@ -1713,6 +2083,22 @@ export function ParagraphCard({
                         translation: "",
                         highlights: [],
                     };
+                    const identity = sentenceIdentity(entry.unit.text);
+                    const storedTranslationItem = effectiveSentenceTranslationItemLookup.get(identity);
+                    const unitTranslation = storedTranslationItem?.translation ?? effectiveSentenceTranslationLookup.get(identity) ?? "";
+                    const phraseTranslations = storedTranslationItem?.phraseTranslations ?? [];
+                    const resolvedAnalysisTranslation = unitTranslation || analysisSentence.translation?.trim() || "";
+                    const shouldHidePlainTranslation = entry.hasUsableAnalysis && entry.expanded && resolvedAnalysisTranslation;
+                    const inlinePhraseSentenceNode = showTranslation && phraseDisplayMode === "inline_wavy" && phraseTranslations.length > 0
+                        ? renderInlinePhraseText(entry.unit.text, phraseTranslations, {
+                            phraseDisplayMode,
+                            hoveredPhraseKey,
+                            hoveredPhraseSaveState,
+                            onHoverPhrase: setHoveredPhraseKey,
+                            onSavePhrase: handleSavePhraseToVocab,
+                            onClickPhrase: handlePhraseTranslationClick,
+                        })
+                        : null;
 
                     return (
                         <li
@@ -1754,21 +2140,44 @@ export function ParagraphCard({
                             </button>
 
                             <div className="min-w-0">
-                                <div className="w-full text-left text-stone-800 leading-[1.6]">
-                                    {entry.hasUsableAnalysis && entry.expanded ? (
-                                        <InlineGrammarHighlights
-                                            text={analysisSentence.sentence}
-                                            sentences={[{
-                                                sentence: analysisSentence.sentence,
-                                                translation: analysisSentence.translation,
-                                                highlights: analysisSentence.highlights,
-                                            }]}
-                                            displayMode={grammarDisplayMode}
-                                            showSegmentTranslation
-                                        />
-                                    ) : (
-                                        entry.unit.text
-                                    )}
+                                <div className="flex items-start gap-2">
+                                <div className="min-w-0 flex-1 text-left text-stone-800 leading-[1.6]">
+                                        {entry.hasUsableAnalysis && entry.expanded ? (
+                                            <InlineGrammarHighlights
+                                                text={analysisSentence.sentence}
+                                                sentences={[{
+                                                    sentence: analysisSentence.sentence,
+                                                    translation: resolvedAnalysisTranslation,
+                                                    highlights: analysisSentence.highlights,
+                                                }]}
+                                                ragAppliedWords={ragAppliedWords}
+                                                displayMode={grammarDisplayMode}
+                                                showSegmentTranslation
+                                            />
+                                        ) : (
+                                            inlinePhraseSentenceNode ?? entry.unit.text
+                                        )}
+                                        {showTranslation && !shouldHidePlainTranslation && unitTranslation
+                                            ? renderTranslationAside(
+                                                unitTranslation,
+                                                phraseDisplayMode === "capsule" ? phraseTranslations : [],
+                                                phraseDisplayMode === "capsule"
+                                                    ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
+                                                    : undefined,
+                                            )
+                                            : null}
+                                    </div>
+                                    {entry.hasUsableAnalysis ? (
+                                        <button
+                                            type="button"
+                                            aria-label={`重新生成第 ${index + 1} 句解析`}
+                                            title="重新生成这一句的解析"
+                                            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-400 transition-colors hover:border-amber-300 hover:text-amber-600"
+                                            onClick={() => queueGrammarSentence(entry.unitIndex, { forceRegenerate: true })}
+                                        >
+                                            <RefreshCw className="h-3.5 w-3.5" />
+                                        </button>
+                                    ) : null}
                                 </div>
                                 {entry.error ? (
                                     <div className="mt-1 flex items-center gap-2 text-xs text-rose-600">
@@ -1783,11 +2192,9 @@ export function ParagraphCard({
                                         </button>
                                     </div>
                                 ) : null}
-                                {!entry.error && entry.hasUsableAnalysis && entry.assessment.data.difficult_sentences[0]?.translation && entry.expanded ? (
-                                    <div className="mt-2 text-sm leading-6 text-stone-500">
-                                        {entry.assessment.data.difficult_sentences[0]?.translation}
-                                    </div>
-                                ) : null}
+                                {!entry.error && entry.hasUsableAnalysis && resolvedAnalysisTranslation && entry.expanded
+                                    ? renderSentenceTranslationLine(resolvedAnalysisTranslation)
+                                    : null}
                             </div>
                         </li>
                     );
@@ -1839,6 +2246,57 @@ export function ParagraphCard({
         await saveVocabulary(card);
         return "saved" as const;
     }, [text]);
+
+    const handleSavePhraseToVocab = useCallback(async (
+        phrase: string,
+        translationText: string,
+        sentenceContext: string,
+    ) => {
+        const normalizedPhrase = phrase.trim().replace(/\s+/g, " ");
+        const stateKey = `${sentenceContext}::${normalizedPhrase}`;
+        if (!normalizedPhrase) return;
+
+        setHoveredPhraseSaveState((prev) => ({ ...prev, [stateKey]: "saving" }));
+        try {
+            const wordKey = normalizeWordKey(normalizedPhrase);
+            const existing = await db.vocabulary.where("word_key").equals(wordKey).first();
+            if (existing) {
+                setHoveredPhraseSaveState((prev) => ({ ...prev, [stateKey]: "exists" }));
+                return;
+            }
+
+            const now = Date.now();
+            const base = createEmptyCard(normalizedPhrase, now);
+            const card: VocabItem = {
+                word: normalizedPhrase,
+                definition: "",
+                translation: translationText,
+                context: text,
+                example: "",
+                source_kind: "read",
+                source_label: defaultVocabSourceLabel("read"),
+                source_sentence: sentenceContext,
+                source_note: articleTitle || "从阅读短语提示加入",
+                timestamp: base.timestamp ?? now,
+                stability: base.stability ?? 0,
+                difficulty: base.difficulty ?? 0,
+                elapsed_days: base.elapsed_days ?? 0,
+                scheduled_days: base.scheduled_days ?? 0,
+                reps: base.reps ?? 0,
+                lapses: base.lapses ?? 0,
+                learning_steps: base.learning_steps ?? 0,
+                state: base.state ?? 0,
+                last_review: base.last_review ?? 0,
+                due: base.due ?? now,
+            };
+
+            await saveVocabulary(card);
+            setHoveredPhraseSaveState((prev) => ({ ...prev, [stateKey]: "saved" }));
+        } catch (error) {
+            console.error("Failed to save phrase from translation hover card:", error);
+            setHoveredPhraseSaveState((prev) => ({ ...prev, [stateKey]: "error" }));
+        }
+    }, [articleTitle, text]);
 
     const renderAskMarkdown = (content: string) => (
         <AiRichMarkdown content={content} onInlineCodeVocabAction={handleAskInlineCodeVocabAction} />
@@ -2301,6 +2759,29 @@ export function ParagraphCard({
         text,
     ]);
 
+    const handlePhraseTranslationClick = useCallback((
+        item: { source: string; translation: string },
+        event: React.MouseEvent<HTMLButtonElement>,
+        sentenceContext?: string,
+    ) => {
+        if (!onOpenWordPopupFromSelection) return;
+        const targetRect = event.currentTarget.getBoundingClientRect();
+        const normalizedSource = item.source.trim().replace(/\s+/g, " ");
+        if (!normalizedSource) return;
+
+        onOpenWordPopupFromSelection({
+            word: normalizedSource,
+            context: sentenceContext?.trim() || text,
+            x: targetRect.left + (targetRect.width / 2),
+            y: targetRect.bottom,
+            articleUrl,
+            sourceKind: "read",
+            sourceLabel: "来自 Read",
+            sourceSentence: sentenceContext?.trim() || text,
+            sourceNote: articleTitle || "",
+        });
+    }, [articleTitle, articleUrl, onOpenWordPopupFromSelection, text]);
+
     const closePhraseAnalysis = () => {
         setSelectionRect(null);
         setSelectedText(null);
@@ -2481,7 +2962,18 @@ export function ParagraphCard({
     }, [isRewriteModeOpen]);
 
     const handleTranslate = async (forceRegenerate = false) => {
-        if (!forceRegenerate && translation) {
+        const missingSentenceUnits = sentenceUnits.filter(
+            (unit) => !effectiveSentenceTranslationLookup.has(sentenceIdentity(unit.text)),
+        );
+        const hasSentenceTranslations = effectiveSentenceTranslationLookup.size > 0;
+        const hasCompleteSentenceTranslations = sentenceUnits.length > 0
+            ? missingSentenceUnits.length === 0
+            : hasSentenceTranslations;
+        const hasAvailableStructuredTranslations = hasCompleteSentenceTranslations
+            && sentenceUnits.length > 0
+            && sentenceUnits.every((unit) => effectiveSentenceTranslationItemLookup.has(sentenceIdentity(unit.text)));
+
+        if (!forceRegenerate && (translation || hasAvailableStructuredTranslations) && hasCompleteSentenceTranslations) {
             setShowTranslation(!showTranslation); // Toggle visibility
             return;
         }
@@ -2495,11 +2987,33 @@ export function ParagraphCard({
         setIsTranslating(true);
         setReadingCoinHint(null);
         try {
+            if (!forceRegenerate && hasAvailableStructuredTranslations && !translation) {
+                const mergedSentenceTranslations = sentenceUnits
+                    .map((unit) => {
+                        const normalized = sentenceIdentity(unit.text);
+                        const storedItem = effectiveSentenceTranslationItemLookup.get(normalized);
+                        if (!storedItem?.translation) return null;
+                        return {
+                            sentence: unit.text.trim(),
+                            translation: storedItem.translation,
+                            phraseTranslations: storedItem.phraseTranslations ?? [],
+                        };
+                    })
+                    .filter((item): item is NonNullable<typeof item> => Boolean(item));
+                await setStoreTranslation(text, {
+                    translation: mergedSentenceTranslations.map((item) => item.translation).join(""),
+                    sentenceTranslations: mergedSentenceTranslations,
+                });
+                return;
+            }
+            const requestText = forceRegenerate || missingSentenceUnits.length === 0
+                ? text
+                : missingSentenceUnits.map((unit) => unit.text).join(" ").trim();
             const res = await fetch("/api/ai/translate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    text,
+                    text: requestText,
                     context: text,
                     economyContext: readEconomyContext("translate"),
                 }),
@@ -2511,7 +3025,36 @@ export function ParagraphCard({
                 return;
             }
             await syncReadingBalance(data, "translate");
-            setStoreTranslation(text, data.translation);
+            const payload = data as TranslateApiResponse;
+            const nextSentenceTranslations = normalizeSentenceTranslationItems(payload.sentenceTranslations);
+            const mergedSentenceTranslationItemLookup = buildSentenceTranslationItemLookup([
+                ...(forceRegenerate ? [] : sentenceTranslationItems),
+                ...nextSentenceTranslations,
+            ]);
+            const mergedLookup = mergeSentenceTranslationLookups(
+                forceRegenerate ? new Map<string, string>() : grammarSentenceTranslationLookup,
+                forceRegenerate ? new Map<string, string>() : sentenceTranslationLookup,
+                buildSentenceTranslationLookup(nextSentenceTranslations),
+            );
+            const mergedSentenceTranslations = sentenceUnits
+                .map((unit) => {
+                    const normalized = sentenceIdentity(unit.text);
+                    const unitTranslation = mergedLookup.get(normalized);
+                    if (!unitTranslation) return null;
+                    const storedItem = mergedSentenceTranslationItemLookup.get(normalized);
+                    return {
+                        sentence: unit.text.trim(),
+                        translation: unitTranslation,
+                        phraseTranslations: storedItem?.phraseTranslations ?? [],
+                    };
+                })
+                .filter((item): item is NonNullable<typeof item> => Boolean(item));
+            await setStoreTranslation(text, {
+                translation: typeof payload.translation === "string" && payload.translation.trim()
+                    ? payload.translation
+                    : mergedSentenceTranslations.map((item) => item.translation).join(""),
+                sentenceTranslations: mergedSentenceTranslations,
+            });
         } catch (err) {
             console.error(err);
         } finally {
@@ -2546,7 +3089,7 @@ export function ParagraphCard({
         setReadingCoinHint(null);
 
         const requestKey = pendingEntries.map((entry) => entry.cacheKey).sort().join("|");
-        const replayEntry = grammarRequestReplayRef.current.get(requestKey);
+        const replayEntry = forceRegenerate ? null : grammarRequestReplayRef.current.get(requestKey);
         const now = Date.now();
 
         const runRequest = async () => {
@@ -2726,7 +3269,9 @@ export function ParagraphCard({
     };
 
     const grammarModeLabel = grammarDisplayMode === "core" ? "主干视图" : "完整视图";
-    const shouldRenderGrammarLayer = showGrammar && !highlightSnippet;
+    const shouldRenderGrammarLayer = !highlightSnippet && (
+        showGrammar || (showTranslation && sentenceUnits.length > 0)
+    );
     const recallAskVocabulary = useCallback(async (questionText: string, selectionText: string) => {
         try {
             const result = await queryAskRelevantVocabulary({
@@ -3580,16 +4125,17 @@ export function ParagraphCard({
                 </AnimatePresence>
 
                 {
-                    showTranslation && translation && (
+                    showTranslation && translation && sentenceUnits.length === 0 && (
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
-                            className="text-base text-rose-700 font-sans bg-rose-50 p-3 rounded-lg border border-rose-100 relative group/trans"
+                            data-paragraph-translation-block="true"
+                            className="relative group/trans pt-1"
                         >
-                            {translation}
+                            {renderTranslationAside(translation)}
                             <button
                                 onClick={() => handleTranslate(true)}
-                                className="absolute top-2 right-2 p-1.5 bg-white/50 hover:bg-white text-rose-400 hover:text-rose-600 rounded-full opacity-0 group-hover/trans:opacity-100 transition-all"
+                                className="absolute right-0 top-0 rounded-full bg-white/85 p-1.5 text-stone-400 opacity-0 shadow-sm transition-all hover:bg-white hover:text-stone-700 group-hover/trans:opacity-100"
                                 title="Regenerate Translation"
                             >
                                 <RotateCcw className="w-3 h-3" />

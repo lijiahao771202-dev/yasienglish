@@ -19,16 +19,6 @@ export interface GrammarSentenceMarker {
     translation?: string;
 }
 
-export interface GrammarHighlightAlternative {
-    rawType: string;
-    normalizedType: string;
-    translatedLabel: string;
-    layer: GrammarLayer;
-    explanation: string;
-    segmentTranslation?: string;
-    displayPriority: number;
-}
-
 export interface GrammarHighlightRange {
     start: number;
     end: number;
@@ -44,8 +34,6 @@ export interface GrammarHighlightRange {
     sentenceTranslation?: string;
     layer: GrammarLayer;
     displayPriority: number;
-    overlapCount?: number;
-    alternatives?: GrammarHighlightAlternative[];
 }
 
 export interface GrammarTextSegment {
@@ -365,38 +353,10 @@ function mergeAdjacentRanges(text: string, ranges: GrammarHighlightRange[]): Gra
             ...previous,
             end: range.end,
             segmentTranslation: mergeSegmentTranslations(previous.segmentTranslation, range.segmentTranslation),
-            alternatives: [
-                ...(previous.alternatives ?? []),
-                ...(range.alternatives ?? []),
-            ],
         };
     });
 
     return merged;
-}
-
-function toAlternative(range: GrammarHighlightRange | GrammarHighlightAlternative): GrammarHighlightAlternative {
-    return {
-        rawType: range.rawType,
-        normalizedType: range.normalizedType,
-        translatedLabel: range.translatedLabel,
-        layer: range.layer,
-        explanation: range.explanation,
-        segmentTranslation: range.segmentTranslation,
-        displayPriority: range.displayPriority,
-    };
-}
-
-function dedupeAlternatives(alternatives: GrammarHighlightAlternative[]) {
-    const seen = new Set<string>();
-    const output: GrammarHighlightAlternative[] = [];
-    alternatives.forEach((item) => {
-        const key = `${item.normalizedType}|${item.explanation}|${item.segmentTranslation ?? ""}|${item.layer}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        output.push(item);
-    });
-    return output;
 }
 
 function createSegments(
@@ -445,19 +405,7 @@ function createSegments(
             });
 
         const primary = coveringRanges[0] ?? null;
-        const highlight = primary
-            ? (() => {
-                const overlaps = dedupeAlternatives([
-                    ...(primary.alternatives ?? []),
-                    ...coveringRanges.slice(1).map((item) => toAlternative(item)),
-                ]);
-                return {
-                    ...primary,
-                    alternatives: overlaps.length > 0 ? overlaps : undefined,
-                    overlapCount: overlaps.length,
-                } satisfies GrammarHighlightRange;
-            })()
-            : null;
+        const highlight = primary ? { ...primary } satisfies GrammarHighlightRange : null;
 
         segments.push({
             start,
@@ -580,7 +528,7 @@ export function buildGrammarHighlightRanges(
 
     const normalizedRanges = Array.from(groupedByRange.values())
         .map((ranges) => {
-            const [primary, ...rest] = ranges.sort((left, right) => {
+            const [primary] = ranges.sort((left, right) => {
                 if (left.displayPriority !== right.displayPriority) {
                     return right.displayPriority - left.displayPriority;
                 }
@@ -589,18 +537,7 @@ export function buildGrammarHighlightRanges(
             if (!primary) {
                 throw new Error("Expected at least one highlight per range group");
             }
-            return {
-                ...primary,
-                alternatives: rest.map((item) => ({
-                    rawType: item.rawType,
-                    normalizedType: item.normalizedType,
-                    translatedLabel: item.translatedLabel,
-                    layer: item.layer,
-                    explanation: item.explanation,
-                    segmentTranslation: item.segmentTranslation,
-                    displayPriority: item.displayPriority,
-                })),
-            };
+            return primary;
         })
         .sort((left, right) => {
             if (left.start !== right.start) return left.start - right.start;
@@ -616,15 +553,19 @@ export function buildGrammarHighlightRanges(
 export function buildGrammarViewModel(
     text: string,
     sentences: readonly GrammarSentenceAnalysis[],
+    options?: {
+        extraSplitRanges?: Array<{ start: number; end: number }>;
+    },
 ): GrammarViewModel {
     const fullRanges = buildGrammarHighlightRanges(text, sentences);
     const coreRanges = fullRanges.filter((range) => range.layer === "core" || range.layer === "structure");
     const sentenceMarkers = locateGrammarSentenceMarkers(text, sentences);
     const sentenceStarts = sentenceMarkers.map((item) => item.start);
+    const extraSplitPoints = (options?.extraSplitRanges ?? []).flatMap((range) => [range.start, range.end]);
 
     return {
-        core: createSegments(text, coreRanges, sentenceStarts),
-        full: createSegments(text, fullRanges, sentenceStarts),
+        core: createSegments(text, coreRanges, [...sentenceStarts, ...extraSplitPoints]),
+        full: createSegments(text, fullRanges, [...sentenceStarts, ...extraSplitPoints]),
         sentenceMarkers,
     };
 }

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ReadingSettingsProvider, useReadingSettings } from "./ReadingSettingsContext";
 
 function Consumer() {
-    const { theme, font, fontSize, isFocusMode, isBionicMode } = useReadingSettings();
+    const { theme, font, fontSize, isFocusMode, isBionicMode, phraseDisplayMode } = useReadingSettings();
     return (
         <div
             data-theme={theme}
@@ -16,6 +16,7 @@ function Consumer() {
             data-font-size={fontSize}
             data-focus={String(isFocusMode)}
             data-bionic={String(isBionicMode)}
+            data-phrase-display-mode={phraseDisplayMode}
         />
     );
 }
@@ -33,6 +34,7 @@ describe("ReadingSettingsProvider", () => {
         window.localStorage.setItem("reading_size", "text-2xl");
         window.localStorage.setItem("reading_focus_mode", "true");
         window.localStorage.setItem("reading_bionic_mode", "true");
+        window.localStorage.setItem("reading_phrase_display_mode", "inline_wavy");
 
         const html = renderToString(
             <ReadingSettingsProvider>
@@ -45,6 +47,7 @@ describe("ReadingSettingsProvider", () => {
         expect(html).toContain('data-font-size="text-xl"');
         expect(html).toContain('data-focus="false"');
         expect(html).toContain('data-bionic="false"');
+        expect(html).toContain('data-phrase-display-mode="capsule"');
     });
 
     it("hydrates client settings from local storage after mount", async () => {
@@ -54,6 +57,7 @@ describe("ReadingSettingsProvider", () => {
         window.localStorage.setItem("reading_size", "text-2xl");
         window.localStorage.setItem("reading_focus_mode", "true");
         window.localStorage.setItem("reading_bionic_mode", "true");
+        window.localStorage.setItem("reading_phrase_display_mode", "inline_wavy");
 
         const container = document.createElement("div");
         document.body.appendChild(container);
@@ -73,6 +77,7 @@ describe("ReadingSettingsProvider", () => {
         expect(node?.getAttribute("data-font-size")).toBe("text-2xl");
         expect(node?.getAttribute("data-focus")).toBe("true");
         expect(node?.getAttribute("data-bionic")).toBe("true");
+        expect(node?.getAttribute("data-phrase-display-mode")).toBe("inline_wavy");
 
         await act(async () => {
             root.unmount();

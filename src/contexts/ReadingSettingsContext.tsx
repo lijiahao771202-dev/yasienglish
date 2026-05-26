@@ -5,6 +5,7 @@ import React, { createContext, useContext, useSyncExternalStore } from 'react';
 type ThemeId = 'welcome' | 'warm' | 'sunlight' | 'vintage' | 'green' | 'cool' | 'mono' | 'dark' | 'navy' | 'coal' | 'mint' | 'lavender' | 'rose' | 'sky' | 'sand' | 'latte' | 'mocha' | 'slate' | 'dracula' | 'hacker' | 'midnight' | 'crimson' | 'forest' | 'ocean' | 'sepia' | 'peach' | 'matcha' | 'berry' | 'cyberpunk' | 'nord';
 type FontId = 'serif' | 'sans' | 'mono' | 'merriweather' | 'lora' | 'inter' | 'roboto-mono' | 'libre-baskerville' | 'source-serif' | 'work-sans' | 'comic' | 'arial' | 'helvetica' | 'georgia' | 'verdana' | 'tahoma' | 'trebuchet' | 'times' | 'palatino' | 'garamond' | 'bookman' | 'impact' | 'lucida' | 'courier' | 'consolas' | 'optima' | 'didot' | 'copperplate' | 'papyrus' | 'century' | 'candara';
 type FontSize = 'text-base' | 'text-lg' | 'text-xl' | 'text-2xl';
+export type PhraseDisplayMode = 'capsule' | 'inline_wavy';
 
 interface ReadingSettings {
     theme: ThemeId;
@@ -12,12 +13,14 @@ interface ReadingSettings {
     fontSize: FontSize;
     isFocusMode: boolean;
     isBionicMode: boolean;
+    phraseDisplayMode: PhraseDisplayMode;
 }
 
 interface ReadingSettingsContextType extends ReadingSettings {
     setTheme: (theme: ThemeId) => void;
     setFont: (font: FontId) => void;
     setFontSize: (size: FontSize) => void;
+    setPhraseDisplayMode: (mode: PhraseDisplayMode) => void;
     toggleFocusMode: () => void;
     toggleBionicMode: () => void;
     // Computed classes
@@ -104,6 +107,7 @@ const FONTS = {
 const DEFAULT_THEME: ThemeId = 'warm';
 const DEFAULT_FONT: FontId = 'serif';
 const DEFAULT_FONT_SIZE: FontSize = 'text-xl';
+const DEFAULT_PHRASE_DISPLAY_MODE: PhraseDisplayMode = 'capsule';
 const READING_SETTINGS_EVENT = 'reading-settings-change';
 
 function readStoredTheme(): ThemeId {
@@ -129,6 +133,13 @@ function readStoredFocusMode() {
 
 function readStoredBionicMode() {
     return localStorage.getItem('reading_bionic_mode') === 'true';
+}
+
+function readStoredPhraseDisplayMode(): PhraseDisplayMode {
+    const storedMode = localStorage.getItem('reading_phrase_display_mode');
+    return storedMode === 'inline_wavy' || storedMode === 'capsule'
+        ? storedMode
+        : DEFAULT_PHRASE_DISPLAY_MODE;
 }
 
 function subscribeReadingSettings(onStoreChange: () => void) {
@@ -157,6 +168,7 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
     const fontSize = useSyncExternalStore(subscribeReadingSettings, readStoredFontSize, () => DEFAULT_FONT_SIZE);
     const isFocusMode = useSyncExternalStore(subscribeReadingSettings, readStoredFocusMode, () => false);
     const isBionicMode = useSyncExternalStore(subscribeReadingSettings, readStoredBionicMode, () => false);
+    const phraseDisplayMode = useSyncExternalStore(subscribeReadingSettings, readStoredPhraseDisplayMode, () => DEFAULT_PHRASE_DISPLAY_MODE);
 
     const updateTheme = (newTheme: ThemeId) => {
         localStorage.setItem('reading_theme', newTheme);
@@ -170,6 +182,11 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
 
     const updateFontSize = (newSize: FontSize) => {
         localStorage.setItem('reading_size', newSize);
+        emitReadingSettingsChange();
+    };
+
+    const updatePhraseDisplayMode = (newMode: PhraseDisplayMode) => {
+        localStorage.setItem('reading_phrase_display_mode', newMode);
         emitReadingSettingsChange();
     };
 
@@ -190,9 +207,11 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
             theme,
             font,
             fontSize,
+            phraseDisplayMode,
             setTheme: updateTheme,
             setFont: updateFont,
             setFontSize: updateFontSize,
+            setPhraseDisplayMode: updatePhraseDisplayMode,
             isFocusMode,
             toggleFocusMode,
             isBionicMode,

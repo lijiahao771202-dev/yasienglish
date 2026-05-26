@@ -19,6 +19,7 @@ describe("ai reading generation helpers", () => {
         expect(normalizeAIGenerationMode("longform")).toBe("longform");
         expect(normalizeAIGenerationMode("anything")).toBe("standard");
         expect(normalizeLongformStyleId("science")).toBe("science");
+        expect(normalizeLongformStyleId("custom")).toBe("custom");
         expect(normalizeLongformStyleId("explainer")).toBe("explainer");
         expect(normalizeLongformStyleId("detailed")).toBe("detailed");
         expect(normalizeLongformStyleId("detailed_explainer")).toBe("detailed");
@@ -38,6 +39,10 @@ describe("ai reading generation helpers", () => {
         expect(getLongformStyleMeta("detailed")).toEqual({
             id: "detailed",
             name: "详细讲解",
+        });
+        expect(getLongformStyleMeta("custom")).toEqual({
+            id: "custom",
+            name: "自定义风格",
         });
         expect(getLongformLengthTierMeta("w1600")).toEqual({
             id: "w1600",
@@ -82,8 +87,9 @@ describe("ai reading generation helpers", () => {
             topicSeed: { topicLine: "公众科学 · Science habits" },
             difficulty: "cet6",
             generationMode: "longform",
-            longformStyleId: "science",
+            longformStyleId: "custom",
             lengthTierId: "w1200",
+            customStylePrompt: "Explain the theory clearly in simple language.",
             injectedVocabulary: [],
         })).toEqual({
             topic: "science habits",
@@ -92,8 +98,9 @@ describe("ai reading generation helpers", () => {
             generationMode: "longform",
             ragMode: "reference",
             ragSource: "hybrid",
-            longformStyleId: "science",
+            longformStyleId: "custom",
             lengthTierId: "w1200",
+            customStylePrompt: "Explain the theory clearly in simple language.",
             injectedVocabulary: undefined,
         });
     });

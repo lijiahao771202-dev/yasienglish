@@ -207,7 +207,7 @@ describe("grammarHighlights", () => {
         expect(model.full.some((segment) => segment.highlight?.normalizedType === "状语")).toBe(false);
     });
 
-    it("exposes overlap metadata when one fragment has multiple grammar tags", () => {
+    it("keeps only the primary grammar tag when one fragment has competing labels", () => {
         const text = "I know that he left early.";
         const model = buildGrammarViewModel(text, [
             {
@@ -219,9 +219,12 @@ describe("grammarHighlights", () => {
             },
         ]);
 
-        const overlapped = model.full.find((segment) => (segment.highlight?.overlapCount ?? 0) > 0);
-        expect(overlapped?.highlight?.alternatives?.length).toBeGreaterThan(0);
-        expect(overlapped?.highlight?.overlapCount).toBeGreaterThan(0);
+        const highlightedSegments = model.full.filter((segment) => segment.highlight);
+        expect(highlightedSegments.some((segment) => segment.highlight?.normalizedType === "宾语从句")).toBe(true);
+        highlightedSegments.forEach((segment) => {
+            expect("alternatives" in (segment.highlight ?? {})).toBe(false);
+            expect("overlapCount" in (segment.highlight ?? {})).toBe(false);
+        });
     });
 
     it("forces sentence boundaries into segments for stable marker linkage", () => {

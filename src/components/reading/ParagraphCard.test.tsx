@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParagraphCard } from "./ParagraphCard";
 import { buildGrammarCacheKey, GRAMMAR_BASIC_PROMPT_VERSION } from "@/lib/grammar-analysis";
+import { saveVocabulary } from "@/lib/user-repository";
 
 const mountedRoots: Root[] = [];
 const {
@@ -43,6 +44,7 @@ const {
     readingSettingsMock: {
         fontSizeClass: "text-base",
         isBionicMode: false,
+        phraseDisplayMode: "capsule",
     },
 }));
 
@@ -189,6 +191,13 @@ vi.mock("@/lib/db", () => ({
             }),
             put: async () => undefined,
         },
+        vocabulary: {
+            where: () => ({
+                equals: () => ({
+                    first: async () => null,
+                }),
+            }),
+        },
     },
 }));
 
@@ -225,6 +234,14 @@ vi.mock("@/lib/pressable", () => ({
     getPressableTap: () => ({}),
 }));
 
+analysisStoreMock.setTranslation.mockImplementation(async (text: string, translation: unknown) => {
+    analysisStoreMock.translations[text] = translation;
+});
+
+analysisStoreMock.setGrammarAnalysis.mockImplementation(async (cacheKey: string, analysis: unknown) => {
+    analysisStoreMock.grammarAnalyses[cacheKey] = analysis;
+});
+
 async function renderCard(overrides: Partial<React.ComponentProps<typeof ParagraphCard>> = {}) {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const container = document.createElement("div");
@@ -247,6 +264,18 @@ async function renderCard(overrides: Partial<React.ComponentProps<typeof Paragra
     });
 
     return container;
+}
+
+function getTranslationAsides(container: HTMLElement) {
+    return Array.from(container.querySelectorAll('[data-translation-aside="true"]'));
+}
+
+function getPhraseTags(container: HTMLElement) {
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-translation-phrase-tag="true"]'));
+}
+
+function getInlinePhraseButtons(container: HTMLElement) {
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-translation-inline-phrase="true"]'));
 }
 
 function createRangeAtTextOffset(root: Node, offset: number) {
@@ -338,6 +367,12 @@ afterEach(async () => {
     analysisStoreMock.grammarAnalyses = {};
     analysisStoreMock.setTranslation.mockReset();
     analysisStoreMock.setGrammarAnalysis.mockReset();
+    analysisStoreMock.setTranslation.mockImplementation(async (text: string, translation: unknown) => {
+        analysisStoreMock.translations[text] = translation;
+    });
+    analysisStoreMock.setGrammarAnalysis.mockImplementation(async (cacheKey: string, analysis: unknown) => {
+        analysisStoreMock.grammarAnalyses[cacheKey] = analysis;
+    });
     analysisStoreMock.loadFromDB.mockReset();
     analysisStoreMock.loadGrammarFromDB.mockReset();
     fetchMock.mockReset();
@@ -345,6 +380,7 @@ afterEach(async () => {
     decodeAskThreadPayloadMock.mockReturnValue(null);
     queryAskRelevantVocabularyMock.mockReset();
     queryAskRelevantVocabularyMock.mockResolvedValue({ status: "empty", vocabulary: [] });
+    vi.mocked(saveVocabulary).mockReset();
     useTtsMock.play.mockReset();
     useTtsMock.isPlaying = false;
     useTtsMock.isLoading = false;
@@ -358,6 +394,7 @@ afterEach(async () => {
     useTtsMock.stop.mockReset();
     readingSettingsMock.fontSizeClass = "text-base";
     readingSettingsMock.isBionicMode = false;
+    readingSettingsMock.phraseDisplayMode = "capsule";
     vi.unstubAllGlobals();
 });
 
@@ -397,6 +434,710 @@ describe("ParagraphCard", () => {
         const renderedText = underlinedSpans.map((node) => node.textContent?.trim()).filter(Boolean);
         expect(renderedText).toContain("public trust");
         expect(renderedText).toContain("allocation");
+    });
+
+    it("renders sentence-by-sentence translations directly under each sentence", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [
+                            {
+                                source: "stay strong",
+                                translation: "保持强壮",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(getTranslationAsides(container)).toHaveLength(2);
+        const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+        expect(translationLines).toHaveLength(2);
+        expect(translationLines[0]?.textContent).toContain("植物需要阳光和水才能生长。");
+        expect(translationLines[1]?.textContent).toContain("水能帮助根部保持强壮。");
+        const phraseBlocks = Array.from(container.querySelectorAll('[data-translation-phrases="true"]'));
+        expect(phraseBlocks).toHaveLength(2);
+        expect(getPhraseTags(container)).toHaveLength(2);
+        expect(container.textContent).toContain("sunlight and water");
+        expect(container.textContent).toContain("阳光和水分");
+        expect(container.textContent).toContain("stay strong");
+        expect(container.textContent).toContain("保持强壮");
+        expect(container.querySelector('[data-paragraph-translation-block="true"]')).toBeNull();
+    });
+
+    it("uses the grammar sentence list immediately when translate is clicked", async () => {
+        let resolveFetch: ((value: unknown) => void) | null = null;
+        fetchMock.mockImplementationOnce(() => new Promise((resolve) => {
+            resolveFetch = resolve;
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const sentenceButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+            (button.getAttribute("aria-label") ?? "").startsWith("第 "),
+        );
+        expect(sentenceButtons).toHaveLength(2);
+        expect(container.textContent).toContain("Plants need sunlight and water to grow.");
+        expect(container.textContent).toContain("Water helps roots stay strong.");
+        expect(container.querySelectorAll('[data-translation-line="true"]')).toHaveLength(0);
+        expect(container.querySelectorAll('[data-translation-layout-segment="true"]')).toHaveLength(0);
+
+        await act(async () => {
+            resolveFetch?.({
+                ok: true,
+                json: async () => ({
+                    translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                    sentenceTranslations: [
+                        {
+                            sentence: "Plants need sunlight and water to grow.",
+                            translation: "植物需要阳光和水才能生长。",
+                        },
+                        {
+                            sentence: "Water helps roots stay strong.",
+                            translation: "水能帮助根部保持强壮。",
+                        },
+                    ],
+                }),
+            });
+            await Promise.resolve();
+        });
+
+        expect(getTranslationAsides(container)).toHaveLength(2);
+        const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+        expect(translationLines).toHaveLength(2);
+    });
+
+    it("refreshes a legacy paragraph translation cache into sentence translations when opening translate mode", async () => {
+        analysisStoreMock.translations["Plants need sunlight and water to grow. Water helps roots stay strong."] = "植物需要阳光和水才能生长。水能帮助根部保持强壮。";
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(getTranslationAsides(container)).toHaveLength(2);
+        const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+        expect(translationLines).toHaveLength(2);
+        expect(container.querySelector('[data-paragraph-translation-block="true"]')).toBeNull();
+    });
+
+    it("reuses sentence translations from grammar analysis before requesting only the missing sentences", async () => {
+        vi.stubGlobal("fetch", fetchMock);
+        analysisStoreMock.grammarAnalyses = {
+            [buildGrammarCacheKey({
+                text: "Plants need sunlight and water to grow.",
+                mode: "basic",
+                promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+                model: "deepseek:deepseek-v4-flash:thinking=off:reasoning=off",
+            })]: {
+                mode: "basic",
+                difficult_sentences: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        highlights: [
+                            {
+                                substring: "Plants",
+                                type: "主语",
+                                explanation: "主语。",
+                            },
+                        ],
+                    },
+                ],
+            },
+        };
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                    },
+                ],
+            }),
+        });
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        const [, requestInit] = fetchMock.mock.calls[0];
+        const payload = JSON.parse(String(requestInit.body));
+        expect(payload.text).toBe("Water helps roots stay strong.");
+
+        expect(getTranslationAsides(container)).toHaveLength(2);
+        const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+        expect(translationLines).toHaveLength(2);
+        expect(translationLines[0]?.textContent).toContain("植物需要阳光和水才能生长。");
+        expect(translationLines[1]?.textContent).toContain("水能帮助根部保持强壮。");
+    });
+
+    it("keeps grammar view open and still shows sentence translations when translate is clicked", async () => {
+        vi.stubGlobal("fetch", fetchMock);
+        analysisStoreMock.grammarAnalyses = {
+            [buildGrammarCacheKey({
+                text: "Plants need sunlight and water to grow.",
+                mode: "basic",
+                promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+                model: "deepseek:deepseek-v4-flash:thinking=off:reasoning=off",
+            })]: {
+                mode: "basic",
+                difficult_sentences: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        highlights: [
+                            { substring: "Plants", type: "主语", explanation: "主语。" },
+                        ],
+                    },
+                ],
+            },
+        };
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                    },
+                ],
+            }),
+        });
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(grammarButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(container.textContent).toContain("折叠语法");
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(getTranslationAsides(container)).toHaveLength(2);
+        const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+        expect(translationLines).toHaveLength(2);
+        expect(container.textContent).toContain("折叠语法");
+    });
+
+    it("reuses existing translation-mode sentence translation as the visible grammar translation when expanded", async () => {
+        vi.stubGlobal("fetch", fetchMock);
+        analysisStoreMock.translations["Plants need sunlight and water to grow. Water helps roots stay strong."] = {
+            translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+            sentenceTranslations: [
+                {
+                    sentence: "Plants need sunlight and water to grow.",
+                    translation: "植物需要阳光和水才能生长。",
+                },
+                {
+                    sentence: "Water helps roots stay strong.",
+                    translation: "水能帮助根部保持强壮。",
+                    phraseTranslations: [
+                        {
+                            source: "stay strong",
+                            translation: "保持强壮",
+                        },
+                    ],
+                },
+            ],
+        };
+        analysisStoreMock.grammarAnalyses = {
+            [buildGrammarCacheKey({
+                text: "Water helps roots stay strong.",
+                mode: "basic",
+                promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+                model: "deepseek:deepseek-v4-flash:thinking=off:reasoning=off",
+            })]: {
+                mode: "basic",
+                difficult_sentences: [
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水有助于让根系保持稳固。",
+                        highlights: [
+                            { substring: "Water", type: "主语", explanation: "主语。" },
+                        ],
+                    },
+                ],
+            },
+        };
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(grammarButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const secondSentenceButton = Array.from(container.querySelectorAll("button")).find((button) =>
+            (button.getAttribute("aria-label") ?? "") === "第 2 句",
+        );
+        expect(secondSentenceButton).toBeTruthy();
+
+        await act(async () => {
+            secondSentenceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+        expect(translationLines.some((node) => node.textContent?.includes("水能帮助根部保持强壮。"))).toBe(true);
+        expect(translationLines.some((node) => node.textContent?.includes("水有助于让根系保持稳固。"))).toBe(false);
+        expect(getPhraseTags(container)).toHaveLength(0);
+    });
+
+    it("keeps the translation-mode sentence translation as the higher-priority line once that sentence is analyzed", async () => {
+        vi.useFakeTimers();
+        vi.stubGlobal("fetch", fetchMock);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [
+                            {
+                                source: "stay strong",
+                                translation: "保持强壮",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                mode: "basic",
+                results: [
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        cacheKey: buildGrammarCacheKey({
+                            text: "Water helps roots stay strong.",
+                            mode: "basic",
+                            promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+                            model: "deepseek:deepseek-v4-flash:thinking=off:reasoning=off",
+                        }),
+                        data: {
+                            mode: "basic",
+                            difficult_sentences: [
+                                {
+                                    sentence: "Water helps roots stay strong.",
+                                    translation: "水有助于让根系保持稳固。",
+                                    highlights: [
+                                        { substring: "Water", type: "主语", explanation: "主语。" },
+                                    ],
+                                },
+                            ],
+                        },
+                    },
+                ],
+            }),
+        });
+
+        try {
+            const container = await renderCard({
+                text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+            });
+            const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+            const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+            expect(grammarButton).toBeTruthy();
+            expect(translateButton).toBeTruthy();
+
+            await act(async () => {
+                grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+            await act(async () => {
+                translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            expect(getTranslationAsides(container)).toHaveLength(2);
+            let translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+            expect(translationLines).toHaveLength(2);
+            expect(translationLines[1]?.textContent).toContain("水能帮助根部保持强壮。");
+
+            const sentenceButtons = Array.from(container.querySelectorAll("button")).filter((button) =>
+                (button.getAttribute("aria-label") ?? "").includes("第 2 句"),
+            );
+            expect(sentenceButtons[0]).toBeTruthy();
+
+            await act(async () => {
+                sentenceButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                vi.advanceTimersByTime(260);
+            });
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+            expect(translationLines).toHaveLength(2);
+            expect(translationLines[1]?.textContent).toContain("水能帮助根部保持强壮。");
+            const phraseBlocks = Array.from(container.querySelectorAll('[data-translation-phrases="true"]'));
+            expect(phraseBlocks).toHaveLength(1);
+            expect(getPhraseTags(container)).toHaveLength(1);
+            expect(container.textContent).not.toContain("stay strong");
+            expect(container.textContent).not.toContain("水能帮助根部保持强壮。水能帮助根部保持强壮。");
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it("opens the existing word popup payload when a phrase translation tag is clicked", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [
+                            {
+                                source: "stay strong",
+                                translation: "保持强壮",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        const onOpenWordPopupFromSelection = vi.fn();
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+            articleTitle: "Photosynthesis basics",
+            articleUrl: "https://example.com/photosynthesis",
+            onOpenWordPopupFromSelection,
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const phraseTags = getPhraseTags(container);
+        expect(phraseTags).toHaveLength(2);
+
+        await act(async () => {
+            phraseTags[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onOpenWordPopupFromSelection).toHaveBeenCalledTimes(1);
+        expect(onOpenWordPopupFromSelection).toHaveBeenCalledWith(expect.objectContaining({
+            word: "sunlight and water",
+            context: "Plants need sunlight and water to grow.",
+            articleUrl: "https://example.com/photosynthesis",
+            sourceKind: "read",
+            sourceLabel: "来自 Read",
+            sourceSentence: "Plants need sunlight and water to grow.",
+            sourceNote: "Photosynthesis basics",
+        }));
+    });
+
+    it("renders inline wavy phrases in translation mode when phrase display mode is inline_wavy", async () => {
+        readingSettingsMock.phraseDisplayMode = "inline_wavy";
+        vi.stubGlobal("fetch", fetchMock);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [
+                            {
+                                source: "stay strong",
+                                translation: "保持强壮",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(getPhraseTags(container)).toHaveLength(0);
+        const inlinePhraseButtons = getInlinePhraseButtons(container);
+        expect(inlinePhraseButtons).toHaveLength(2);
+        expect(inlinePhraseButtons[0]?.textContent).toContain("sunlight and water");
+        expect(inlinePhraseButtons[1]?.textContent).toContain("stay strong");
+    });
+
+    it("opens the word popup when an inline wavy phrase is clicked", async () => {
+        readingSettingsMock.phraseDisplayMode = "inline_wavy";
+        vi.stubGlobal("fetch", fetchMock);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [
+                            {
+                                source: "stay strong",
+                                translation: "保持强壮",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+        const onOpenWordPopupFromSelection = vi.fn();
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+            articleTitle: "Photosynthesis basics",
+            articleUrl: "https://example.com/photosynthesis",
+            onOpenWordPopupFromSelection,
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const inlinePhraseButtons = getInlinePhraseButtons(container);
+        expect(inlinePhraseButtons).toHaveLength(2);
+
+        await act(async () => {
+            inlinePhraseButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onOpenWordPopupFromSelection).toHaveBeenCalledTimes(1);
+        expect(onOpenWordPopupFromSelection).toHaveBeenCalledWith(expect.objectContaining({
+            word: "sunlight and water",
+            context: "Plants need sunlight and water to grow.",
+            articleUrl: "https://example.com/photosynthesis",
+            sourceKind: "read",
+            sourceLabel: "来自 Read",
+            sourceSentence: "Plants need sunlight and water to grow.",
+            sourceNote: "Photosynthesis basics",
+        }));
+    });
+
+    it("shows an inline hover card save action for wavy phrases", async () => {
+        readingSettingsMock.phraseDisplayMode = "inline_wavy";
+        vi.stubGlobal("fetch", fetchMock);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const inlinePhraseButtons = getInlinePhraseButtons(container);
+        expect(inlinePhraseButtons).toHaveLength(1);
+
+        await act(async () => {
+            inlinePhraseButtons[0]?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+        });
+
+        const hoverCard = container.querySelector('[data-translation-inline-hover-card="open"]');
+        expect(hoverCard).toBeTruthy();
+
+        const saveButton = Array.from(hoverCard?.querySelectorAll("button") ?? []).find((button) => button.textContent?.includes("加入生词本"));
+        expect(saveButton).toBeTruthy();
+
+        await act(async () => {
+            saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(saveVocabulary).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(saveVocabulary).mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+            word: "sunlight and water",
+            translation: "阳光和水分",
+            source_sentence: "Plants need sunlight and water to grow.",
+        }));
     });
 
     it("clicking grammar only expands the sentence list and does not auto-request analysis", async () => {
@@ -577,6 +1318,120 @@ describe("ParagraphCard", () => {
         });
 
         expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("shows a per-sentence retry button after analysis and force-regenerates on click", async () => {
+        vi.useFakeTimers();
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    mode: "basic",
+                    results: [
+                        {
+                            sentence: "Plants need sunlight and water to grow.",
+                            cacheKey: "grammar:basic:sentence-1",
+                            data: {
+                                mode: "basic",
+                                tags: ["主语", "谓语"],
+                                overview: "句子主干完整。",
+                                difficult_sentences: [
+                                    {
+                                        sentence: "Plants need sunlight and water to grow.",
+                                        translation: "植物需要阳光和水才能生长。",
+                                        highlights: [
+                                            {
+                                                substring: "Plants",
+                                                type: "主语",
+                                                explanation: "结构判断：Plants 作主语；句中作用：发出 need 这一动作。",
+                                                segment_translation: "植物",
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    mode: "basic",
+                    results: [
+                        {
+                            sentence: "Plants need sunlight and water to grow.",
+                            cacheKey: "grammar:basic:sentence-1",
+                            data: {
+                                mode: "basic",
+                                tags: ["主语", "谓语"],
+                                overview: "已重新生成。",
+                                difficult_sentences: [
+                                    {
+                                        sentence: "Plants need sunlight and water to grow.",
+                                        translation: "植物要依靠阳光和水分来生长。",
+                                        highlights: [
+                                            {
+                                                substring: "Plants",
+                                                type: "主语",
+                                                explanation: "结构判断：Plants 作主语；句中作用：发出 grow 相关动作。",
+                                                segment_translation: "植物",
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    ],
+                }),
+            });
+        vi.stubGlobal("fetch", fetchMock);
+
+        try {
+            const container = await renderCard({
+                text: "Plants need sunlight and water to grow.",
+            });
+            const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+            expect(grammarButton).toBeTruthy();
+
+            await act(async () => {
+                grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            const sentenceButton = Array.from(container.querySelectorAll("button")).find((button) => (button.getAttribute("aria-label") ?? "").includes("第 1 句"));
+            expect(sentenceButton).toBeTruthy();
+
+            await act(async () => {
+                sentenceButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                vi.advanceTimersByTime(260);
+            });
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            const retryButton = Array.from(container.querySelectorAll("button")).find((button) => (button.getAttribute("aria-label") ?? "").includes("重新生成第 1 句解析"));
+            expect(retryButton).toBeTruthy();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+
+            await act(async () => {
+                retryButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                vi.advanceTimersByTime(260);
+            });
+
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            expect(fetchMock).toHaveBeenCalledTimes(2);
+            const [, retryRequestInit] = fetchMock.mock.calls[1];
+            const retryPayload = JSON.parse(String(retryRequestInit.body));
+            expect(retryPayload.sentences).toEqual(["Plants need sunlight and water to grow."]);
+            expect(retryPayload.forceRegenerate).toBe(true);
+            expect(container.textContent).toContain("植物要依靠阳光和水分来生长。");
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it("does not trigger grammar analysis when clicking sentence text", async () => {

@@ -46,6 +46,7 @@ interface LongformPromptParams {
     topicSeed: TopicSelection;
     longformStyleId: LongformStyleId;
     lengthTierId: LongformLengthTierId;
+    customStylePrompt?: string;
     injectedVocabSection: string;
 }
 
@@ -302,6 +303,15 @@ IELTS LONGFORM PROFILE:
 - Let the article feel publication-grade for advanced reading practice: rigorous, layered, and conceptually confident.
 - Avoid school-essay simplification, obvious moralizing, and thin one-idea paragraphs.
 `;
+    const customStyleSection = params.customStylePrompt?.trim()
+        ? `
+CUSTOM STYLE ADDENDUM:
+- User style addendum: ${params.customStylePrompt.trim()}
+- Apply this addendum as an extra style layer for tone, pacing, explanation density, and rhetorical feel.
+- The custom addendum refines tone, pacing, and explanation style only. It must not replace or weaken the selected exam difficulty profile.
+- If the addendum conflicts with the selected difficulty level, preserve the difficulty level and adapt the addendum conservatively.
+`
+        : "";
 
     return `
 You are a senior English material writer creating a longform reading passage for Chinese learners.
@@ -331,6 +341,7 @@ LONGFORM STRUCTURE REQUIREMENTS:
 STYLE LENS:
 - ${style.lens}
 - Constraint: ${style.constraint}
+${customStyleSection}
 
 STRICT ANTI-QUIZ RULES:
 - Do NOT generate any reading comprehension questions.
@@ -565,6 +576,7 @@ export async function POST(req: Request) {
             ragSource: rawRagSource,
             longformStyleId: rawLongformStyleId,
             lengthTierId: rawLengthTierId,
+            customStylePrompt: rawCustomStylePrompt,
         } = await req.json();
 
         const diff = (difficulty as string).toLowerCase();
@@ -577,6 +589,7 @@ export async function POST(req: Request) {
         const ragSource: AIGenerationRagSource = normalizeAIGenerationRagSource(rawRagSource);
         const longformStyleId = normalizeLongformStyleId(rawLongformStyleId);
         const lengthTierId = normalizeLongformLengthTierId(rawLengthTierId);
+        const customStylePrompt = typeof rawCustomStylePrompt === "string" ? rawCustomStylePrompt.trim() : "";
         const normalizedTopic = typeof topic === "string" ? topic.trim() : "";
         const suppliedTopicSeed = normalizeTopicSeed(rawTopicSeed);
         const topicSeed =
@@ -633,6 +646,7 @@ export async function POST(req: Request) {
                 topicSeed,
                 longformStyleId: longformStyleId!,
                 lengthTierId: lengthTierId!,
+                customStylePrompt,
                 injectedVocabSection,
             })
             : config.promptBuilder({

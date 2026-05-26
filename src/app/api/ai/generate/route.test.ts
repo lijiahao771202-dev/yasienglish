@@ -362,6 +362,61 @@ describe("ai generate route", () => {
         expect(prompt).toContain("avoid patronizing repetition");
     });
 
+    it("appends custom longform style instructions without replacing the difficulty profile", async () => {
+        createMock.mockResolvedValue({
+            choices: [
+                {
+                    message: {
+                        content: JSON.stringify({
+                            title: "Systems in Plain Language",
+                            content: "Paragraph one.\n\nParagraph two.",
+                            byline: "AI Generator · CET-6 (大学英语六级)",
+                            wordCount: 1220,
+                        }),
+                    },
+                },
+            ],
+        });
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: "cet6",
+                    generationMode: "longform",
+                    longformStyleId: "custom",
+                    lengthTierId: "w1200",
+                    customStylePrompt: "把这个主题的理论写得详细清楚，通俗易懂，像老师耐心讲解一样。",
+                    topicSeed: {
+                        source: "random",
+                        domainId: "science",
+                        domainLabel: "科学与技术",
+                        subtopicId: "systems",
+                        subtopicLabel: "复杂系统",
+                        angle: "Why some systems become fragile under small pressure",
+                        topicLine: "复杂系统 · Why some systems become fragile under small pressure",
+                    },
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.longformStyle).toEqual({
+            id: "custom",
+            name: "自定义风格",
+        });
+
+        const request = createMock.mock.calls.at(-1)?.[0];
+        const prompt = request?.messages?.[0]?.content as string;
+        expect(prompt).toContain("CET-6 LONGFORM PROFILE");
+        expect(prompt).toContain("Style name: 自定义风格");
+        expect(prompt).toContain("CUSTOM STYLE ADDENDUM");
+        expect(prompt).toContain("把这个主题的理论写得详细清楚，通俗易懂，像老师耐心讲解一样。");
+        expect(prompt).toContain("The custom addendum refines tone, pacing, and explanation style only");
+    });
+
     it("supports extra-long longform tiers beyond 2200 words", async () => {
         createMock.mockResolvedValue({
             choices: [

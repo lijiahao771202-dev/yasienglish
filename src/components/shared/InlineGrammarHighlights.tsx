@@ -14,6 +14,7 @@ import { GrammarMarkdown } from "./GrammarMarkdown";
 interface InlineGrammarHighlightsProps {
     text: string;
     sentences: readonly GrammarSentenceAnalysis[];
+    ragAppliedWords?: string[];
     className?: string;
     textClassName?: string;
     showSentenceMarkers?: boolean;
@@ -60,13 +61,37 @@ function getMarkerStyle(palette: GrammarHighlightPalette, layer: string): CSSPro
 export function InlineGrammarHighlights({
     text,
     sentences,
+    ragAppliedWords = [],
     className,
     textClassName,
     showSentenceMarkers = false,
     displayMode = "core",
     showSegmentTranslation = false,
 }: InlineGrammarHighlightsProps) {
-    const viewModel = buildGrammarViewModel(text, sentences);
+    const ragRanges = Array.from(new Set(
+        ragAppliedWords
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .sort((left, right) => right.length - left.length),
+    )).flatMap((word) => {
+        const matcher = new RegExp(`(^|\\W)(${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")})(?=$|\\W)`, "gi");
+        const ranges: Array<{ start: number; end: number }> = [];
+        let match: RegExpExecArray | null = null;
+        while ((match = matcher.exec(text)) !== null) {
+            const prefix = match[1] ?? "";
+            const matchedText = match[2] ?? "";
+            if (!matchedText) continue;
+            const start = match.index + prefix.length;
+            const end = start + matchedText.length;
+            const overlaps = ranges.some((segment) => !(end <= segment.start || start >= segment.end));
+            if (overlaps) continue;
+            ranges.push({ start, end });
+            }
+        return ranges;
+    });
+    const viewModel = buildGrammarViewModel(text, sentences, {
+        extraSplitRanges: ragRanges,
+    });
     const segments = displayMode === "core" ? viewModel.core : viewModel.full;
     const sentenceMarkers = showSentenceMarkers ? viewModel.sentenceMarkers : [];
     const [activeSentenceStart, setActiveSentenceStart] = useState<number | null>(null);
@@ -110,6 +135,7 @@ export function InlineGrammarHighlights({
                 const segmentSentenceStart = findSentenceStartForOffset(segment.start);
                 const isSentenceFocused = activeSentenceStart !== null && segmentSentenceStart === activeSentenceStart;
                 const isSentenceDimmed = activeSentenceStart !== null && segmentSentenceStart !== null && segmentSentenceStart !== activeSentenceStart;
+                const hasRagUnderline = ragRanges.some((range) => range.start <= segment.start && range.end >= segment.end);
                 const content = segment.highlight ? (
                     (() => {
                         const palette = getGrammarHighlightPaletteByMeta({
@@ -117,7 +143,6 @@ export function InlineGrammarHighlights({
                             layer: segment.highlight.layer,
                         });
                         const popupTheme = getPopupThemeFromPalette(palette);
-                        const overlapCount = segment.highlight.overlapCount ?? 0;
                         const rangeKey = `${segment.start}-${segment.end}`;
                         const handleActivate = () => {
                             setActiveSentenceStart(segment.highlight?.sentenceStart ?? segmentSentenceStart);
@@ -157,17 +182,13 @@ export function InlineGrammarHighlights({
                                     "hover:brightness-[1.01] focus:brightness-[1.01]",
                                     getGrammarHighlightColor(segment.highlight.type),
                                     palette.textClassName,
+                                    hasRagUnderline && "underline decoration-slate-400/80 decoration-[1.5px] underline-offset-[2px]",
                                     isSentenceDimmed && "opacity-[0.72]",
                                     isSentenceFocused && "bg-amber-50/35",
                                     activeRangeKey === rangeKey && "ring-1 ring-amber-200/60",
                                 )}
                                 style={getMarkerStyle(palette, segment.highlight.layer)}
                             >
-                                {overlapCount > 0 ? (
-                                    <span className="absolute -right-1.5 -top-1 z-20 inline-flex h-4 min-w-4 items-center justify-center rounded-full border border-amber-300/80 bg-amber-100 px-1 text-[9px] font-bold leading-none text-amber-700 shadow-sm">
-                                        +{overlapCount}
-                                    </span>
-                                ) : null}
                                 {segment.text}
                                 <div
                                     role="tooltip"
@@ -227,7 +248,11 @@ export function InlineGrammarHighlights({
                 ) : (
                     <span
                         key={`${segment.start}-${segment.end}`}
-                        className={cn(isSentenceDimmed && "opacity-[0.72]", isSentenceFocused && "bg-amber-50/35")}
+                        className={cn(
+                            hasRagUnderline && "underline decoration-slate-400/80 decoration-[1.5px] underline-offset-[2px]",
+                            isSentenceDimmed && "opacity-[0.72]",
+                            isSentenceFocused && "bg-amber-50/35",
+                        )}
                     >
                         {segment.text}
                     </span>

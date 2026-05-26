@@ -302,6 +302,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     });
     const [longformStyleId, setLongformStyleId] = useState<LongformStyleId>("explainer");
     const [lengthTierId, setLengthTierId] = useState<LongformLengthTierId>("w1200");
+    const [customStylePrompt, setCustomStylePrompt] = useState("");
+    const [isOptimizingCustomStyle, setIsOptimizingCustomStyle] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
 
     // New states for enhanced UX
@@ -864,6 +866,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     ragSource: resolvedRagSource,
                     longformStyleId,
                     lengthTierId,
+                    customStylePrompt,
                     injectedVocabulary,
                 })),
             });
@@ -949,6 +952,39 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             setGenProgress(prev => ({ ...prev, step: 'idle' }));
         }
     };
+
+    const handleOptimizeCustomStyle = useCallback(async () => {
+        const rawPrompt = customStylePrompt.trim();
+        if (!rawPrompt || isOptimizingCustomStyle) return;
+        setIsOptimizingCustomStyle(true);
+        try {
+            const res = await fetch("/api/ai/optimize-longform-style", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: genDifficulty,
+                    rawPrompt,
+                }),
+            });
+            const data = await safeParseResponsePayload(res);
+            if (!res.ok) {
+                throw new Error(typeof data?.error === "string" ? data.error : "优化失败，请稍后重试。");
+            }
+            const optimizedPrompt = typeof data?.optimizedPrompt === "string" ? data.optimizedPrompt.trim() : "";
+            if (optimizedPrompt) {
+                setCustomStylePrompt(optimizedPrompt);
+            }
+        } catch (error) {
+            console.error("Failed to optimize custom longform style:", error);
+            setNotification({
+                message: error instanceof Error ? error.message : "优化失败，请稍后重试。",
+                type: "error",
+            });
+            setTimeout(() => setNotification(null), 2600);
+        } finally {
+            setIsOptimizingCustomStyle(false);
+        }
+    }, [customStylePrompt, genDifficulty, isOptimizingCustomStyle]);
 
     const handleRollTopic = useCallback(async () => {
         const { pickAIGenerationTopicSeed } = await import('@/lib/content-topic-pool');
@@ -1742,6 +1778,46 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         </span>
                                     </motion.button>
                                 </div>
+
+                                {genMode === "longform" && longformStyleId === "custom" ? (
+                                    <div className="mt-4 rounded-[24px] border-3 border-theme-border bg-theme-card-bg p-4">
+                                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                                <p className="text-sm font-black text-theme-text">自定义风格补充</p>
+                                                <p className="mt-1 text-xs font-medium text-theme-text-muted">
+                                                    这里只补充文风、解释方式和表达感觉。四级 / 六级 / 雅思的难度约束仍然会保留。
+                                                </p>
+                                            </div>
+                                            <motion.button
+                                                type="button"
+                                                onClick={() => void handleOptimizeCustomStyle()}
+                                                disabled={isOptimizingCustomStyle || !customStylePrompt.trim()}
+                                                whileHover={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : { y: -1, scale: 1.01 }}
+                                                whileTap={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : getPressableTap(reducedMotion, 4, 0.985)}
+                                                style={getPressableStyle(isOptimizingCustomStyle || !customStylePrompt.trim() ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", 4)}
+                                                className={cn(
+                                                    "ui-pressable rounded-full border-3 px-4 py-2 text-xs font-black transition-all",
+                                                    isOptimizingCustomStyle || !customStylePrompt.trim()
+                                                        ? "cursor-not-allowed border-theme-border bg-theme-base-bg text-theme-text-muted opacity-60"
+                                                        : "border-theme-border bg-theme-primary-bg text-theme-primary-text"
+                                                )}
+                                            >
+                                                <span className="flex items-center gap-2">
+                                                    {isOptimizingCustomStyle ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                                    {isOptimizingCustomStyle ? "优化中..." : "AI优化"}
+                                                </span>
+                                            </motion.button>
+                                        </div>
+
+                                        <textarea
+                                            value={customStylePrompt}
+                                            onChange={(e) => setCustomStylePrompt(e.target.value)}
+                                            placeholder="例如：把这个主题的理论写得详细清楚，通俗易懂，层次分明，像老师耐心讲解一样。"
+                                            rows={4}
+                                            className="min-h-[120px] w-full resize-y rounded-[18px] border-3 border-theme-border bg-theme-base-bg px-4 py-3 text-sm font-medium leading-6 text-theme-text outline-none transition placeholder:text-theme-text-muted/65 focus:ring-4 focus:ring-theme-primary-bg"
+                                        />
+                                    </div>
+                                ) : null}
                             </div>
                     </motion.section>
 

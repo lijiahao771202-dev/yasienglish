@@ -11,7 +11,8 @@ export type LongformStyleId =
     | "explainer"
     | "detailed"
     | "comparative"
-    | "reflective";
+    | "reflective"
+    | "custom";
 export type LongformLengthTierId = "w600" | "w900" | "w1200" | "w1600" | "w2200" | "w3000" | "w4200" | "w5000" | "w6000" | "w7200";
 
 export interface LongformStyleOption {
@@ -54,6 +55,7 @@ export interface AIGenerationRequestBody {
     ragSource?: AIGenerationRagSource;
     longformStyleId?: LongformStyleId;
     lengthTierId?: LongformLengthTierId;
+    customStylePrompt?: string;
     injectedVocabulary?: string[];
 }
 
@@ -171,6 +173,13 @@ export const LONGFORM_STYLE_OPTIONS: readonly LongformStyleOption[] = [
         lens: "Write as a reflective essay that starts from concrete observation and develops toward interpretation, tension, or a broader human insight.",
         constraint: "Keep it disciplined and mature; avoid diary looseness, empty inspiration, or poetic fog.",
     },
+    {
+        id: "custom",
+        name: "自定义风格",
+        promptLabel: "Custom Style Addendum",
+        lens: "Follow the user's additional style addendum for voice, pacing, explanation style, and rhetorical feel while preserving the selected exam-difficulty profile.",
+        constraint: "Treat the user addendum as a secondary style layer only. It may shape expression, emphasis, and teaching feel, but must not override the selected CET-4/CET-6/IELTS difficulty anchor.",
+    },
 ] as const;
 
 const LONGFORM_STYLE_ALIASES: Partial<Record<string, LongformStyleId>> = {
@@ -237,12 +246,14 @@ export function buildAIGenerationRequestBody(params: {
     ragSource?: AIGenerationRagSource | null;
     longformStyleId?: LongformStyleId | null;
     lengthTierId?: LongformLengthTierId | null;
+    customStylePrompt?: string | null;
     injectedVocabulary?: string[] | null;
 }): AIGenerationRequestBody {
     const normalizedTopic = params.topic?.trim() || undefined;
     const generationMode = normalizeAIGenerationMode(params.generationMode);
     const ragMode = normalizeAIGenerationRagMode(params.ragMode);
     const ragSource = normalizeAIGenerationRagSource(params.ragSource);
+    const customStylePrompt = params.customStylePrompt?.trim() || undefined;
     const injectedVocabulary = Array.isArray(params.injectedVocabulary)
         ? params.injectedVocabulary.filter((item) => typeof item === "string" && item.trim().length > 0)
         : [];
@@ -256,6 +267,7 @@ export function buildAIGenerationRequestBody(params: {
         ragSource,
         longformStyleId: generationMode === "longform" ? params.longformStyleId ?? undefined : undefined,
         lengthTierId: generationMode === "longform" ? params.lengthTierId ?? undefined : undefined,
+        customStylePrompt: generationMode === "longform" ? customStylePrompt : undefined,
         injectedVocabulary: injectedVocabulary.length > 0 ? injectedVocabulary : undefined,
     };
 }
