@@ -148,6 +148,8 @@ describe("profile test-ai-provider route", () => {
             ai_provider: "mimo",
             mimo_api_key: "",
             mimo_model: "mimo-v2.5-pro",
+            mimo_thinking_mode: "on",
+            mimo_reasoning_effort: "high",
         }));
         const data = await response.json();
 
@@ -155,6 +157,8 @@ describe("profile test-ai-provider route", () => {
         expect(testAiProviderConnectionMock).toHaveBeenCalledWith(expect.objectContaining({
             ai_provider: "mimo",
             mimo_model: "mimo-v2.5-pro",
+            mimo_thinking_mode: "on",
+            mimo_reasoning_effort: "high",
         }));
         expect(testAiProviderConnectionMock.mock.calls.at(-1)?.[0]).not.toHaveProperty("mimo_api_key");
         expect(data.message).toBe("Xiaomi MiMo / mimo-v2.5-pro 连通成功");

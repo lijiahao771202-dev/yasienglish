@@ -2,12 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
     createCompletionMock,
+    createNoThinkingClientMock,
+    getNoThinkingFingerprintMock,
     chargeReadingCoinsMock,
     rewardReadingCoinsMock,
     insufficientReadingCoinsPayloadMock,
     isReadEconomyContextMock,
 } = vi.hoisted(() => ({
     createCompletionMock: vi.fn(),
+    createNoThinkingClientMock: vi.fn(),
+    getNoThinkingFingerprintMock: vi.fn(),
     chargeReadingCoinsMock: vi.fn(),
     rewardReadingCoinsMock: vi.fn(),
     insufficientReadingCoinsPayloadMock: vi.fn(),
@@ -22,6 +26,7 @@ vi.mock("@/lib/deepseek", () => ({
             },
         },
     }),
+    createDeepSeekClientForCurrentUserWithoutThinking: createNoThinkingClientMock,
     getCurrentAiExecutionFingerprintForCurrentUser: async () => ({
         provider: "deepseek",
         providerLabel: "DeepSeek",
@@ -30,6 +35,7 @@ vi.mock("@/lib/deepseek", () => ({
         deepseekReasoningEffort: undefined,
         cacheSignature: "deepseek:deepseek-v4-flash:thinking=off:reasoning=off",
     }),
+    getCurrentAiExecutionFingerprintForCurrentUserWithoutThinking: getNoThinkingFingerprintMock,
 }));
 
 vi.mock("@/lib/reading-economy-server", () => ({
@@ -48,6 +54,23 @@ function createCompletionPayload(payload: Record<string, unknown>) {
             {
                 message: {
                     content: JSON.stringify(payload),
+                },
+            },
+        ],
+    };
+}
+
+function createWrappedCompletionPayload(payload: Record<string, unknown>) {
+    return {
+        choices: [
+            {
+                message: {
+                    content: [
+                        "先检查句子主干，再输出 JSON。",
+                        "```json",
+                        JSON.stringify(payload),
+                        "```",
+                    ].join("\n"),
                 },
             },
         ],
@@ -73,10 +96,26 @@ function buildRequest(overrides: Record<string, unknown> = {}) {
 describe("ai grammar route", () => {
     beforeEach(() => {
         createCompletionMock.mockReset();
+        createNoThinkingClientMock.mockReset();
+        getNoThinkingFingerprintMock.mockReset();
         chargeReadingCoinsMock.mockReset();
         rewardReadingCoinsMock.mockReset();
         insufficientReadingCoinsPayloadMock.mockReset();
         isReadEconomyContextMock.mockReset();
+
+        createNoThinkingClientMock.mockResolvedValue({
+            chat: {
+                completions: {
+                    create: createCompletionMock,
+                },
+            },
+        });
+        getNoThinkingFingerprintMock.mockResolvedValue({
+            provider: "mimo",
+            providerLabel: "Xiaomi MiMo",
+            model: "mimo-v2-pro",
+            cacheSignature: "mimo:mimo-v2-pro:thinking=off:reasoning=off",
+        });
 
         chargeReadingCoinsMock.mockImplementation(async (params: { action: string }) => ({
             ok: true,
@@ -164,6 +203,9 @@ describe("ai grammar route", () => {
         expect(completionParams.messages[0].content).toContain("OUTPUT STRICT JSON ONLY");
         expect(completionParams.messages[0].content).not.toContain("\"sentence_tree\"");
         expect(completionParams.messages[0].content).not.toContain("Split the paragraph into individual sentences");
+        expect(createNoThinkingClientMock).toHaveBeenCalledTimes(1);
+        expect(getNoThinkingFingerprintMock).toHaveBeenCalledWith("deepseek-chat");
+        expect(data.results[0].cache.key).toContain("mimo:mimo-v2-pro:thinking=off:reasoning=off");
     });
 
     it("surfaces partial-but-usable basic analysis without server auto-retry", async () => {
@@ -194,6 +236,34 @@ describe("ai grammar route", () => {
         expect(data.results).toHaveLength(1);
         expect(createCompletionMock).toHaveBeenCalledTimes(1);
         expect(rewardReadingCoinsMock).not.toHaveBeenCalled();
+    });
+
+    it("extracts JSON when a thinking provider wraps grammar output in prose and fences", async () => {
+        createCompletionMock.mockResolvedValueOnce(createWrappedCompletionPayload({
+            tags: ["主语", "谓语"],
+            overview: "句子结构清晰。",
+            sentences: [
+                {
+                    sentence: "Scientists compared old records and noticed an unusual warming trend.",
+                    translation: "科学家对比了旧记录，并注意到一个异常升温趋势。",
+                    highlights: [
+                        {
+                            substring: "Scientists",
+                            type: "主语",
+                            explanation: "结构判断：Scientists 作主语。",
+                            segment_translation: "科学家",
+                        },
+                    ],
+                },
+            ],
+        }));
+
+        const response = await POST(buildRequest({ mode: "basic" }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.results?.[0]?.data?.difficult_sentences?.[0]?.translation).toBe("科学家对比了旧记录，并注意到一个异常升温趋势。");
+        expect(createCompletionMock).toHaveBeenCalledTimes(1);
     });
 
     it("returns a retryable error and refunds coins when grammar quality stays unusable", async () => {
@@ -253,6 +323,127 @@ describe("ai grammar route", () => {
         expect(data.repairAttempted).toBe(true);
         expect(data.results?.[0]?.data?.difficult_sentences?.[0]?.highlights?.length).toBeGreaterThan(0);
         expect(rewardReadingCoinsMock).not.toHaveBeenCalled();
+    });
+
+    it("repairs coarse long-sentence chunking instead of caching the rough result", async () => {
+        const sentence = "What AI systems still struggle with—what they may struggle with for a very long time—is the integration of multiple skills applied to messy, real-world situations with incomplete information and high stakes.";
+
+        createCompletionMock
+            .mockResolvedValueOnce(createCompletionPayload({
+                tags: ["语法"],
+                overview: "首轮分析太粗。",
+                sentences: [
+                    {
+                        sentence,
+                        translation: "AI 系统仍然难以处理的东西，也是它们可能在很长时间内都会难以处理的东西，是把多种技能整合起来，应用到信息不完整、风险很高的混乱现实场景中。",
+                        highlights: [
+                            {
+                                substring: "What AI systems still struggle with",
+                                type: "主语从句",
+                                explanation: "主语从句。",
+                                segment_translation: "AI 系统仍然难以处理的东西",
+                            },
+                            {
+                                substring: "what they may struggle with for a very long time",
+                                type: "插入语",
+                                explanation: "插入说明。",
+                                segment_translation: "它们可能长期难以处理的东西",
+                            },
+                            {
+                                substring: "is the integration of multiple skills",
+                                type: "谓语",
+                                explanation: "核心判断。",
+                                segment_translation: "是多种技能的整合",
+                            },
+                            {
+                                substring: "applied to messy, real-world situations with incomplete information and high stakes",
+                                type: "后置定语",
+                                explanation: "说明应用场景。",
+                                segment_translation: "应用到信息不完整且风险很高的混乱现实场景中",
+                            },
+                        ],
+                    },
+                ],
+            }))
+            .mockResolvedValueOnce(createCompletionPayload({
+                tags: ["语法"],
+                overview: "修复后已细拆主语从句、系表结构和后置修饰。",
+                sentences: [
+                    {
+                        sentence,
+                        translation: "AI 系统仍然难以处理的东西，也是它们可能在很长时间内都会难以处理的东西，是把多种技能整合起来，应用到信息不完整、风险很高的混乱现实场景中。",
+                        highlights: [
+                            {
+                                substring: "What AI systems still struggle with",
+                                type: "主语从句",
+                                explanation: "整体充当主语。",
+                                segment_translation: "AI 系统仍然难以处理的东西",
+                            },
+                            {
+                                substring: "what they may struggle with for a very long time",
+                                type: "插入语",
+                                explanation: "插入补充说明主语。",
+                                segment_translation: "它们可能很长时间都会难以处理的东西",
+                            },
+                            {
+                                substring: "may struggle with",
+                                type: "谓语",
+                                explanation: "插入部分内部的谓语。",
+                                segment_translation: "可能会难以处理",
+                            },
+                            {
+                                substring: "for a very long time",
+                                type: "时间状语",
+                                explanation: "说明持续时间。",
+                                segment_translation: "在很长一段时间里",
+                            },
+                            {
+                                substring: "is",
+                                type: "谓语",
+                                explanation: "全句主干中的系动词。",
+                                segment_translation: "是",
+                            },
+                            {
+                                substring: "the integration of multiple skills",
+                                type: "表语",
+                                explanation: "说明主语指向的核心内容。",
+                                segment_translation: "多种技能的整合",
+                            },
+                            {
+                                substring: "of multiple skills",
+                                type: "介词短语",
+                                explanation: "补充 integration 的对象。",
+                                segment_translation: "多种技能的",
+                            },
+                            {
+                                substring: "applied to messy, real-world situations",
+                                type: "分词短语",
+                                explanation: "后置修饰 skills。",
+                                segment_translation: "应用到混乱的现实场景中",
+                            },
+                            {
+                                substring: "with incomplete information and high stakes",
+                                type: "介词短语",
+                                explanation: "补充现实场景的条件。",
+                                segment_translation: "在信息不完整且风险很高的情况下",
+                            },
+                        ],
+                    },
+                ],
+            }));
+
+        const response = await POST(buildRequest({ sentences: [sentence], mode: "basic" }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(createCompletionMock).toHaveBeenCalledTimes(2);
+        expect(createCompletionMock.mock.calls[1]?.[0]?.messages?.[0]?.content).toContain("coarse_chunking");
+        expect(data.repairAttempted).toBe(true);
+        expect(data.results[0]?.repairAttempts).toBe(1);
+        expect(data.results[0]?.data?.difficult_sentences?.[0]?.highlights).toHaveLength(9);
+        expect(data.results[0]?.issues).not.toEqual(expect.arrayContaining([
+            expect.stringContaining("chunking is too coarse"),
+        ]));
     });
 
     it("analyzes sentence batches in smaller micro-batches and returns ordered per-sentence results", async () => {

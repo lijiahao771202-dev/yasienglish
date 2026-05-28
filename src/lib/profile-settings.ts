@@ -14,6 +14,8 @@ export type DeepSeekModel = "deepseek-v4-flash" | "deepseek-v4-pro";
 export type DeepSeekReasoningEffort = "high" | "max";
 export type DeepSeekThinkingMode = "off" | "on";
 export type GlmThinkingMode = "off" | "on";
+export type MimoThinkingMode = "off" | "on";
+export type MimoReasoningEffort = "low" | "medium" | "high";
 export const DEFAULT_DEEPSEEK_MODEL: DeepSeekModel = "deepseek-v4-flash";
 export const DEFAULT_DEEPSEEK_THINKING_MODE: DeepSeekThinkingMode = "off";
 export const DEFAULT_DEEPSEEK_REASONING_EFFORT: DeepSeekReasoningEffort = "high";
@@ -22,6 +24,10 @@ export const DEFAULT_GLM_THINKING_MODE: GlmThinkingMode = "off";
 export const DEFAULT_NVIDIA_MODEL = "z-ai/glm5";
 export const DEFAULT_GITHUB_MODEL = "openai/gpt-4.1";
 export const DEFAULT_MIMO_MODEL = "mimo-v2.5-pro";
+export const DEFAULT_MIMO_PROVIDER_PARAMS: MimoProviderParamsPreference = {
+    thinking_mode: "off",
+    reasoning_effort: "medium",
+};
 export const RANDOM_ENGLISH_TTS_VOICE = "random-en-voice-excluding-in" as const;
 export type TtsVoice =
     | "en-AU-NatashaNeural"
@@ -95,6 +101,16 @@ export interface LearningPreferences {
     tts_voice: LearningPreferenceTtsVoice;
     rebuild_auto_open_shadowing_prompt?: boolean;
     ai_reading_rag?: AIGenerationRagSelection;
+    ai_provider_params?: AiProviderParamsPreference;
+}
+
+export interface MimoProviderParamsPreference {
+    thinking_mode: MimoThinkingMode;
+    reasoning_effort: MimoReasoningEffort;
+}
+
+export interface AiProviderParamsPreference {
+    mimo: MimoProviderParamsPreference;
 }
 
 export const DEFAULT_PROFILE_USERNAME = "Yasi Learner";
@@ -392,6 +408,9 @@ export const DEFAULT_LEARNING_PREFERENCES: LearningPreferences = {
     tts_voice: DEFAULT_TTS_VOICE,
     rebuild_auto_open_shadowing_prompt: true,
     ai_reading_rag: DEFAULT_AI_GENERATION_RAG_SELECTION,
+    ai_provider_params: {
+        mimo: DEFAULT_MIMO_PROVIDER_PARAMS,
+    },
 };
 
 function normalizeAiReadingRagConfig(input?: Partial<AIGenerationRagConfig> | null): AIGenerationRagConfig {
@@ -405,6 +424,34 @@ function normalizeAiReadingRagSelection(input?: Partial<AIGenerationRagSelection
     return {
         standard: normalizeAiReadingRagConfig(input?.standard),
         longform: normalizeAiReadingRagConfig(input?.longform),
+    };
+}
+
+export function normalizeProfileMimoThinkingMode(mode?: string | boolean | null): MimoThinkingMode {
+    if (mode === true || mode === "on" || mode === "enabled" || mode === "true") {
+        return "on";
+    }
+    return "off";
+}
+
+export function normalizeProfileMimoReasoningEffort(effort?: string | null): MimoReasoningEffort {
+    if (effort === "low" || effort === "high") {
+        return effort;
+    }
+    return "medium";
+}
+
+export function normalizeMimoProviderParams(input?: Partial<MimoProviderParamsPreference> | null): MimoProviderParamsPreference {
+    const defaults = DEFAULT_MIMO_PROVIDER_PARAMS;
+    return {
+        thinking_mode: normalizeProfileMimoThinkingMode(input?.thinking_mode),
+        reasoning_effort: normalizeProfileMimoReasoningEffort(input?.reasoning_effort ?? defaults.reasoning_effort),
+    };
+}
+
+export function normalizeAiProviderParams(input?: Partial<AiProviderParamsPreference> | null): AiProviderParamsPreference {
+    return {
+        mimo: normalizeMimoProviderParams(input?.mimo),
     };
 }
 
@@ -557,5 +604,6 @@ export function normalizeLearningPreferences(
             ? preferences.rebuild_auto_open_shadowing_prompt
             : DEFAULT_LEARNING_PREFERENCES.rebuild_auto_open_shadowing_prompt,
         ai_reading_rag: normalizeAiReadingRagSelection(preferences?.ai_reading_rag),
+        ai_provider_params: normalizeAiProviderParams(preferences?.ai_provider_params),
     };
 }

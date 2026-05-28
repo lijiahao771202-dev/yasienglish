@@ -68,11 +68,15 @@ const flushPromises = async (count = 2) => {
     }
 };
 
+function markReactActEnvironment() {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+}
+
 const renderPopup = async (
     overrides?: Partial<React.ComponentProps<typeof WordPopup>>,
     popupOverride?: Partial<PopupState>,
 ) => {
-    globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+    markReactActEnvironment();
     const container = document.createElement("div");
     document.body.appendChild(container);
     const root = createRoot(container);
@@ -180,8 +184,48 @@ describe("WordPopup", () => {
         expect(document.body.textContent).toContain("AI 释义生成失败，请重试。");
     });
 
+    it("uses an initial phrase translation without dictionary lookup or AI fallback", async () => {
+        mocks.dbFirst.mockResolvedValue(null);
+        const fetchSpy = vi.fn((input: RequestInfo | URL) => Promise.reject(new Error(`Unexpected fetch: ${String(input)}`)));
+        vi.stubGlobal("fetch", fetchSpy);
+
+        await renderPopup(undefined, {
+            word: "sunlight and water",
+            context: "Plants need sunlight and water to grow.",
+            sourceSentence: "Plants need sunlight and water to grow.",
+            initialDefinition: {
+                context_meaning: {
+                    definition: "在该句中指：阳光和水分",
+                    translation: "阳光和水分",
+                },
+                meaning_groups: [{ pos: "phr.", meanings: ["阳光和水分"] }],
+                highlighted_meanings: ["阳光和水分"],
+            },
+        });
+
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(document.body.textContent).toContain("在该句中指：阳光和水分");
+        expect(document.body.textContent).toContain("阳光和水分");
+
+        await act(async () => {
+            getAddButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await flushPromises(2);
+
+        expect(fetchSpy).not.toHaveBeenCalled();
+        expect(mocks.saveVocabulary).toHaveBeenCalledTimes(1);
+        expect(mocks.saveVocabulary.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+            word: "sunlight and water",
+            definition: "在该句中指：阳光和水分",
+            translation: "阳光和水分",
+            meaning_groups: [{ pos: "phr.", meanings: ["阳光和水分"] }],
+            highlighted_meanings: ["阳光和水分"],
+            source_sentence: "Plants need sunlight and water to grow.",
+        }));
+    });
+
     it("shows saved state immediately while background save is still pending", async () => {
-        let resolveSave: (() => void) | null = null;
+        let resolveSave: () => void = () => {};
         mocks.dbFirst.mockResolvedValue(null);
         mocks.saveVocabulary.mockImplementation(() => new Promise<void>((resolve) => {
             resolveSave = resolve;

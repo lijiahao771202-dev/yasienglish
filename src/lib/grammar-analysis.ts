@@ -8,14 +8,17 @@ import {
     normalizeProfileGithubModel,
     normalizeProfileGlmModel,
     normalizeProfileGlmThinkingMode,
+    normalizeMimoProviderParams,
     normalizeProfileMimoModel,
     normalizeProfileNvidiaModel,
+    type AiProviderParamsPreference,
 } from "@/lib/profile-settings";
+import { buildAutoSentenceBoundaries, buildSentenceUnits } from "@/lib/read-speaking";
 
 export type GrammarMode = "basic" | "deep";
 
 export const GRAMMAR_BASIC_MODEL = "deepseek-chat";
-export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-05-26-basic-v13";
+export const GRAMMAR_BASIC_PROMPT_VERSION = "2026-05-27-basic-v14";
 
 type GrammarProfileSource = Pick<
     LocalUserProfile,
@@ -28,7 +31,9 @@ type GrammarProfileSource = Pick<
     | "nvidia_model"
     | "github_model"
     | "mimo_model"
->;
+> & {
+    ai_provider_params?: Partial<AiProviderParamsPreference>;
+};
 
 export function buildReadingGrammarExecutionSignature(profile?: Partial<GrammarProfileSource> | null) {
     const provider = normalizeAiProvider(profile?.ai_provider);
@@ -42,7 +47,8 @@ export function buildReadingGrammarExecutionSignature(profile?: Partial<GrammarP
     }
 
     if (provider === "mimo") {
-        return `${provider}:${normalizeProfileMimoModel(profile?.mimo_model)}`;
+        const mimoParams = normalizeMimoProviderParams(profile?.ai_provider_params?.mimo);
+        return `${provider}:${normalizeProfileMimoModel(profile?.mimo_model)}:thinking=${mimoParams.thinking_mode}:reasoning=${mimoParams.thinking_mode === "on" ? mimoParams.reasoning_effort : "off"}`;
     }
 
     if (provider === "glm") {
@@ -186,6 +192,7 @@ function containsCjk(value: string) {
 }
 
 const COMPLEX_SENTENCE_MARKERS = [
+    /\bwhat\b/i,
     /\bthat\b/i,
     /\bwhich\b/i,
     /\bwho\b/i,
@@ -203,9 +210,12 @@ const COMPLEX_SENTENCE_MARKERS = [
     /\bpublished in\b/i,
     /\bincorporating\b/i,
     /\bleading to\b/i,
+    /\bwith\b/i,
+    /[—;:]/,
 ];
 
 const INTERNAL_STRUCTURE_MARKERS = [
+    /\bwhat\b/i,
     /\bthat\b/i,
     /\bwhich\b/i,
     /\bwho\b/i,
@@ -224,6 +234,8 @@ const INTERNAL_STRUCTURE_MARKERS = [
     /\bincorporating\b/i,
     /\breceiving\b/i,
     /\bleading to\b/i,
+    /\bwith\b/i,
+    /[—;:]/,
 ];
 
 function normalizeGrammarType(rawType: string) {
@@ -367,9 +379,8 @@ export function splitGrammarSentences(text: string) {
     const normalized = normalizeGrammarText(text);
     if (!normalized) return [];
 
-    const matched = normalized.match(/[^.!?。！？\n]+(?:[.!?。！？]+|$)/g) ?? [];
-    const sentences = matched
-        .map((item) => item.trim())
+    const sentences = buildSentenceUnits(normalized, buildAutoSentenceBoundaries(normalized))
+        .map((item) => item.speakText)
         .filter(Boolean);
 
     if (sentences.length > 0) return sentences;
@@ -443,30 +454,22 @@ OBJECTIVE:
 3. Analyze sentence structure with high coverage:
    - Main components: Subject (主语), Predicate/Verb (谓语), Object/Predicative (宾语/表语).
    - Modifiers: Attributive (定语), Adverbial (状语), Complement (补语), Appositive (同位语).
-   - Clauses/structures when present.
-   - The goal is teaching-ready chunking, not minimum-viable labeling.
 4. Prefer the most specific grammar type possible for highlight.type.
-   - Use 时间状语从句 / 条件状语从句 / 让步状语从句 / 原因状语从句 / 目的状语从句 when the subtype is clear.
-   - Use 宾语从句 / 主语从句 / 表语从句 / 同位语从句 instead of generic 从句 or 名词性从句 when the clause role is clear.
-   - Use 定语从句 instead of generic 从句 when it modifies a noun.
-   - Use 介词短语 / 分词短语 / 不定式短语 / 动名词短语 instead of generic 短语 when the phrase form is clear.
-   - Use 非谓语 only when the exact phrase form is not clear.
+   - Prefer 时间状语从句 / 条件状语从句 / 让步状语从句 / 原因状语从句 / 目的状语从句 when clear.
+   - Prefer 宾语从句 / 主语从句 / 表语从句 / 同位语从句 over generic 从句 or 名词性从句.
+   - Prefer 介词短语 / 分词短语 / 不定式短语 / 动名词短语 over generic 短语.
    - Do NOT collapse a specific structure into a broad label unless you genuinely cannot identify the subtype.
 5. Every highlight.explanation MUST be Markdown-ready and teacher-like.
    - Lead with one bold judgment sentence.
-   - Then use 1 to 2 short lines or bullets to explain the role in the sentence.
    - Explain: 这部分是什么 + 它在句里干什么 + 为什么值得单独标出来.
-   - If a grammar term is hard, immediately unpack it in simpler words.
-   - Avoid rigid textbook labels as section headers; prefer natural explanation.
 6. Every segment_translation MUST be contextual (in THIS sentence), not dictionary-only.
 7. Chunking Rules for long / complex sentences:
    - Do NOT stop at the outer clause boundary.
-   - If a chunk still contains an internal clause, non-finite modifier, appositive, comparison, publication/source detail, or time detail, split it again.
-   - Avoid oversized chunks. Each chunk should usually carry one main grammar job only.
-   - Long noun phrases must be decomposed when they contain post-modifiers such as relative clauses, participial phrases, prepositional phrases, appositives, publication/source details, or year/time details.
-   - After labeling a clause such as 宾语从句 / 定语从句 / 状语从句, continue exposing its internal backbone when that backbone is still pedagogically important.
-   - Prefer 5-12 meaningful chunks for a long complex sentence rather than 2-4 oversized chunks.
-   - Never merge a clause label and all of its internal content into one giant chunk when the internal structure is still analyzable.
+   - Avoid oversized chunks. Each chunk should carry one grammar job.
+   - For sentences longer than 22 English words, normally return 6-12 highlights. Four broad highlights is still too coarse when the sentence has clauses, dashes, participial phrases, prepositional phrase chains, or a what...is... frame.
+   - Long noun phrases must be decomposed when they contain relative clauses, participial phrases, prepositional phrases, appositives, source details, or time details.
+   - After labeling a clause such as 宾语从句 / 定语从句 / 状语从句, expose its internal backbone when useful.
+   - Do NOT merge the predicate and complement/predicative into one huge chunk. In patterns like what...is..., split at least: 主语从句, 插入/并列主语从句 if present, 谓语系动词, 表语核心, and important modifiers such as of-phrases, participial phrases, and with-phrases.
 8. Overlap control:
    - For the same substring span, return only ONE best grammar label.
    - Do NOT stack competing labels onto the same text span.
@@ -496,16 +499,13 @@ OUTPUT STRICT JSON ONLY:
 
 CONSTRAINTS:
 - Keep sentence order exactly as listed in Target sentences.
-- You MUST return one entry for every target sentence. Do not skip short, simple, or summary-like sentences.
 - "sentence" must be an exact substring.
-- "type" must be Simplified Chinese and should prefer specific labels such as 主语/谓语/宾语/表语/定语/状语/补语/同位语/主句/宾语从句/主语从句/表语从句/同位语从句/定语从句/时间状语从句/原因状语从句/目的状语从句/条件状语从句/让步状语从句/介词短语/分词短语/不定式短语/动名词短语/倒装句/虚拟语气/强调句.
 - Each sentence should contain at least one highlight unless truly trivial.
 - For long sentences, at least one highlight should capture the clause backbone, not only isolated words.
-- Do NOT stop at the outer clause boundary for long sentences.
-- Avoid oversized chunks.
+- If a sentence is longer than 22 English words and has a what...is... frame, return at least six highlights unless the sentence is genuinely simple.
+- Split "is + noun phrase / adjective phrase" into the predicate verb and the predicative/complement when the predicative has its own modifiers.
 - Do NOT return duplicate labels for the exact same substring span.
 - Long noun phrases must be decomposed when they include internal modifiers or source/time tails.
-- Explanations should sound like a teacher speaking to a learner in simple Chinese.
 - Keep each explanation compact and easy to scan.
 - Return JSON object only, no markdown, no extra text.
 ${patchContextBlock}
@@ -644,6 +644,38 @@ function isStructurallyRichType(type: string) {
     return /(从句|短语|状语|定语|同位语|补语|插入语|非谓语)/.test(type);
 }
 
+function hasWhatCleftFrame(sentence: string) {
+    return /\bwhat\b[\s\S]+\b(?:is|are|was|were)\b/i.test(normalizeGrammarText(sentence));
+}
+
+function hasLayeredLongSentenceMarkers(sentence: string) {
+    const normalized = normalizeGrammarText(sentence);
+    const markerCount = INTERNAL_STRUCTURE_MARKERS.reduce((count, pattern) => (
+        count + (pattern.test(normalized) ? 1 : 0)
+    ), 0);
+    return markerCount >= 2;
+}
+
+function hasPredicativeMergeChunk(highlights: GrammarBasicHighlight[]) {
+    return highlights.some((highlight) => {
+        const substring = normalizeGrammarText(highlight.substring);
+        if (!/\b(?:is|are|was|were|be|been|being)\b\s+\w+/i.test(substring)) return false;
+        if (!/(谓语|表语|主句|语法点)/.test(highlight.type)) return false;
+        return countAsciiWords(substring) >= 5;
+    });
+}
+
+function hasRequiredBackboneCoverage(sentence: string, highlights: GrammarBasicHighlight[]) {
+    if (!hasWhatCleftFrame(sentence)) return true;
+
+    const hasSubjectClause = highlights.some((highlight) => /主语从句/.test(highlight.type));
+    const hasPredicate = highlights.some((highlight) => /谓语/.test(highlight.type) && countAsciiWords(highlight.substring) <= 4);
+    const hasPredicative = highlights.some((highlight) => /表语|宾语|补语/.test(highlight.type));
+    const hasModifier = highlights.some((highlight) => /(短语|状语|定语|插入语|非谓语)/.test(highlight.type));
+
+    return hasSubjectClause && hasPredicate && hasPredicative && hasModifier;
+}
+
 function sentenceHasCoarseChunking(sentence: GrammarBasicSentence) {
     if (!isComplexSentenceLikely(sentence.sentence)) return false;
 
@@ -653,10 +685,15 @@ function sentenceHasCoarseChunking(sentence: GrammarBasicSentence) {
     const sentenceWordCount = countAsciiWords(sentence.sentence);
     if (sentenceWordCount < 22) return false;
 
+    const layeredLongSentence = hasLayeredLongSentenceMarkers(sentence.sentence);
+    const whatCleftFrame = hasWhatCleftFrame(sentence.sentence);
+    if ((layeredLongSentence || whatCleftFrame) && highlights.length < 6) return true;
+    if (!hasRequiredBackboneCoverage(sentence.sentence, highlights)) return true;
+    if (whatCleftFrame && hasPredicativeMergeChunk(highlights)) return true;
+
     const oversizedStructuredChunks = highlights.filter((highlight) => {
-        if (!isStructurallyRichType(highlight.type)) return false;
         const wordCount = countAsciiWords(highlight.substring);
-        if (wordCount < 12) return false;
+        if (wordCount < (isStructurallyRichType(highlight.type) ? 12 : 14)) return false;
         return INTERNAL_STRUCTURE_MARKERS.some((pattern) => pattern.test(highlight.substring));
     });
 

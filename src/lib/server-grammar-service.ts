@@ -1,8 +1,9 @@
 import {
-    createDeepSeekClientForCurrentUser,
-    getCurrentAiExecutionFingerprintForCurrentUser,
+    createDeepSeekClientForCurrentUserWithoutThinking,
+    getCurrentAiExecutionFingerprintForCurrentUserWithoutThinking,
     type OpenAiCompatibleClient,
 } from "@/lib/deepseek";
+import { parseJsonObjectFromAi } from "@/lib/ai-json";
 import {
     chargeReadingCoins,
     insufficientReadingCoinsPayload,
@@ -100,12 +101,7 @@ function buildGrammarAliasCacheKey(params: {
 }
 
 function parseJsonObject(content: string) {
-    try {
-        const parsed = JSON.parse(content);
-        return parsed && typeof parsed === "object" ? parsed : null;
-    } catch {
-        return null;
-    }
+    return parseJsonObjectFromAi(content);
 }
 
 function getProviderErrorDetails(error: unknown) {
@@ -223,7 +219,9 @@ function sanitizeSentenceFromBatch(result: GrammarSanitizeResult<GrammarBasicRes
 function sentenceNeedsRepair(result: GrammarSanitizeResult<GrammarBasicResult>) {
     const sentence = result.data.difficult_sentences[0];
     if (!sentence) return true;
-    return !sentence.translation.trim() || sentence.highlights.length === 0;
+    return !sentence.translation.trim()
+        || sentence.highlights.length === 0
+        || result.issues.some((issue) => issue.includes("chunking is too coarse"));
 }
 
 async function runBasicInference(client: OpenAiCompatibleClient, sentences: string[]) {
@@ -313,8 +311,8 @@ export async function runBasicGrammarService(input: GrammarBasicRequest): Promis
         };
     }
 
-    const client = await createDeepSeekClientForCurrentUser();
-    const execution = await getCurrentAiExecutionFingerprintForCurrentUser(GRAMMAR_BASIC_MODEL);
+    const client = await createDeepSeekClientForCurrentUserWithoutThinking();
+    const execution = await getCurrentAiExecutionFingerprintForCurrentUserWithoutThinking(GRAMMAR_BASIC_MODEL);
     const promptVersion = GRAMMAR_BASIC_PROMPT_VERSION;
 
     const workItems: SentenceWorkItem[] = sentences.map((sentence) => ({

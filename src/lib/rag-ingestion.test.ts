@@ -70,6 +70,23 @@ describe("rag-ingestion", () => {
         expect(plan.staleVectorIds).toEqual(["vocab:ghost"]);
     });
 
+    it("treats archived learner vocab vectors as stale", () => {
+        const archived = {
+            ...createVocab("abandon"),
+            archived_at: 123,
+        };
+        const plan = buildVocabularyVectorSyncPlan(
+            [archived, createVocab("bold")],
+            [
+                createVector("vocab:abandon", "abandon"),
+                createVector("vocab:bold", "bold"),
+            ],
+        );
+
+        expect(plan.missing).toEqual([]);
+        expect(plan.staleVectorIds).toEqual(["vocab:abandon"]);
+    });
+
     it("vectorizes missing learner vocab and removes stale vocab vectors", async () => {
         const deletedVectorIds: string[] = [];
         const stored: Array<{ text: string; source: string; metadata?: Record<string, unknown> }> = [];

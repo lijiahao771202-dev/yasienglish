@@ -11,6 +11,7 @@ import {
     normalizeAIGenerationRagMode,
     normalizeAIGenerationRagSource,
     normalizeLongformLengthTierId,
+    normalizeLongformTrack,
     normalizeLongformStyleId,
 } from "./ai-reading-generation";
 
@@ -18,6 +19,9 @@ describe("ai reading generation helpers", () => {
     it("normalizes longform mode and its selectors", () => {
         expect(normalizeAIGenerationMode("longform")).toBe("longform");
         expect(normalizeAIGenerationMode("anything")).toBe("standard");
+        expect(normalizeLongformTrack("native")).toBe("native");
+        expect(normalizeLongformTrack("exam")).toBe("exam");
+        expect(normalizeLongformTrack("anything")).toBe("exam");
         expect(normalizeLongformStyleId("science")).toBe("science");
         expect(normalizeLongformStyleId("custom")).toBe("custom");
         expect(normalizeLongformStyleId("explainer")).toBe("explainer");
@@ -96,12 +100,35 @@ describe("ai reading generation helpers", () => {
             topicSeed: { topicLine: "公众科学 · Science habits" },
             difficulty: "cet6",
             generationMode: "longform",
+            longformTrack: "exam",
             ragMode: "reference",
             ragSource: "hybrid",
             longformStyleId: "custom",
             lengthTierId: "w1200",
             customStylePrompt: "Explain the theory clearly in simple language.",
             injectedVocabulary: undefined,
+        });
+
+        expect(buildAIGenerationRequestBody({
+            topic: "city notebooks",
+            generationMode: "longform",
+            longformTrack: "native",
+            longformStyleId: "reportage",
+            lengthTierId: "w2200",
+            customStylePrompt: "Natural, magazine-like, scene-rich prose.",
+            injectedVocabulary: ["texture", "street-level"],
+        })).toEqual({
+            topic: "city notebooks",
+            topicSeed: undefined,
+            difficulty: undefined,
+            generationMode: "longform",
+            longformTrack: "native",
+            ragMode: "reference",
+            ragSource: "hybrid",
+            longformStyleId: "reportage",
+            lengthTierId: "w2200",
+            customStylePrompt: "Natural, magazine-like, scene-rich prose.",
+            injectedVocabulary: ["texture", "street-level"],
         });
     });
 
@@ -143,9 +170,17 @@ describe("ai reading generation helpers", () => {
         expect(formatLongformHistoryDescriptor({
             difficulty: "cet6",
             generationMode: "longform",
+            longformTrack: "exam",
             longformStyle: { name: "科普" },
             lengthTier: { targetWordCount: 1200 },
         })).toBe("六级 · 长文 · 科普 · 1200词");
+
+        expect(formatLongformHistoryDescriptor({
+            generationMode: "longform",
+            longformTrack: "native",
+            longformStyle: { name: "现场报道" },
+            lengthTier: { targetWordCount: 2200 },
+        })).toBe("母语者 · 长文 · 现场报道 · 2200词");
 
         expect(formatLongformHistoryDescriptor({
             difficulty: "cet4",

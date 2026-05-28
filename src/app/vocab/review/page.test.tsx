@@ -79,6 +79,11 @@ describe("vocab review page", () => {
             ok: false,
             json: async () => ({}),
         }));
+        Object.defineProperty(window.HTMLElement.prototype, "scrollIntoView", {
+            configurable: true,
+            writable: true,
+            value: vi.fn(),
+        });
         vi.stubGlobal("Audio", class {
             play() {
                 return Promise.resolve();
@@ -196,6 +201,58 @@ describe("vocab review page", () => {
 
         expect(container.textContent).toContain("relay");
         expect(container.textContent).not.toContain("短间隔词卡排队中");
+
+        await act(async () => {
+            root.unmount();
+        });
+    });
+
+    it("does not replay the same word on reveal right after ghost typing already played it", async () => {
+        sortByMock.mockResolvedValue([baseCard]);
+
+        const playMock = vi.fn().mockResolvedValue(undefined);
+        vi.stubGlobal("Audio", class {
+            src: string;
+
+            constructor(src: string) {
+                this.src = src;
+            }
+
+            play = playMock;
+        });
+
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(<ReviewPage />);
+        });
+
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        playMock.mockClear();
+
+        await act(async () => {
+            for (const key of baseCard.word) {
+                window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+            }
+            await Promise.resolve();
+        });
+
+        expect(playMock).toHaveBeenCalledTimes(1);
+
+        const revealButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("看看答案"));
+        expect(revealButton).toBeTruthy();
+
+        await act(async () => {
+            revealButton?.click();
+            await Promise.resolve();
+        });
+
+        expect(playMock).toHaveBeenCalledTimes(1);
 
         await act(async () => {
             root.unmount();

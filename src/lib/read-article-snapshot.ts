@@ -23,6 +23,7 @@ export function buildReadArticleCloudPayload(
         difficulty: article.difficulty,
         isAIGenerated: article.isAIGenerated,
         generationMode: article.generationMode,
+        longformTrack: article.longformTrack,
         ragMode: article.ragMode,
         ragSource: article.ragSource,
         ragAppliedWords: article.ragAppliedWords,

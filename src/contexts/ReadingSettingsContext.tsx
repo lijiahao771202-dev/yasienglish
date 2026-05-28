@@ -5,12 +5,16 @@ import React, { createContext, useContext, useSyncExternalStore } from 'react';
 type ThemeId = 'welcome' | 'warm' | 'sunlight' | 'vintage' | 'green' | 'cool' | 'mono' | 'dark' | 'navy' | 'coal' | 'mint' | 'lavender' | 'rose' | 'sky' | 'sand' | 'latte' | 'mocha' | 'slate' | 'dracula' | 'hacker' | 'midnight' | 'crimson' | 'forest' | 'ocean' | 'sepia' | 'peach' | 'matcha' | 'berry' | 'cyberpunk' | 'nord';
 type FontId = 'serif' | 'sans' | 'mono' | 'merriweather' | 'lora' | 'inter' | 'roboto-mono' | 'libre-baskerville' | 'source-serif' | 'work-sans' | 'comic' | 'arial' | 'helvetica' | 'georgia' | 'verdana' | 'tahoma' | 'trebuchet' | 'times' | 'palatino' | 'garamond' | 'bookman' | 'impact' | 'lucida' | 'courier' | 'consolas' | 'optima' | 'didot' | 'copperplate' | 'papyrus' | 'century' | 'candara';
 type FontSize = 'text-base' | 'text-lg' | 'text-xl' | 'text-2xl';
+type TranslationColorId = 'muted' | 'stone' | 'ink' | 'indigo' | 'sky' | 'emerald' | 'rose' | 'amber';
 export type PhraseDisplayMode = 'capsule' | 'inline_wavy';
 
 interface ReadingSettings {
     theme: ThemeId;
     font: FontId;
     fontSize: FontSize;
+    translationFont: FontId;
+    translationFontSize: FontSize;
+    translationColor: TranslationColorId;
     isFocusMode: boolean;
     isBionicMode: boolean;
     phraseDisplayMode: PhraseDisplayMode;
@@ -20,12 +24,18 @@ interface ReadingSettingsContextType extends ReadingSettings {
     setTheme: (theme: ThemeId) => void;
     setFont: (font: FontId) => void;
     setFontSize: (size: FontSize) => void;
+    setTranslationFont: (font: FontId) => void;
+    setTranslationFontSize: (size: FontSize) => void;
+    setTranslationColor: (color: TranslationColorId) => void;
     setPhraseDisplayMode: (mode: PhraseDisplayMode) => void;
     toggleFocusMode: () => void;
     toggleBionicMode: () => void;
     // Computed classes
     fontClass: string;
     fontSizeClass: string;
+    translationFontClass: string;
+    translationFontSizeClass: string;
+    translationColorClass: string;
 }
 
 const ReadingSettingsContext = createContext<ReadingSettingsContextType | undefined>(undefined);
@@ -107,8 +117,21 @@ const FONTS = {
 const DEFAULT_THEME: ThemeId = 'warm';
 const DEFAULT_FONT: FontId = 'serif';
 const DEFAULT_FONT_SIZE: FontSize = 'text-xl';
+const DEFAULT_TRANSLATION_FONT: FontId = 'serif';
+const DEFAULT_TRANSLATION_FONT_SIZE: FontSize = 'text-base';
+const DEFAULT_TRANSLATION_COLOR: TranslationColorId = 'muted';
 const DEFAULT_PHRASE_DISPLAY_MODE: PhraseDisplayMode = 'capsule';
 const READING_SETTINGS_EVENT = 'reading-settings-change';
+const TRANSLATION_COLORS: Record<TranslationColorId, string> = {
+    muted: 'text-stone-500/95',
+    stone: 'text-stone-600',
+    ink: 'text-stone-700',
+    indigo: 'text-indigo-700',
+    sky: 'text-sky-700',
+    emerald: 'text-emerald-700',
+    rose: 'text-rose-700',
+    amber: 'text-amber-700',
+};
 
 function readStoredTheme(): ThemeId {
     const storedTheme = localStorage.getItem('reading_theme');
@@ -125,6 +148,25 @@ function readStoredFontSize(): FontSize {
     return storedSize === 'text-base' || storedSize === 'text-lg' || storedSize === 'text-xl' || storedSize === 'text-2xl'
         ? storedSize
         : DEFAULT_FONT_SIZE;
+}
+
+function readStoredTranslationFont(): FontId {
+    const storedFont = localStorage.getItem('reading_translation_font');
+    return storedFont && storedFont in FONTS ? (storedFont as FontId) : DEFAULT_TRANSLATION_FONT;
+}
+
+function readStoredTranslationFontSize(): FontSize {
+    const storedSize = localStorage.getItem('reading_translation_size');
+    return storedSize === 'text-base' || storedSize === 'text-lg' || storedSize === 'text-xl' || storedSize === 'text-2xl'
+        ? storedSize
+        : DEFAULT_TRANSLATION_FONT_SIZE;
+}
+
+function readStoredTranslationColor(): TranslationColorId {
+    const storedColor = localStorage.getItem('reading_translation_color');
+    return storedColor && storedColor in TRANSLATION_COLORS
+        ? (storedColor as TranslationColorId)
+        : DEFAULT_TRANSLATION_COLOR;
 }
 
 function readStoredFocusMode() {
@@ -166,6 +208,9 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
     const theme = useSyncExternalStore(subscribeReadingSettings, readStoredTheme, () => DEFAULT_THEME);
     const font = useSyncExternalStore(subscribeReadingSettings, readStoredFont, () => DEFAULT_FONT);
     const fontSize = useSyncExternalStore(subscribeReadingSettings, readStoredFontSize, () => DEFAULT_FONT_SIZE);
+    const translationFont = useSyncExternalStore(subscribeReadingSettings, readStoredTranslationFont, () => DEFAULT_TRANSLATION_FONT);
+    const translationFontSize = useSyncExternalStore(subscribeReadingSettings, readStoredTranslationFontSize, () => DEFAULT_TRANSLATION_FONT_SIZE);
+    const translationColor = useSyncExternalStore(subscribeReadingSettings, readStoredTranslationColor, () => DEFAULT_TRANSLATION_COLOR);
     const isFocusMode = useSyncExternalStore(subscribeReadingSettings, readStoredFocusMode, () => false);
     const isBionicMode = useSyncExternalStore(subscribeReadingSettings, readStoredBionicMode, () => false);
     const phraseDisplayMode = useSyncExternalStore(subscribeReadingSettings, readStoredPhraseDisplayMode, () => DEFAULT_PHRASE_DISPLAY_MODE);
@@ -182,6 +227,21 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
 
     const updateFontSize = (newSize: FontSize) => {
         localStorage.setItem('reading_size', newSize);
+        emitReadingSettingsChange();
+    };
+
+    const updateTranslationFont = (newFont: FontId) => {
+        localStorage.setItem('reading_translation_font', newFont);
+        emitReadingSettingsChange();
+    };
+
+    const updateTranslationFontSize = (newSize: FontSize) => {
+        localStorage.setItem('reading_translation_size', newSize);
+        emitReadingSettingsChange();
+    };
+
+    const updateTranslationColor = (newColor: TranslationColorId) => {
+        localStorage.setItem('reading_translation_color', newColor);
         emitReadingSettingsChange();
     };
 
@@ -207,17 +267,26 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
             theme,
             font,
             fontSize,
+            translationFont,
+            translationFontSize,
+            translationColor,
             phraseDisplayMode,
             setTheme: updateTheme,
             setFont: updateFont,
             setFontSize: updateFontSize,
+            setTranslationFont: updateTranslationFont,
+            setTranslationFontSize: updateTranslationFontSize,
+            setTranslationColor: updateTranslationColor,
             setPhraseDisplayMode: updatePhraseDisplayMode,
             isFocusMode,
             toggleFocusMode,
             isBionicMode,
             toggleBionicMode,
             fontClass: FONTS[font],
-            fontSizeClass: fontSize
+            fontSizeClass: fontSize,
+            translationFontClass: FONTS[translationFont],
+            translationFontSizeClass: translationFontSize,
+            translationColorClass: TRANSLATION_COLORS[translationColor],
         }}>
             {children}
         </ReadingSettingsContext.Provider>

@@ -59,6 +59,7 @@ import type {
     AIGenerationRagMode,
     AIGenerationRagSource,
     LongformLengthTierMeta,
+    LongformTrack,
     LongformStyleMeta,
 } from "@/lib/ai-reading-generation";
 import { isQuizEligibleArticle } from "@/lib/ai-reading-generation";
@@ -76,6 +77,7 @@ interface ArticleData {
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
     generationMode?: AIGenerationMode;
+    longformTrack?: LongformTrack;
     ragMode?: AIGenerationRagMode;
     ragSource?: AIGenerationRagSource;
     ragAppliedWords?: string[];
@@ -841,6 +843,7 @@ function ReadingPageContent() {
             difficulty: targetArticle.difficulty,
             isAIGenerated: targetArticle.isAIGenerated,
             generationMode: targetArticle.generationMode,
+            longformTrack: targetArticle.longformTrack,
             ragMode: targetArticle.ragMode,
             ragSource: targetArticle.ragSource,
             ragAppliedWords: targetArticle.ragAppliedWords,
@@ -1615,6 +1618,7 @@ function ReadingPageContent() {
                     difficulty: cached.difficulty,
                     isAIGenerated: cached.isAIGenerated,
                     generationMode: cached.generationMode,
+                    longformTrack: cached.longformTrack,
                     ragMode: cached.ragMode,
                     ragSource: cached.ragSource,
                     ragAppliedWords: cached.ragAppliedWords,
@@ -1939,9 +1943,13 @@ function ReadingPageContent() {
             } else {
                 url.searchParams.delete("exam_track");
             }
-        } else if (article?.isAIGenerated && article?.difficulty) {
+        } else if (article?.isAIGenerated) {
             url.searchParams.set("smart_task", "reading_ai");
-            url.searchParams.set("exam_track", article.difficulty);
+            if (article.difficulty) {
+                url.searchParams.set("exam_track", article.difficulty);
+            } else {
+                url.searchParams.delete("exam_track");
+            }
         } else {
             url.searchParams.delete("smart_task");
             url.searchParams.delete("exam_track");

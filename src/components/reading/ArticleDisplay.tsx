@@ -10,6 +10,11 @@ import TEDVideoPlayer, { TEDVideoPlayerRef } from "./TEDVideoPlayer";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { cn } from "@/lib/utils";
 import type { ReadingMarkType, ReadingNoteItem } from "@/lib/db";
+import type { AskContextAttachment } from "@/lib/ask-thread";
+import {
+    buildAskContextAttachmentFromRanges,
+    type ReadSelectionParagraphRangeInput,
+} from "@/lib/read-selection-context";
 
 interface Block {
     type: 'paragraph' | 'header' | 'list' | 'image' | 'blockquote';
@@ -93,6 +98,8 @@ export function ArticleDisplay({
     const [highlightedParagraphNumber, setHighlightedParagraphNumber] = useState<number | null>(null);
     const [highlightedQuestionNumber, setHighlightedQuestionNumber] = useState<number | null>(null);
     const [highlightedSnippet, setHighlightedSnippet] = useState<string | null>(null);
+    const [activeAskContextAttachment, setActiveAskContextAttachment] = useState<AskContextAttachment | null>(null);
+    const [activeAskAnchorParagraphOrder, setActiveAskAnchorParagraphOrder] = useState<number | null>(null);
     const lastWordTriggerRef = useRef<{ word: string; at: number }>({ word: "", at: 0 });
 
     const { fontClass, isFocusMode } = useReadingSettings();
@@ -227,6 +234,67 @@ export function ArticleDisplay({
         };
     }, [paragraphEntries, pickBestSnippet]);
 
+    const resolveArticleSelectionContext = useCallback(() => {
+        if (typeof window === "undefined") return null;
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0 || !contentRef.current) return null;
+        const selectedText = selection.toString().replace(/\s+/g, " ").trim();
+        if (selectedText.length < 2) return null;
+
+        const range = selection.getRangeAt(0);
+        const paragraphEls = Array.from(contentRef.current.querySelectorAll<HTMLElement>("[data-article-paragraph]"));
+        const ranges: ReadSelectionParagraphRangeInput[] = [];
+
+        const resolveParagraphTextRoot = (paragraphEl: HTMLElement) => (
+            paragraphEl.querySelector<HTMLElement>("[data-paragraph-text='true']") ?? paragraphEl
+        );
+
+        const resolveOffsetWithin = (
+            root: HTMLElement,
+            container: Node,
+            offset: number,
+            fallback: number,
+        ) => {
+            if (!root.contains(container)) return fallback;
+            const prefixRange = document.createRange();
+            prefixRange.selectNodeContents(root);
+            try {
+                prefixRange.setEnd(container, offset);
+                return prefixRange.cloneContents().textContent?.length ?? fallback;
+            } catch {
+                return fallback;
+            }
+        };
+
+        for (const paragraphEl of paragraphEls) {
+            const textRoot = resolveParagraphTextRoot(paragraphEl);
+            if (!range.intersectsNode(textRoot)) continue;
+            const paragraphOrder = Number(paragraphEl.dataset.articleParagraph);
+            const paragraphBlockIndex = Number(paragraphEl.dataset.articleParagraphBlockIndex);
+            const paragraphText = paragraphEl.dataset.articleParagraphText || paragraphEl.textContent || "";
+            if (!Number.isFinite(paragraphOrder) || !Number.isFinite(paragraphBlockIndex) || !paragraphText.trim()) continue;
+
+            const startOffset = textRoot.contains(range.startContainer)
+                ? resolveOffsetWithin(textRoot, range.startContainer, range.startOffset, 0)
+                : 0;
+            const endOffset = textRoot.contains(range.endContainer)
+                ? resolveOffsetWithin(textRoot, range.endContainer, range.endOffset, paragraphText.length)
+                : paragraphText.length;
+
+            ranges.push({
+                paragraphOrder,
+                paragraphBlockIndex,
+                paragraphText,
+                startOffset,
+                endOffset,
+            });
+        }
+
+        if (ranges.length === 0) return null;
+        const attachment = buildAskContextAttachmentFromRanges(ranges);
+        return attachment.text ? attachment : null;
+    }, []);
+
     useEffect(() => {
         setHighlightedParagraphNumber(null);
         setHighlightedQuestionNumber(null);
@@ -336,16 +404,37 @@ export function ArticleDisplay({
         setActiveBlocks(newBlocks);
     };
 
+    const getEventElement = (target: EventTarget | null) => {
+        if (target instanceof Element) return target;
+        if (target instanceof Node) return target.parentElement;
+        return null;
+    };
+
+    const isWithinInlinePhraseTarget = (target: EventTarget | null) => {
+        const element = getEventElement(target);
+        if (!element) return false;
+        return Boolean(element.closest("[data-translation-inline-phrase='true']"));
+    };
+
+    const getInlinePhraseSentenceContext = (target: EventTarget | null) => {
+        const element = getEventElement(target);
+        if (!element) return "";
+        return element.closest("[data-translation-inline-phrases='true']")?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    };
+
     const handleArticleClick = useCallback(async (e: React.MouseEvent) => {
         let word = "";
         let context = "";
+        const clickedInlinePhrase = isWithinInlinePhraseTarget(e.target);
+        const inlinePhraseSentenceContext = clickedInlinePhrase ? getInlinePhraseSentenceContext(e.target) : "";
         const selection = window.getSelection();
         const normalizedSelection = selection && !selection.isCollapsed
             ? selection.toString().replace(/\s+/g, " ").trim()
             : "";
+        const hasMultiWordSelection = normalizedSelection.length >= 2 && normalizedSelection.includes(" ");
 
-        // Multi-word selection takes precedence over caret lookup.
-        if (normalizedSelection.length >= 2 && normalizedSelection.includes(" ")) {
+        // Outside inline phrase mode, an intentional multi-word selection should still win.
+        if (!clickedInlinePhrase && hasMultiWordSelection) {
             word = normalizedSelection;
             context = selection?.anchorNode?.textContent || normalizedSelection;
         }
@@ -366,9 +455,13 @@ export function ArticleDisplay({
                 word = text.slice(start, end).trim();
 
                 // Get context (sentence)
-                const sentenceStart = text.lastIndexOf(".", start) + 1;
-                const sentenceEnd = text.indexOf(".", end);
-                context = text.slice(sentenceStart === -1 ? 0 : sentenceStart, sentenceEnd === -1 ? text.length : sentenceEnd + 1).trim();
+                if (inlinePhraseSentenceContext) {
+                    context = inlinePhraseSentenceContext;
+                } else {
+                    const sentenceStart = text.lastIndexOf(".", start) + 1;
+                    const sentenceEnd = text.indexOf(".", end);
+                    context = text.slice(sentenceStart === -1 ? 0 : sentenceStart, sentenceEnd === -1 ? text.length : sentenceEnd + 1).trim();
+                }
 
                 // === Highlight Animation ===
                 try {
@@ -423,8 +516,8 @@ export function ArticleDisplay({
         let x = e.clientX;
         let y = e.clientY + 20;
 
-        // If selection exists, use its rect for better positioning
-        if (selection && !selection.isCollapsed) {
+        // If a real multi-word selection won, use its rect for better positioning.
+        if (selection && !selection.isCollapsed && word === normalizedSelection) {
             const rect = selection.getRangeAt(0).getBoundingClientRect();
             x = rect.left + rect.width / 2;
             y = rect.bottom + 10;
@@ -544,6 +637,8 @@ export function ArticleDisplay({
                                         variants={itemVariants}
                                         key={block.id || index}
                                         data-article-paragraph={currentParagraphOrder}
+                                        data-article-paragraph-block-index={index}
+                                        data-article-paragraph-text={block.content}
                                         className={cn(
                                             "relative scroll-mt-8 rounded-[1.2rem] px-1 py-1 transition-all duration-500 md:scroll-mt-12",
                                             useParagraphFallbackHighlight && "bg-theme-active-bg/30 ring-2 ring-theme-active-bg"
@@ -567,6 +662,15 @@ export function ArticleDisplay({
                                             onSnapshotDirty={onArticleSnapshotDirty}
                                             onWordClick={handleArticleClick}
                                             onOpenWordPopupFromSelection={openWordPopup}
+                                            askContextAttachment={activeAskAnchorParagraphOrder === currentParagraphOrder ? activeAskContextAttachment : null}
+                                            hasActiveAskDock={activeAskAnchorParagraphOrder !== null}
+                                            onOpenAskWithContext={(attachment) => {
+                                                const resolvedAttachment = resolveArticleSelectionContext() ?? attachment;
+                                                const targetParagraphOrder = activeAskAnchorParagraphOrder ?? currentParagraphOrder;
+                                                setActiveAskContextAttachment(resolvedAttachment);
+                                                setActiveAskAnchorParagraphOrder(targetParagraphOrder);
+                                                return resolvedAttachment;
+                                            }}
                                             onSplit={handleSplit}
                                             onMerge={handleMerge}
                                             onUpdate={handleUpdate}

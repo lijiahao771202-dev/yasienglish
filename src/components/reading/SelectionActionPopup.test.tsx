@@ -39,6 +39,7 @@ const createBaseProps = (): React.ComponentProps<typeof SelectionActionPopup> =>
     qaPairs: [],
     question: "",
     onQuestionChange: vi.fn(),
+    askContextAttachment: null,
     askAnswerMode: "default",
     onAskAnswerModeChange: vi.fn(),
     isAskLoading: false,
@@ -163,6 +164,116 @@ describe("SelectionActionPopup", () => {
         });
 
         expect(onAsk).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the attached ask context below the composer input in ask mode", async () => {
+        const { container } = await renderPopup({
+            popupMode: "ask",
+            selectedText: "The first paragraph ends here. The next paragraph starts here.",
+            askContextAttachment: {
+                id: "ask-context:2",
+                kind: "cross_paragraph",
+                label: "跨段选区",
+                rangeLabel: "第 2-3 段",
+                text: "The first paragraph ends here. The next paragraph starts here.",
+                excerpt: "The first paragraph ends here. The next paragraph starts here.",
+                paragraphRanges: [],
+            },
+        });
+
+        const contextCard = container.querySelector('[data-ask-context-card="true"]');
+        const composer = container.querySelector('[data-ask-composer-input-row="true"]');
+        expect(contextCard).toBeTruthy();
+        expect(composer).toBeTruthy();
+        expect(
+            (composer?.compareDocumentPosition(contextCard!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(contextCard?.textContent).toContain("跨段选区");
+        expect(contextCard?.textContent).toContain("第 2-3 段");
+        expect(contextCard?.textContent).toContain("The first paragraph ends here.");
+    });
+
+    it("can clear the attached ask context from the composer", async () => {
+        const onClearAskContext = vi.fn();
+        const { container } = await renderPopup({
+            popupMode: "ask",
+            selectedText: "The first paragraph ends here.",
+            onClearAskContext,
+            askContextAttachment: {
+                id: "ask-context:2",
+                kind: "selection",
+                label: "选中文本",
+                rangeLabel: "第 2 段",
+                text: "The first paragraph ends here.",
+                excerpt: "The first paragraph ends here.",
+                paragraphRanges: [],
+            },
+        });
+
+        const clearButton = container.querySelector<HTMLButtonElement>('[data-ask-context-clear="true"]');
+        expect(clearButton).toBeTruthy();
+
+        await act(async () => {
+            clearButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onClearAskContext).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the attached ask context when replaying an ask thread", async () => {
+        const { container } = await renderPopup({
+            popupMode: "ask-replay",
+            selectedText: "The first paragraph ends here. The next paragraph starts here.",
+            qaPairs: [{
+                id: 1,
+                question: "解释一下",
+                answer: "这是回答。",
+                isStreaming: false,
+            }],
+            askContextAttachment: {
+                id: "ask-context:2",
+                kind: "cross_paragraph",
+                label: "跨段选区",
+                rangeLabel: "第 2-3 段",
+                text: "The first paragraph ends here. The next paragraph starts here.",
+                excerpt: "The first paragraph ends here. The next paragraph starts here.",
+                paragraphRanges: [],
+            },
+        });
+
+        const contextCard = container.querySelector('[data-ask-context-card="true"]');
+        expect(contextCard).toBeTruthy();
+        expect(contextCard?.textContent).toContain("跨段选区");
+        expect(contextCard?.textContent).toContain("第 2-3 段");
+    });
+
+    it("can expand the full attached ask context", async () => {
+        const longText = `${"Context sentence. ".repeat(24)}Final sentence.`;
+        const { container } = await renderPopup({
+            popupMode: "ask",
+            selectedText: longText,
+            askContextAttachment: {
+                id: "ask-context:long",
+                kind: "selection",
+                label: "选中文本",
+                rangeLabel: "第 2 段",
+                text: longText,
+                excerpt: "Context sentence. Context sentence.",
+                paragraphRanges: [],
+            },
+        });
+
+        const contextCard = container.querySelector('[data-ask-context-card="true"]');
+        expect(contextCard?.textContent).not.toContain("Final sentence.");
+        const toggle = container.querySelector<HTMLButtonElement>('[data-ask-context-toggle="true"]');
+        expect(toggle).toBeTruthy();
+
+        await act(async () => {
+            toggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(contextCard?.textContent).toContain("Final sentence.");
+        expect(toggle?.textContent).toContain("收起上下文");
     });
 
     it("disables send button and shows loading indicator while asking", async () => {
@@ -309,6 +420,66 @@ describe("SelectionActionPopup", () => {
 
         expect(Number.parseFloat(popup?.style.left ?? "0")).toBeGreaterThan(initialLeft);
         expect(Number.parseFloat(popup?.style.top ?? "0")).toBeGreaterThan(initialTop);
+    });
+
+    it("keeps the dragged ask dock position when the attached context changes", async () => {
+        HTMLElement.prototype.setPointerCapture = vi.fn();
+        HTMLElement.prototype.releasePointerCapture = vi.fn();
+        HTMLElement.prototype.hasPointerCapture = vi.fn(() => true);
+
+        const firstContext = {
+            id: "ask-context:1",
+            kind: "paragraph" as const,
+            label: "整段上下文",
+            rangeLabel: "第 1 段",
+            text: "First paragraph.",
+            excerpt: "First paragraph.",
+            paragraphRanges: [],
+        };
+        const secondContext = {
+            id: "ask-context:2",
+            kind: "selection" as const,
+            label: "选中文本",
+            rangeLabel: "第 2 段",
+            text: "Second sentence.",
+            excerpt: "Second sentence.",
+            paragraphRanges: [],
+        };
+        const { container, root } = await renderPopup({
+            popupMode: "ask",
+            selectedText: "First paragraph.",
+            askContextAttachment: firstContext,
+        });
+
+        const popup = container.querySelector<HTMLElement>('[data-selection-ask-dock="true"]');
+        const dragHandle = container.querySelector<HTMLElement>('[data-selection-ask-drag-handle="true"]');
+        expect(popup).toBeTruthy();
+        expect(dragHandle).toBeTruthy();
+
+        await act(async () => {
+            dispatchPointer(dragHandle!, "pointerdown", { clientX: 100, clientY: 100 });
+            dispatchPointer(dragHandle!, "pointermove", { clientX: 160, clientY: 145 });
+            dispatchPointer(dragHandle!, "pointerup", { clientX: 160, clientY: 145 });
+        });
+
+        const movedLeft = popup!.style.left;
+        const movedTop = popup!.style.top;
+
+        await act(async () => {
+            root.render(
+                <SelectionActionPopup
+                    {...createBaseProps()}
+                    popupMode="ask"
+                    selectedText="Second sentence."
+                    askContextAttachment={secondContext}
+                />,
+            );
+        });
+
+        const updatedPopup = container.querySelector<HTMLElement>('[data-selection-ask-dock="true"]');
+        expect(updatedPopup?.style.left).toBe(movedLeft);
+        expect(updatedPopup?.style.top).toBe(movedTop);
+        expect(container.textContent).toContain("Second sentence.");
     });
 
     it("lets the ask dock resize from its bottom-right handle", async () => {

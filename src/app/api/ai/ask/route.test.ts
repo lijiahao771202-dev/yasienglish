@@ -2,24 +2,34 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
     createCompletionMock,
+    getExecutionFingerprintMock,
     chargeReadingCoinsMock,
     insufficientReadingCoinsPayloadMock,
     isReadEconomyContextMock,
 } = vi.hoisted(() => ({
     createCompletionMock: vi.fn(),
+    getExecutionFingerprintMock: vi.fn(),
     chargeReadingCoinsMock: vi.fn(),
     insufficientReadingCoinsPayloadMock: vi.fn(),
     isReadEconomyContextMock: vi.fn(),
 }));
 
 vi.mock("@/lib/deepseek", () => ({
-    deepseek: {
+    createDeepSeekClientForCurrentUser: async () => ({
         chat: {
             completions: {
                 create: createCompletionMock,
             },
         },
-    },
+    }),
+    createDeepSeekClientForCurrentUserWithOverride: async () => ({
+        chat: {
+            completions: {
+                create: createCompletionMock,
+            },
+        },
+    }),
+    getCurrentAiExecutionFingerprintForCurrentUser: getExecutionFingerprintMock,
 }));
 
 vi.mock("@/lib/reading-economy-server", () => ({
@@ -28,7 +38,7 @@ vi.mock("@/lib/reading-economy-server", () => ({
     isReadEconomyContext: isReadEconomyContextMock,
 }));
 
-import { POST } from "./route";
+import { clearServerAskCache, POST } from "./route";
 
 function createStreamCompletion(chunks: Array<string | { content?: string; reasoning_content?: string; finish_reason?: string }>) {
     async function* iterator() {
@@ -68,9 +78,18 @@ function buildRequest(overrides: Record<string, unknown> = {}) {
 describe("ai ask route", () => {
     beforeEach(() => {
         createCompletionMock.mockReset();
+        getExecutionFingerprintMock.mockReset();
         chargeReadingCoinsMock.mockReset();
         insufficientReadingCoinsPayloadMock.mockReset();
         isReadEconomyContextMock.mockReset();
+        getExecutionFingerprintMock.mockResolvedValue({
+            provider: "deepseek",
+            providerLabel: "DeepSeek",
+            model: "deepseek-chat",
+            deepseekThinkingMode: "off",
+            deepseekReasoningEffort: undefined,
+            cacheSignature: "deepseek:deepseek-chat:thinking=off:reasoning=off",
+        });
 
         chargeReadingCoinsMock.mockResolvedValue({
             ok: true,
@@ -92,6 +111,7 @@ describe("ai ask route", () => {
             (context: { scene?: string; action?: string } | null | undefined) =>
                 context?.scene === "read" && Boolean(context?.action),
         );
+        clearServerAskCache();
     });
 
     afterEach(() => {
@@ -309,6 +329,85 @@ describe("ai ask route", () => {
         expect(completionParams.messages[0].content).toContain("常与 memory、habit、plan 搭配");
     });
 
+    it("requires Chinese glosses after English terms in general Ask answers", async () => {
+        createCompletionMock.mockResolvedValueOnce(createStreamCompletion(["解释"]));
+
+        const response = await POST(buildRequest({
+            answerMode: "detailed",
+            question: "这里的 main signal 是什么意思？",
+            selection: "main signal",
+        }));
+        await response.text();
+
+        expect(response.status).toBe(200);
+        const systemPrompt = createCompletionMock.mock.calls[0][0].messages[0].content;
+        expect(systemPrompt).toContain("English-with-Chinese requirement");
+        expect(systemPrompt).toContain("English word, phrase, collocation, example sentence, grammar formula, or clause");
+        expect(systemPrompt).toContain("must be immediately followed by a concise Simplified Chinese gloss");
+        expect(systemPrompt).toContain("`main signal`（主要信号）");
+    });
+
+    it("reuses cached Ask AI answers for the same context, question, answer mode, and provider fingerprint", async () => {
+        createCompletionMock.mockResolvedValueOnce(createStreamCompletion([
+            { content: "缓存回答", finish_reason: "stop" },
+        ]));
+
+        const firstResponse = await POST(buildRequest({
+            question: "这里的 main signal 是什么意思？",
+            selection: "main signal",
+        }));
+        const firstBody = await firstResponse.text();
+        const secondResponse = await POST(buildRequest({
+            question: "这里的 main signal 是什么意思？",
+            selection: "main signal",
+        }));
+        const secondBody = await secondResponse.text();
+
+        expect(firstResponse.status).toBe(200);
+        expect(secondResponse.status).toBe(200);
+        expect(createCompletionMock).toHaveBeenCalledTimes(1);
+        expect(firstBody).toContain(JSON.stringify({ content: "缓存回答" }));
+        expect(secondBody).toContain(JSON.stringify({ cache: { hit: true, layer: "server" } }));
+        expect(secondBody).toContain(JSON.stringify({ content: "缓存回答" }));
+        expect(secondBody).toContain("[DONE]");
+    });
+
+    it("keeps Ask AI cache isolated by provider and model fingerprint", async () => {
+        getExecutionFingerprintMock
+            .mockResolvedValueOnce({
+                provider: "deepseek",
+                providerLabel: "DeepSeek",
+                model: "deepseek-chat",
+                deepseekThinkingMode: "off",
+                deepseekReasoningEffort: undefined,
+                cacheSignature: "deepseek:deepseek-chat:thinking=off:reasoning=off",
+            })
+            .mockResolvedValueOnce({
+                provider: "mimo",
+                providerLabel: "MiMo",
+                model: "mimo-v2-pro",
+                cacheSignature: "mimo:mimo-v2-pro:thinking=on:reasoning=high",
+            });
+        createCompletionMock
+            .mockResolvedValueOnce(createStreamCompletion([{ content: "DeepSeek 回答", finish_reason: "stop" }]))
+            .mockResolvedValueOnce(createStreamCompletion([{ content: "MIMO 回答", finish_reason: "stop" }]));
+
+        await (await POST(buildRequest({
+            question: "这里的 main signal 是什么意思？",
+            selection: "main signal",
+        }))).text();
+        const mimoResponse = await POST(buildRequest({
+            question: "这里的 main signal 是什么意思？",
+            selection: "main signal",
+        }));
+        const mimoBody = await mimoResponse.text();
+
+        expect(mimoResponse.status).toBe(200);
+        expect(createCompletionMock).toHaveBeenCalledTimes(2);
+        expect(mimoBody).not.toContain(JSON.stringify({ cache: { hit: true, layer: "server" } }));
+        expect(mimoBody).toContain(JSON.stringify({ content: "MIMO 回答" }));
+    });
+
     it("returns 400 when text or question is empty", async () => {
         const response = await POST(buildRequest({ text: "   ", question: "" }));
         const data = await response.json();
@@ -318,7 +417,7 @@ describe("ai ask route", () => {
         expect(createCompletionMock).not.toHaveBeenCalled();
     });
 
-    it("returns a retryable 429 payload when the AI provider is concurrency limited", async () => {
+    it("streams a retryable error event when the AI provider is concurrency limited after SSE starts", async () => {
         createCompletionMock.mockRejectedValueOnce(Object.assign(
             new Error("429 Too many requests: UserConcurrentRequests"),
             {
@@ -328,14 +427,15 @@ describe("ai ask route", () => {
         ));
 
         const response = await POST(buildRequest());
-        const data = await response.json();
+        const body = await response.text();
 
-        expect(response.status).toBe(429);
-        expect(response.headers.get("Retry-After")).toBe("2");
-        expect(data).toEqual({
+        expect(response.status).toBe(200);
+        expect(response.headers.get("Content-Type")).toBe("text/event-stream");
+        expect(body).toContain(JSON.stringify({
             errorCode: "AI_PROVIDER_RATE_LIMIT",
             error: "当前 AI 模型正在处理上一个请求，请稍等几秒再试。",
             retryable: true,
-        });
+        }));
+        expect(body).toContain("[DONE]");
     });
 });

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { deepseek } from "@/lib/deepseek";
+import { createDeepSeekClientForCurrentUserWithoutThinking } from "@/lib/deepseek";
 import {
     chargeReadingCoins,
     insufficientReadingCoinsPayload,
@@ -283,11 +283,12 @@ export async function POST(req: Request) {
         const userPrompt = buildUserPrompt(word, normalizedContext, isBattlePopup);
         const fewShotMessages = selectFewShotExamples(word, normalizedContext, isBattlePopup);
 
+        const client = await createDeepSeekClientForCurrentUserWithoutThinking();
         let completion;
         let lastError;
         for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-                completion = await deepseek.chat.completions.create({
+                completion = await client.chat.completions.create({
                     messages: [
                         { role: "system", content: systemPrompt },
                         ...fewShotMessages,

@@ -37,9 +37,9 @@ import {
     buildAskThreadPreview,
     decodeAskThreadPayload,
     encodeAskThreadPayload,
-    isLikelyTransientAskFailure,
     resolveAskAssistantMessageParts,
     type AskQaPair,
+    type AskContextAttachment,
     type AskThreadMessage,
 } from "@/lib/ask-thread";
 import {
@@ -84,6 +84,9 @@ interface ParagraphCardProps {
     onSnapshotDirty?: () => void;
     onWordClick: (e: React.MouseEvent) => void;
     onOpenWordPopupFromSelection?: (payload: PopupState) => void;
+    askContextAttachment?: AskContextAttachment | null;
+    hasActiveAskDock?: boolean;
+    onOpenAskWithContext?: (attachment: AskContextAttachment) => AskContextAttachment | null | void;
     onSplit?: (index: number, textBefore: string, textAfter: string) => void;
     onMerge?: (sourceIndex: number, targetIndex: number) => void;
     onUpdate?: (index: number, newText: string) => void; // New: Update text
@@ -216,6 +219,8 @@ interface SentenceGrammarUiState {
 
 type SelectionPopupMode = "selection" | "ask" | "ask-replay";
 type AskAnswerMode = "default" | "short" | "detailed";
+type AskThinkingMode = "off" | "on";
+type AskReasoningEffort = "low" | "medium" | "high";
 
 interface InlinePhraseRange {
     start: number;
@@ -343,11 +348,45 @@ function mergeSentenceTranslationLookups(
     return merged;
 }
 
-function renderSentenceTranslationLine(translation: string) {
+function splitTranslationFallbackPieces(value: string, targetCount: number) {
+    const trimmed = value.trim();
+    if (!trimmed || targetCount <= 0) return [];
+
+    const pieces = (trimmed.match(/[^。！？!?]+[。！？!?]?/g) ?? [trimmed])
+        .map((item) => item.trim())
+        .filter(Boolean);
+    if (pieces.length <= targetCount) {
+        return pieces;
+    }
+
+    return [
+        ...pieces.slice(0, targetCount - 1),
+        pieces.slice(targetCount - 1).join(""),
+    ];
+}
+
+function buildFallbackSentenceTranslations(
+    units: Array<{ text: string }>,
+    translation: string,
+): SentenceTranslationItem[] {
+    const pieces = splitTranslationFallbackPieces(translation, units.length);
+    return units.reduce<SentenceTranslationItem[]>((items, unit, index) => {
+        const fallbackTranslation = pieces[index]?.trim() ?? "";
+        if (!fallbackTranslation) return items;
+        items.push({
+            sentence: unit.text.trim(),
+            translation: fallbackTranslation,
+            phraseTranslations: [],
+        });
+        return items;
+    }, []);
+}
+
+function renderSentenceTranslationLine(translation: string, textClassName?: string) {
     return (
         <div
             data-translation-line="true"
-            className="mt-2 text-[13px] leading-6 text-stone-500"
+            className={cn("mt-2 block w-full leading-[1.9]", textClassName)}
         >
             {translation}
         </div>
@@ -359,19 +398,24 @@ function renderTranslationAside(
     phraseItems: Array<{ source: string; translation: string }> = [],
     onPhraseClick?: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>) => void,
     inlinePhraseNode?: React.ReactNode,
+    textClassName?: string,
 ) {
     return (
         <div
             data-translation-aside="true"
-            className="mt-2.5 inline-flex max-w-[min(100%,44rem)] flex-col gap-2.5 border-l border-stone-200/90 pl-3.5 pr-0.5 align-top"
+            className="mt-2.5 block w-full max-w-[min(100%,44rem)] border-l border-stone-200/90 pl-3.5 pr-0.5"
         >
             <div
                 data-translation-line="true"
-                className="font-serif text-[13.5px] leading-[1.9] text-stone-500/95"
+                className={cn("block w-full text-[13.5px] leading-[1.9] text-stone-500/95", textClassName)}
             >
                 {translation}
             </div>
-            {inlinePhraseNode ?? renderPhraseTranslationList(phraseItems, onPhraseClick)}
+            {inlinePhraseNode ? (
+                <div data-translation-phrases="true" className="mt-2">
+                    {inlinePhraseNode}
+                </div>
+            ) : renderPhraseTranslationList(phraseItems, onPhraseClick)}
         </div>
     );
 }
@@ -383,7 +427,7 @@ function renderPhraseTranslationList(
     if (items.length === 0) return null;
 
     return (
-        <div data-translation-phrases="true" className="flex flex-wrap gap-2">
+        <div data-translation-phrases="true" className="mt-2 flex flex-wrap gap-2">
             {items.map((item) => (
                 <button
                     key={`${item.source}-${item.translation}`}
@@ -417,6 +461,20 @@ function renderPhraseTranslationList(
             ))}
         </div>
     );
+}
+
+function buildPhraseInitialDefinition(item: { source: string; translation: string }) {
+    const translation = item.translation.trim();
+    if (!translation) return undefined;
+
+    return {
+        context_meaning: {
+            definition: `在该句中指：${translation}`,
+            translation,
+        },
+        meaning_groups: [{ pos: "phr.", meanings: [translation] }],
+        highlighted_meanings: [translation],
+    };
 }
 
 function buildInlinePhraseRanges(
@@ -459,9 +517,10 @@ function renderInlinePhraseText(
         phraseDisplayMode: PhraseDisplayMode;
         hoveredPhraseKey: string | null;
         hoveredPhraseSaveState: Record<string, "idle" | "saving" | "saved" | "exists" | "error">;
-        onHoverPhrase: React.Dispatch<React.SetStateAction<string | null>>;
+        onHoverPhrase: (key: string) => void;
+        onLeavePhrase: (key: string) => void;
         onSavePhrase: (phrase: string, translation: string, sentenceContext: string) => Promise<void>;
-        onClickPhrase: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>, sentenceContext?: string) => void;
+        onInspectPhrase: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>, sentenceContext?: string) => void;
     },
 ) {
     if (options.phraseDisplayMode !== "inline_wavy" || items.length === 0) {
@@ -491,40 +550,53 @@ function renderInlinePhraseText(
         nodes.push(
             <span
                 key={`phrase-${range.start}-${range.end}`}
-                className="relative inline-block"
+                className="relative inline"
+                data-translation-inline-phrase="true"
                 onMouseEnter={() => options.onHoverPhrase(hoverKey)}
-                onMouseLeave={() => options.onHoverPhrase((current) => (current === hoverKey ? null : current) as unknown as string | null)}
+                onMouseLeave={() => options.onLeavePhrase(hoverKey)}
             >
-                <button
-                    type="button"
-                    data-translation-inline-phrase="true"
-                    className="rounded-[3px] text-stone-700 decoration-[1.6px] underline decoration-transparent underline-offset-[3px] transition hover:text-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300/70 focus-visible:ring-offset-1"
-                    style={{ textDecorationLine: "underline", textDecorationStyle: "wavy", textDecorationColor: "rgba(99,102,241,0.65)" }}
-                    onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        options.onClickPhrase(range.item, event, sentence);
+                <span
+                    aria-label={`${range.item.source}，${range.item.translation}。悬浮查看短语提示`}
+                    className="rounded-[2px] text-inherit transition hover:text-stone-900"
+                    style={{
+                        textDecorationLine: "underline",
+                        textDecorationStyle: "solid",
+                        textDecorationColor: "rgba(148,163,184,0.92)",
+                        textDecorationThickness: "1.5px",
+                        textUnderlineOffset: "3px",
+                        textDecorationSkipInk: "none",
                     }}
-                    aria-label={`${range.item.source}，${range.item.translation}。悬浮查看，点击打开词卡`}
                 >
                     {phraseText}
-                </button>
+                </span>
                 <div
                     data-translation-inline-hover-card={isOpen ? "open" : "closed"}
                     className={cn(
-                        "absolute left-0 top-full z-30 mt-2 w-[min(18rem,calc(100vw-3rem))] rounded-2xl border border-stone-200/90 bg-white/95 p-3 text-left shadow-[0_16px_36px_rgba(28,25,23,0.12)] backdrop-blur-sm transition",
+                        "absolute left-0 top-full z-30 mt-2 min-w-[18rem] max-w-[min(22rem,calc(100vw-2rem))] rounded-[18px] border border-stone-200/90 bg-white/96 p-3 text-left shadow-[0_16px_28px_rgba(28,25,23,0.10)] backdrop-blur-sm transition",
                         isOpen ? "pointer-events-auto opacity-100 translate-y-0" : "pointer-events-none opacity-0 -translate-y-1",
                     )}
                     onMouseEnter={() => options.onHoverPhrase(hoverKey)}
-                    onMouseLeave={() => options.onHoverPhrase(null)}
+                    onMouseLeave={() => options.onLeavePhrase(hoverKey)}
                 >
-                    <div className="text-[12px] font-semibold text-stone-800">{range.item.source}</div>
-                    <div className="mt-1 text-[12px] leading-5 text-stone-500">{range.item.translation}</div>
-                    <div className="mt-3 flex items-center justify-between gap-3">
+                    <div className="text-[12px] font-semibold leading-5 tracking-[0.01em] text-stone-800 break-words">{range.item.source}</div>
+                    <div className="mt-1 text-[11.5px] leading-5 text-stone-500 break-words">{range.item.translation}</div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                            type="button"
+                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 text-[11px] font-semibold text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900"
+                            onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                options.onInspectPhrase(range.item, event, sentence);
+                            }}
+                        >
+                            <Globe className="h-3.5 w-3.5 text-stone-400" />
+                            查看短语
+                        </button>
                         <button
                             type="button"
                             className={cn(
-                                "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold transition",
+                                "inline-flex h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold transition",
                                 saveState === "saved" || saveState === "exists"
                                     ? "border-emerald-200 bg-emerald-50 text-emerald-700"
                                     : saveState === "error"
@@ -541,8 +613,8 @@ function renderInlinePhraseText(
                             {saveState === "saving" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookPlus className="h-3.5 w-3.5" />}
                             {saveState === "saved" ? "已加入" : saveState === "exists" ? "已存在" : saveState === "error" ? "重试保存" : "加入生词本"}
                         </button>
-                        <span className="text-[10px] font-medium text-stone-400">点击短语看完整词卡</span>
                     </div>
+                    <div className="mt-2 text-[10px] leading-4 text-stone-400">单词点击仍走原文查询</div>
                 </div>
             </span>,
         );
@@ -558,7 +630,11 @@ function renderInlinePhraseText(
     }
 
     return (
-        <span data-translation-inline-phrases="true" className="font-serif text-[15px] leading-[1.95] text-stone-700/95">
+        <span
+            data-translation-inline-phrases="true"
+            className="leading-[1.95] text-stone-700/95"
+            style={{ font: "inherit", lineHeight: "inherit", color: "inherit" }}
+        >
             {nodes}
         </span>
     );
@@ -651,39 +727,26 @@ const ASK_ANSWER_MODE_OPTIONS: Array<{ mode: AskAnswerMode; label: string }> = [
     { mode: "detailed", label: "详细" },
 ];
 
+const ASK_REASONING_EFFORT_OPTIONS: Array<{ effort: AskReasoningEffort; label: string }> = [
+    { effort: "low", label: "低" },
+    { effort: "medium", label: "中" },
+    { effort: "high", label: "高" },
+];
+
 const SPEAKING_SEEK_STEP_MS = 3000;
 
-const normalizeAskThreadMessages = (raw: unknown): AskThreadMessage[] => {
-    const source = Array.isArray(raw)
-        ? raw
-        : (raw && typeof raw === "object" && Array.isArray((raw as { messages?: unknown[] }).messages)
-            ? (raw as { messages: unknown[] }).messages
-            : []);
-    return source
-        .map((item) => {
-            if (!item || typeof item !== "object") return null;
-            const role = (item as { role?: unknown }).role;
-            const content = (item as { content?: unknown }).content;
-            const reasoningContent = (item as { reasoningContent?: unknown }).reasoningContent;
-            const createdAt = (item as { createdAt?: unknown }).createdAt;
-            if ((role !== "user" && role !== "assistant") || typeof content !== "string") {
-                return null;
-            }
-            const explicitIsError = (item as { isError?: unknown }).isError === true;
-            const inferredIsError = role === "assistant" && isLikelyTransientAskFailure(content);
-            const isError = explicitIsError || inferredIsError;
-            return {
-                role,
-                content,
-                createdAt: Number.isFinite(createdAt) ? Number(createdAt) : Date.now(),
-                ...(typeof reasoningContent === "string" && reasoningContent.trim()
-                    ? { reasoningContent: reasoningContent.trim() }
-                    : {}),
-                ...(isError ? { isError: true } : {}),
-            } as AskThreadMessage;
-        })
-        .filter((item): item is AskThreadMessage => Boolean(item));
-};
+function askContextMatchesOffsets(
+    context: AskContextAttachment | undefined | null,
+    paragraphOrder: number,
+    offsets: { startOffset: number; endOffset: number },
+) {
+    if (!context) return false;
+    return context.paragraphRanges.some((range) => (
+        range.paragraphOrder === paragraphOrder
+        && range.startOffset === offsets.startOffset
+        && range.endOffset === offsets.endOffset
+    ));
+}
 
 const normalizeHighlightColor = (rawColor: string | undefined) => {
     if (!rawColor) return LEGACY_HIGHLIGHT_COLOR_MAP.mint;
@@ -746,6 +809,9 @@ export function ParagraphCard({
     onSnapshotDirty,
     onWordClick,
     onOpenWordPopupFromSelection,
+    askContextAttachment,
+    hasActiveAskDock = false,
+    onOpenAskWithContext,
     onSplit,
     onMerge,
     onUpdate,
@@ -763,7 +829,66 @@ export function ParagraphCard({
 }: ParagraphCardProps) {
     const router = useRouter();
     const sessionUser = useAuthSessionUser();
-    const { fontSizeClass, isBionicMode, phraseDisplayMode } = useReadingSettings();
+    const {
+        fontClass,
+        fontSizeClass,
+        translationFontClass,
+        translationFontSizeClass,
+        translationColorClass,
+        isBionicMode,
+        phraseDisplayMode,
+    } = useReadingSettings();
+    const translationSentenceTextStyle = useMemo<React.CSSProperties>(() => {
+        const fontSizeMap: Record<string, string> = {
+            "text-base": "1rem",
+            "text-lg": "1.125rem",
+            "text-xl": "1.25rem",
+            "text-2xl": "1.5rem",
+        };
+        const familyMap: Record<string, string> = {
+            "font-serif": 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+            "font-sans": 'ui-sans-serif, system-ui, sans-serif',
+            "font-mono": 'ui-monospace, SFMono-Regular, monospace',
+            "font-merriweather": 'var(--font-merriweather), serif',
+            "font-lora": 'var(--font-lora), serif',
+            "font-inter": 'var(--font-inter), sans-serif',
+            "font-libre-baskerville": 'var(--font-libre-baskerville), serif',
+            "font-source-serif": 'var(--font-source-serif), serif',
+            "font-work-sans": 'var(--font-work-sans), sans-serif',
+            "font-roboto-mono": 'var(--font-roboto-mono), monospace',
+            "font-comic": 'var(--font-comic), cursive',
+            "font-[Arial,sans-serif]": 'Arial, sans-serif',
+            "font-[Helvetica,sans-serif]": 'Helvetica, sans-serif',
+            "font-[Georgia,serif]": 'Georgia, serif',
+            "font-[Verdana,sans-serif]": 'Verdana, sans-serif',
+            "font-[Tahoma,sans-serif]": 'Tahoma, sans-serif',
+            "font-[Trebuchet_MS,sans-serif]": '"Trebuchet MS", sans-serif',
+            "font-[Times_New_Roman,serif]": '"Times New Roman", serif',
+            "font-[Palatino,serif]": 'Palatino, serif',
+            "font-[Garamond,serif]": 'Garamond, serif',
+            "font-[Bookman_Old_Style,serif]": '"Bookman Old Style", serif',
+            "font-[Impact,sans-serif]": 'Impact, sans-serif',
+            "font-[Lucida_Sans_Unicode,sans-serif]": '"Lucida Sans Unicode", sans-serif',
+            "font-[Courier_New,monospace]": '"Courier New", monospace',
+            "font-[Consolas,monospace]": 'Consolas, monospace',
+            "font-[Optima,sans-serif]": 'Optima, sans-serif',
+            "font-[Didot,serif]": 'Didot, serif',
+            "font-[Copperplate,sans-serif]": 'Copperplate, sans-serif',
+            "font-[Papyrus,fantasy]": 'Papyrus, fantasy',
+            "font-[Century_Gothic,sans-serif]": '"Century Gothic", sans-serif',
+            "font-[Candara,sans-serif]": 'Candara, sans-serif',
+        };
+
+        return {
+            fontSize: fontSizeMap[fontSizeClass] ?? "1.25rem",
+            lineHeight: 1.65,
+            fontFamily: familyMap[fontClass],
+        };
+    }, [fontClass, fontSizeClass]);
+    const translationTextClassName = useMemo(
+        () => cn(translationFontClass, translationFontSizeClass, translationColorClass),
+        [translationColorClass, translationFontClass, translationFontSizeClass],
+    );
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
     const grammarExecutionSignature = useMemo(() => buildReadingGrammarExecutionSignature(profile), [profile]);
     const {
@@ -780,6 +905,7 @@ export function ParagraphCard({
     const [activeListenSentenceIndex, setActiveListenSentenceIndex] = useState(0);
 
     const [isTranslating, setIsTranslating] = useState(false);
+    const [translationError, setTranslationError] = useState<string | null>(null);
     const [isAnalyzingGrammar, setIsAnalyzingGrammar] = useState(false);
     const [sentenceGrammarUi, setSentenceGrammarUi] = useState<Record<string, SentenceGrammarUiState>>({});
     // Load from DB on mount
@@ -801,39 +927,6 @@ export function ParagraphCard({
     const sentenceTranslationItemLookup = useMemo(() => {
         return buildSentenceTranslationItemLookup(sentenceTranslationItems);
     }, [sentenceTranslationItems]);
-    const paragraphAskCacheKey = useMemo(() => {
-        const normalizedUrl = typeof articleUrl === "string" ? articleUrl.trim() : "";
-        const normalizedTitle = typeof articleTitle === "string" ? articleTitle.trim().toLowerCase() : "";
-        const articleKey = normalizedUrl || `title:${normalizedTitle || "untitled"}`;
-        return `ask:${articleKey}:p${paragraphOrder || index}`;
-    }, [articleTitle, articleUrl, index, paragraphOrder]);
-
-    // Ask AI State - Multi-turn chat with streaming
-    const [isAskOpen, setIsAskOpen] = useState(false);
-    const [question, setQuestion] = useState("");
-    const [askAnswerMode, setAskAnswerMode] = useState<AskAnswerMode>("detailed");
-    const [messages, setMessages] = useState<AskThreadMessage[]>([]);
-    const [isAskLoading, setIsAskLoading] = useState(false);
-    const [streamingContent, setStreamingContent] = useState("");
-    const [streamingReasoningContent, setStreamingReasoningContent] = useState("");
-    const qaPairs = useMemo(
-        () => buildAskQaPairs(messages, streamingContent, isAskLoading, streamingReasoningContent),
-        [isAskLoading, messages, streamingContent, streamingReasoningContent],
-    );
-    const [expandedAskQaIds, setExpandedAskQaIds] = useState<number[]>(() => 
-        qaPairs.length > 0 ? [qaPairs[qaPairs.length - 1].id] : []
-    );
-    const previousAskQaCountRef = useRef(qaPairs.length);
-    useEffect(() => {
-        if (qaPairs.length > previousAskQaCountRef.current) {
-            const newIds = qaPairs.slice(previousAskQaCountRef.current).map((p) => p.id);
-            if (newIds.length > 0) {
-                setExpandedAskQaIds(newIds);
-            }
-        }
-        previousAskQaCountRef.current = qaPairs.length;
-    }, [qaPairs]);
-
     // Rewrite Practice State
     const [isRewriteModeOpen, setIsRewriteModeOpen] = useState(false);
     const [rewritePrompt, setRewritePrompt] = useState<RewritePracticePrompt | null>(null);
@@ -866,7 +959,18 @@ export function ParagraphCard({
     const [selectionAskStreamingReasoningContent, setSelectionAskStreamingReasoningContent] = useState("");
     const [isSelectionAskLoading, setIsSelectionAskLoading] = useState(false);
     const [selectionAskAutoOpenToken, setSelectionAskAutoOpenToken] = useState(0);
+    const [selectionAskContextAttachment, setSelectionAskContextAttachment] = useState<AskContextAttachment | null>(null);
+    const [isSelectionAskContextCleared, setIsSelectionAskContextCleared] = useState(false);
     const [selectionPopupMode, setSelectionPopupMode] = useState<SelectionPopupMode>("selection");
+    // Ask AI State - selection, sentence, and paragraph entries all use the dock composer.
+    const [askAnswerMode, setAskAnswerMode] = useState<AskAnswerMode>("detailed");
+    const [askThinkingMode, setAskThinkingMode] = useState<AskThinkingMode>(() => (
+        profile?.ai_provider === "mimo" && profile.learning_preferences?.ai_provider_params?.mimo?.thinking_mode === "on" ? "on" : "off"
+    ));
+    const [askReasoningEffort, setAskReasoningEffort] = useState<AskReasoningEffort>(() => (
+        profile?.ai_provider === "mimo" ? (profile.learning_preferences?.ai_provider_params?.mimo?.reasoning_effort ?? "medium") : "medium"
+    ));
+    const lastAppliedExternalAskContextIdRef = useRef<string | null>(null);
     const [pinnedAsk, setPinnedAsk] = useState<PinnedAskSnapshot | null>(null);
     const [phraseAnalysis, setPhraseAnalysis] = useState<PhraseAnalysisResult | null>(null);
     const [isAnalyzingPhrase, setIsAnalyzingPhrase] = useState(false);
@@ -904,6 +1008,7 @@ export function ParagraphCard({
     const sentenceProgressLastUiTsRef = useRef(0);
     const wordLayoutCacheRef = useRef<Map<string, WordLayoutToken[]>>(new Map());
     const askReplayOpenTimeoutRef = useRef<number | null>(null);
+    const phraseHoverCloseTimerRef = useRef<number | null>(null);
 
     usePretextMeasuredLayout(pRef, {
         text,
@@ -917,8 +1022,44 @@ export function ParagraphCard({
             if (askReplayOpenTimeoutRef.current !== null) {
                 window.clearTimeout(askReplayOpenTimeoutRef.current);
             }
+            if (phraseHoverCloseTimerRef.current !== null) {
+                window.clearTimeout(phraseHoverCloseTimerRef.current);
+            }
         };
     }, []);
+
+    useEffect(() => {
+        if (!askContextAttachment) return;
+        const isOwnContext = askContextAttachment.paragraphRanges.some((range) => range.paragraphOrder === paragraphOrder);
+        if (!isOwnContext && !hasActiveAskDock) return;
+        if (lastAppliedExternalAskContextIdRef.current === askContextAttachment.id) return;
+        lastAppliedExternalAskContextIdRef.current = askContextAttachment.id;
+        const ownRange = askContextAttachment.paragraphRanges.find((range) => range.paragraphOrder === paragraphOrder);
+        const rect = pRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 1, 1);
+
+        setSelectedText(askContextAttachment.text);
+        setSelectionOffsets(ownRange
+            ? { startOffset: ownRange.startOffset, endOffset: ownRange.endOffset }
+            : { startOffset: 0, endOffset: text.length });
+        setSelectionRect(rect);
+        setSelectionPopupMode("ask");
+        setSelectionAskContextAttachment(askContextAttachment);
+        setIsSelectionAskContextCleared(false);
+        setPhraseAnalysis(null);
+        setIsNoteComposerOpen(false);
+        setNoteDraft("");
+        setSelectionAskQuestion("");
+        setSelectionAskStreamingContent("");
+        setSelectionAskStreamingReasoningContent("");
+        setSelectionAskMessages((current) => {
+            const shouldKeepCurrentThread = (
+                selectionPopupMode === "ask" || selectionPopupMode === "ask-replay"
+            ) && current.length > 0;
+            return shouldKeepCurrentThread ? current : [];
+        });
+        setIsSelectionAskLoading(false);
+        setSelectionAskAutoOpenToken(Date.now());
+    }, [askContextAttachment, hasActiveAskDock, paragraphOrder, selectionPopupMode, text.length]);
 
     const {
         play: togglePlay,
@@ -1285,6 +1426,25 @@ export function ParagraphCard({
         return true;
     }, []);
 
+    const isSentencePlaybackActive = useCallback((sentenceIndex: number) => (
+        playMode === "sentence" && sentenceIndex === activeListenSentenceIndex
+    ), [activeListenSentenceIndex, playMode]);
+
+    const handleSentencePlaybackTrigger = useCallback((sentenceIndex: number) => {
+        if (!sentenceUnits[sentenceIndex]) return;
+
+        if (!isSpeakingOpen) {
+            setIsSpeakingOpen(true);
+        }
+
+        setActiveListenSentenceIndex(sentenceIndex);
+        if (playMode !== "sentence") {
+            setPlayMode("sentence");
+            stop();
+        }
+        void playSentence(sentenceIndex);
+    }, [isSpeakingOpen, playMode, playSentence, sentenceUnits, stop]);
+
     const handlePlay = () => {
         if (playMode === "sentence") {
             if (sentenceUnits.length === 0) return;
@@ -1297,6 +1457,7 @@ export function ParagraphCard({
 
     // Keep "听全部" behavior stable even when sentence layout mode is enabled.
     const handlePlayOriginalFull = useCallback(() => {
+        setPlayMode("full");
         stopSentencePlayback();
 
         if (isPlaying) {
@@ -1666,6 +1827,38 @@ export function ParagraphCard({
         );
     }, []);
 
+    const renderSentencePlaybackContent = useCallback((
+        sentenceUnit: { text: string },
+        sentenceIndex: number,
+        fallbackContent: React.ReactNode,
+    ) => {
+        const showSentenceKtv = isSentencePlaybackActive(sentenceIndex) && isPlaybackSessionActive;
+        if (!showSentenceKtv) return fallbackContent;
+
+        if (activeSentenceMarks.length > 0) {
+            return renderWordLevelKtv({
+                sourceText: sentenceUnit.text,
+                marks: activeSentenceMarks,
+                tokenToMark: activeSentenceTokenToMark,
+                currentMs: playbackTimeMs,
+                isSeekEnabled: isPlaybackSessionActive,
+                onWordSeek: handleSentenceWordSeek,
+            });
+        }
+
+        return renderCharacterFallback(sentenceUnit.text, playbackTimeMs, playbackDurationMs);
+    }, [
+        activeSentenceMarks,
+        activeSentenceTokenToMark,
+        handleSentenceWordSeek,
+        isPlaybackSessionActive,
+        isSentencePlaybackActive,
+        playbackDurationMs,
+        playbackTimeMs,
+        renderCharacterFallback,
+        renderWordLevelKtv,
+    ]);
+
     const renderSegmentedSentenceList = useCallback(() => {
         if (sentenceUnits.length === 0) return <span>{text}</span>;
 
@@ -1674,8 +1867,7 @@ export function ParagraphCard({
                 <div className="text-[11px] text-stone-400">提示：点击左侧编号可播放该句</div>
                 <ul className="space-y-1.5">
                 {sentenceUnits.map((unit, unitIndex) => {
-                    const isSentenceActive = playMode === "sentence" && unitIndex === activeListenSentenceIndex;
-                    const showSentenceKtv = isSentenceActive && isPlaybackSessionActive;
+                    const isSentenceActive = isSentencePlaybackActive(unitIndex);
 
                     return (
                         <li
@@ -1697,8 +1889,7 @@ export function ParagraphCard({
                                 onClick={(event) => {
                                     event.preventDefault();
                                     event.stopPropagation();
-                                    setActiveListenSentenceIndex(unitIndex);
-                                    void playSentence(unitIndex);
+                                    handleSentencePlaybackTrigger(unitIndex);
                                 }}
                                 className={cn(
                                     "mt-[4px] shrink-0 inline-flex h-6 w-6 items-center justify-center rounded-full border text-[12px] font-semibold leading-none transition-all",
@@ -1715,23 +1906,12 @@ export function ParagraphCard({
                                 data-speaking-segment-content="true"
                                 className={cn("min-w-0 flex-1", playMode === "sentence" && "cursor-pointer")}
                             >
-                                {showSentenceKtv ? (
-                                    activeSentenceMarks.length > 0 ? (
-                                        renderWordLevelKtv({
-                                            sourceText: unit.text,
-                                            marks: activeSentenceMarks,
-                                            tokenToMark: activeSentenceTokenToMark,
-                                            currentMs: playbackTimeMs,
-                                            isSeekEnabled: isPlaybackSessionActive,
-                                            onWordSeek: handleSentenceWordSeek,
-                                        })
-                                    ) : (
-                                        renderCharacterFallback(unit.text, playbackTimeMs, playbackDurationMs)
-                                    )
-                                ) : (
+                                {renderSentencePlaybackContent(
+                                    unit,
+                                    unitIndex,
                                     <span className={cn(isSentenceActive ? "text-stone-900" : "text-stone-700")}>
                                         {unit.text}
-                                    </span>
+                                    </span>,
                                 )}
                             </div>
                         </li>
@@ -1744,14 +1924,11 @@ export function ParagraphCard({
         activeListenSentenceIndex,
         activeSentenceMarks,
         activeSentenceTokenToMark,
-        handleSentenceWordSeek,
-        playSentence,
-        playbackDurationMs,
+        handleSentencePlaybackTrigger,
         isPlaybackSessionActive,
-        playbackTimeMs,
+        isSentencePlaybackActive,
         playMode,
-        renderCharacterFallback,
-        renderWordLevelKtv,
+        renderSentencePlaybackContent,
         sentenceUnits,
         text,
     ]);
@@ -2094,68 +2271,108 @@ export function ParagraphCard({
                             phraseDisplayMode,
                             hoveredPhraseKey,
                             hoveredPhraseSaveState,
-                            onHoverPhrase: setHoveredPhraseKey,
+                            onHoverPhrase: openPhraseHoverCard,
+                            onLeavePhrase: schedulePhraseHoverClose,
                             onSavePhrase: handleSavePhraseToVocab,
-                            onClickPhrase: handlePhraseTranslationClick,
+                            onInspectPhrase: handlePhraseTranslationClick,
                         })
                         : null;
 
                     return (
                         <li
                             key={`grammar-sentence-${entry.cacheKey}`}
-                            className="grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3"
+                            data-speaking-segment="true"
+                            data-speaking-segment-index={entry.unitIndex}
+                            data-segment-start={entry.unit.start}
+                            className={cn(
+                                "grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3 rounded-lg px-1.5 py-1 transition-colors",
+                                isSentencePlaybackActive(entry.unitIndex)
+                                    ? "bg-amber-50/70"
+                                    : "hover:bg-stone-50/70",
+                            )}
+                            onClick={() => {
+                                if (playMode !== "sentence") return;
+                                setActiveListenSentenceIndex(entry.unitIndex);
+                            }}
                         >
-                            <button
-                                type="button"
-                                aria-label={`第 ${index + 1} 句`}
-                                onClick={() => {
-                                    if (entry.loading) return;
-                                    if (!entry.hasUsableAnalysis) {
-                                        queueGrammarSentence(entry.unitIndex);
-                                        return;
-                                    }
-                                    setSentenceGrammarUi((prev) => ({
-                                        ...prev,
-                                        [entry.cacheKey]: {
-                                            cacheKey: entry.cacheKey,
-                                            sentence: entry.sentence,
-                                            analysis: prev[entry.cacheKey]?.analysis ?? entry.analysis ?? null,
-                                            error: prev[entry.cacheKey]?.error ?? null,
-                                            loading: prev[entry.cacheKey]?.loading ?? false,
-                                            expanded: !prev[entry.cacheKey]?.expanded,
-                                        },
-                                    }));
-                                }}
-                                className={cn(
-                                    "mt-[2px] inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold transition-colors",
-                                    entry.loading
-                                        ? "border-teal-200 bg-teal-50 text-teal-600"
-                                        : entry.hasUsableAnalysis
-                                            ? "border-amber-200 bg-amber-50 text-amber-700"
-                                            : "border-theme-border/30 bg-theme-surface text-theme-text-muted hover:border-teal-300 hover:text-teal-700",
-                                )}
-                                title={entry.hasUsableAnalysis ? "展开或收起该句解析" : "点击分析该句"}
-                            >
-                                {entry.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (index + 1)}
-                            </button>
+                            <div className="flex flex-col items-center gap-1">
+                                <button
+                                    type="button"
+                                    aria-label={`第 ${index + 1} 句`}
+                                    onClick={() => {
+                                        if (entry.loading) return;
+                                        if (!entry.hasUsableAnalysis) {
+                                            queueGrammarSentence(entry.unitIndex);
+                                            return;
+                                        }
+                                        setSentenceGrammarUi((prev) => ({
+                                            ...prev,
+                                            [entry.cacheKey]: {
+                                                cacheKey: entry.cacheKey,
+                                                sentence: entry.sentence,
+                                                analysis: prev[entry.cacheKey]?.analysis ?? entry.analysis ?? null,
+                                                error: prev[entry.cacheKey]?.error ?? null,
+                                                loading: prev[entry.cacheKey]?.loading ?? false,
+                                                expanded: !prev[entry.cacheKey]?.expanded,
+                                            },
+                                        }));
+                                    }}
+                                    className={cn(
+                                        "mt-[2px] inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold transition-colors",
+                                        entry.loading
+                                            ? "border-teal-200 bg-teal-50 text-teal-600"
+                                            : entry.hasUsableAnalysis
+                                                ? "border-amber-200 bg-amber-50 text-amber-700"
+                                                : "border-theme-border/30 bg-theme-surface text-theme-text-muted hover:border-teal-300 hover:text-teal-700",
+                                    )}
+                                    title={entry.hasUsableAnalysis ? "展开或收起该句解析" : "点击分析该句"}
+                                >
+                                    {entry.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (index + 1)}
+                                </button>
+                                {showTranslation ? (
+                                    <button
+                                        type="button"
+                                        aria-label={`把第 ${index + 1} 句植入 Ask AI 上下文`}
+                                        title="植入上下文"
+                                        onClick={() => handleInjectSentenceAskContext(entry.unitIndex)}
+                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-indigo-100 bg-white text-indigo-400 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+                                    >
+                                        <MessageCircleQuestion className="h-3 w-3" />
+                                    </button>
+                                ) : null}
+                            </div>
 
                             <div className="min-w-0">
                                 <div className="flex items-start gap-2">
-                                <div className="min-w-0 flex-1 text-left text-stone-800 leading-[1.6]">
-                                        {entry.hasUsableAnalysis && entry.expanded ? (
-                                            <InlineGrammarHighlights
-                                                text={analysisSentence.sentence}
-                                                sentences={[{
-                                                    sentence: analysisSentence.sentence,
-                                                    translation: resolvedAnalysisTranslation,
-                                                    highlights: analysisSentence.highlights,
-                                                }]}
-                                                ragAppliedWords={ragAppliedWords}
-                                                displayMode={grammarDisplayMode}
-                                                showSegmentTranslation
-                                            />
-                                        ) : (
-                                            inlinePhraseSentenceNode ?? entry.unit.text
+                                <div
+                                    data-translation-sentence-body="true"
+                                    data-speaking-segment-content="true"
+                                    className={cn(
+                                        "min-w-0 flex-1 text-left text-stone-800 leading-[1.6]",
+                                        fontClass,
+                                        fontSizeClass,
+                                        playMode === "sentence" && "cursor-pointer",
+                                    )}
+                                    style={translationSentenceTextStyle}
+                                >
+                                        {renderSentencePlaybackContent(
+                                            entry.unit,
+                                            entry.unitIndex,
+                                            entry.hasUsableAnalysis && entry.expanded ? (
+                                                <InlineGrammarHighlights
+                                                    text={analysisSentence.sentence}
+                                                    sentences={[{
+                                                        sentence: analysisSentence.sentence,
+                                                        translation: resolvedAnalysisTranslation,
+                                                        highlights: analysisSentence.highlights,
+                                                    }]}
+                                                    ragAppliedWords={ragAppliedWords}
+                                                    displayMode={grammarDisplayMode}
+                                                    showSegmentTranslation
+                                                />
+                                            ) : (
+                                                inlinePhraseSentenceNode ?? entry.unit.text
+                                            ),
                                         )}
                                         {showTranslation && !shouldHidePlainTranslation && unitTranslation
                                             ? renderTranslationAside(
@@ -2164,20 +2381,52 @@ export function ParagraphCard({
                                                 phraseDisplayMode === "capsule"
                                                     ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
                                                     : undefined,
+                                                undefined,
+                                                translationTextClassName,
                                             )
                                             : null}
                                     </div>
-                                    {entry.hasUsableAnalysis ? (
+                                    <div className="mt-0.5 flex shrink-0 items-center gap-1">
                                         <button
                                             type="button"
-                                            aria-label={`重新生成第 ${index + 1} 句解析`}
-                                            title="重新生成这一句的解析"
-                                            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-400 transition-colors hover:border-amber-300 hover:text-amber-600"
-                                            onClick={() => queueGrammarSentence(entry.unitIndex, { forceRegenerate: true })}
+                                            aria-label={`播放第 ${index + 1} 句`}
+                                            title={`播放第 ${index + 1} 句`}
+                                            className={cn(
+                                                "inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white transition-colors",
+                                                isSentencePlaybackActive(entry.unitIndex)
+                                                    ? "border-amber-300 text-amber-600"
+                                                    : "border-stone-200 text-stone-400 hover:border-amber-300 hover:text-amber-600",
+                                            )}
+                                            onClick={(event) => {
+                                                event.preventDefault();
+                                                event.stopPropagation();
+                                                handleSentencePlaybackTrigger(entry.unitIndex);
+                                            }}
                                         >
-                                            <RefreshCw className="h-3.5 w-3.5" />
+                                            {isSentenceAudioLoading && isSentencePlaybackActive(entry.unitIndex) ? (
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            ) : isSentencePlaying && isSentencePlaybackActive(entry.unitIndex) ? (
+                                                <Pause className="h-3.5 w-3.5 fill-current" />
+                                            ) : (
+                                                <Play className="h-3.5 w-3.5 fill-current" />
+                                            )}
                                         </button>
-                                    ) : null}
+                                        {entry.hasUsableAnalysis ? (
+                                            <button
+                                                type="button"
+                                                aria-label={`重新生成第 ${index + 1} 句解析`}
+                                                title="重新生成这一句的解析"
+                                                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-400 transition-colors hover:border-amber-300 hover:text-amber-600"
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    queueGrammarSentence(entry.unitIndex, { forceRegenerate: true });
+                                                }}
+                                            >
+                                                <RefreshCw className="h-3.5 w-3.5" />
+                                            </button>
+                                        ) : null}
+                                    </div>
                                 </div>
                                 {entry.error ? (
                                     <div className="mt-1 flex items-center gap-2 text-xs text-rose-600">
@@ -2193,7 +2442,10 @@ export function ParagraphCard({
                                     </div>
                                 ) : null}
                                 {!entry.error && entry.hasUsableAnalysis && resolvedAnalysisTranslation && entry.expanded
-                                    ? renderSentenceTranslationLine(resolvedAnalysisTranslation)
+                                    ? renderSentenceTranslationLine(
+                                        resolvedAnalysisTranslation,
+                                        translationTextClassName,
+                                    )
                                     : null}
                             </div>
                         </li>
@@ -2337,42 +2589,6 @@ export function ParagraphCard({
             : {}),
     });
 
-    const persistParagraphAskThread = useCallback(async (nextMessages: AskThreadMessage[]) => {
-        if (!paragraphAskCacheKey) return;
-        const existing = await db.ai_cache.where("[key+type]").equals([paragraphAskCacheKey, "ask_ai"]).first();
-        await db.ai_cache.put({
-            id: existing?.id,
-            key: paragraphAskCacheKey,
-            type: "ask_ai",
-            data: {
-                messages: nextMessages,
-                paragraphOrder,
-                updatedAt: Date.now(),
-            },
-            timestamp: Date.now(),
-        });
-        onSnapshotDirty?.();
-    }, [onSnapshotDirty, paragraphAskCacheKey, paragraphOrder]);
-
-    useEffect(() => {
-        let cancelled = false;
-        void (async () => {
-            try {
-                const cached = await db.ai_cache.where("[key+type]").equals([paragraphAskCacheKey, "ask_ai"]).first();
-                if (cancelled || !cached) return;
-                const hydratedMessages = normalizeAskThreadMessages(cached.data);
-                if (hydratedMessages.length > 0) {
-                    setMessages(hydratedMessages);
-                }
-            } catch (error) {
-                console.error("Failed to hydrate paragraph Ask cache:", error);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [paragraphAskCacheKey]);
-
     const normalizedReadingNotes = useMemo(() => (
         readingNotes
             .filter((note) => Number.isFinite(note.start_offset) && Number.isFinite(note.end_offset) && note.end_offset > note.start_offset)
@@ -2390,6 +2606,73 @@ export function ParagraphCard({
         [isSelectionAskLoading, selectionAskMessages, selectionAskStreamingContent, selectionAskStreamingReasoningContent],
     );
 
+    const buildAskContextAttachment = useCallback((
+        kind: AskContextAttachment["kind"],
+        targetText: string,
+        offsets: { startOffset: number; endOffset: number },
+    ): AskContextAttachment => {
+        const trimmed = targetText.trim().replace(/\s+/g, " ");
+        const excerpt = trimmed.length > 180 ? `${trimmed.slice(0, 180)}...` : trimmed;
+        const label = kind === "paragraph"
+            ? "整段上下文"
+            : kind === "sentence"
+                ? "句子上下文"
+                : "选中文本";
+        return {
+            id: `ask-context:p${paragraphOrder}:${offsets.startOffset}-${offsets.endOffset}`,
+            kind,
+            label,
+            rangeLabel: `第 ${paragraphOrder} 段`,
+            text: trimmed,
+            excerpt,
+            paragraphRanges: [{
+                paragraphOrder,
+                paragraphBlockIndex: index,
+                startOffset: offsets.startOffset,
+                endOffset: offsets.endOffset,
+                text: trimmed,
+                paragraphText: text,
+            }],
+        };
+    }, [index, paragraphOrder, text]);
+
+    const injectAskContextAttachment = useCallback((attachment: AskContextAttachment, options?: {
+        rect?: DOMRect | null;
+        openLocalDock?: boolean;
+    }) => {
+        const resolvedAttachment = onOpenAskWithContext?.(attachment) ?? attachment;
+        if (!resolvedAttachment) return null;
+
+        const ownRange = resolvedAttachment.paragraphRanges.find((range) => range.paragraphOrder === paragraphOrder);
+        const targetOffsets = ownRange
+            ? { startOffset: ownRange.startOffset, endOffset: ownRange.endOffset }
+            : { startOffset: 0, endOffset: text.length };
+        const targetText = resolvedAttachment.kind === "paragraph"
+            ? text
+            : ownRange?.text ?? resolvedAttachment.text;
+
+        setSelectedText(targetText);
+        setSelectionOffsets(targetOffsets);
+        setSelectionAskContextAttachment(resolvedAttachment);
+        setIsSelectionAskContextCleared(false);
+        setPhraseAnalysis(null);
+        setIsNoteComposerOpen(false);
+        setNoteDraft("");
+        setSelectionAskQuestion("");
+        setSelectionAskStreamingContent("");
+        setSelectionAskStreamingReasoningContent("");
+        setIsSelectionAskLoading(false);
+        setReadingCoinHint(null);
+
+        if (options?.openLocalDock) {
+            setSelectionRect(options.rect ?? pRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 1, 1));
+            setSelectionPopupMode("ask");
+            setSelectionAskAutoOpenToken(Date.now());
+        }
+
+        return resolvedAttachment;
+    }, [onOpenAskWithContext, paragraphOrder, text]);
+
     const findAskNoteByOffsets = useCallback((startOffset: number, endOffset: number) => (
         normalizedReadingNotes.find((note) =>
             note.mark_type === "ask"
@@ -2402,6 +2685,7 @@ export function ParagraphCard({
         nextMessages: AskThreadMessage[],
         offsets?: { startOffset: number; endOffset: number } | null,
         explicitSelectedText?: string | null,
+        explicitContextAttachment?: AskContextAttachment | null,
     ) => {
         if (!onCreateReadingNote) return;
         const targetOffsets = offsets ?? selectionOffsets;
@@ -2409,12 +2693,29 @@ export function ParagraphCard({
 
         const sourceText = (explicitSelectedText ?? selectedText ?? "").trim();
         if (!sourceText) return;
+        const contextAttachment = explicitContextAttachment
+            ?? (!isSelectionAskContextCleared ? selectionAskContextAttachment : null)
+            ?? (!isSelectionAskContextCleared ? buildAskContextAttachment("selection", sourceText, targetOffsets) : null);
+        const encodedPayload = encodeAskThreadPayload(nextMessages, undefined, contextAttachment ?? undefined);
+
+        if (contextAttachment?.kind === "cross_paragraph" && contextAttachment.paragraphRanges.length > 1) {
+            await Promise.all(contextAttachment.paragraphRanges.map((range) => onCreateReadingNote({
+                paragraphOrder: range.paragraphOrder,
+                paragraphBlockIndex: range.paragraphBlockIndex,
+                selectedText: range.text,
+                noteText: encodedPayload,
+                markType: "ask",
+                startOffset: range.startOffset,
+                endOffset: range.endOffset,
+            })));
+            return;
+        }
 
         await onCreateReadingNote({
             paragraphOrder,
             paragraphBlockIndex: index,
             selectedText: sourceText,
-            noteText: encodeAskThreadPayload(nextMessages),
+            noteText: encodedPayload,
             markType: "ask",
             startOffset: targetOffsets.startOffset,
             endOffset: targetOffsets.endOffset,
@@ -2425,6 +2726,9 @@ export function ParagraphCard({
         paragraphOrder,
         selectedText,
         selectionOffsets,
+        selectionAskContextAttachment,
+        isSelectionAskContextCleared,
+        buildAskContextAttachment,
     ]);
 
     const openAskThreadFromNote = useCallback((note: ReadingNoteItem, anchorRect?: DOMRect) => {
@@ -2436,6 +2740,11 @@ export function ParagraphCard({
             endOffset: note.end_offset,
         });
         setSelectionPopupMode("ask-replay");
+        setSelectionAskContextAttachment(thread.contextAttachment ?? buildAskContextAttachment("selection", note.selected_text || text.slice(note.start_offset, note.end_offset), {
+            startOffset: note.start_offset,
+            endOffset: note.end_offset,
+        }));
+        setIsSelectionAskContextCleared(false);
         setPhraseAnalysis(null);
         setIsNoteComposerOpen(false);
         setNoteDraft("");
@@ -2444,7 +2753,7 @@ export function ParagraphCard({
         setSelectionAskMessages(thread.messages);
         setSelectionAskAutoOpenToken((prev) => prev + 1);
         setHoveredReadingNote(null);
-    }, [text]);
+    }, [buildAskContextAttachment, text]);
 
     const triggerAskReplayFromMarker = useCallback((note: ReadingNoteItem, anchorRect: DOMRect) => {
         if (askReplayOpenTimeoutRef.current !== null) {
@@ -2624,6 +2933,13 @@ export function ParagraphCard({
         const selection = window.getSelection();
         const isSelectionAskDockOpen = Boolean(selectionRect)
             && (selectionPopupMode === "ask" || selectionPopupMode === "ask-replay");
+        const activeAskAttachment = !isSelectionAskContextCleared
+            ? selectionAskContextAttachment
+            : null;
+        const hasVisibleAskThread = selectionAskMessages.length > 0
+            || Boolean(selectionAskStreamingContent)
+            || Boolean(selectionAskStreamingReasoningContent)
+            || Boolean(activeAskAttachment);
 
         // If no selection or collapsed
         if (!selection || selection.isCollapsed) {
@@ -2647,11 +2963,14 @@ export function ParagraphCard({
         const offsets = getSelectionOffsets(range);
         if (!offsets) return;
         const rect = range.getBoundingClientRect();
+        const nextAttachment = buildAskContextAttachment("selection", selectedStr, offsets);
 
         // Pin the currently open AskAI panel (if any) so it stays visible
         // while the user works with the new selection.
         if (
             isSelectionAskDockOpen
+            && !hasActiveAskDock
+            && hasVisibleAskThread
             && selectionRect
             && selectedText
             && selectionOffsets
@@ -2685,7 +3004,9 @@ export function ParagraphCard({
         setNoteDraft(overlapNote?.note_text || "");
         setSelectionAskQuestion("");
         setSelectionAskStreamingContent("");
-        setSelectionAskMessages(existingAskThread.messages);
+        setSelectionAskMessages(existingAskThread?.messages ?? []);
+        setSelectionAskContextAttachment(existingAskThread?.contextAttachment ?? nextAttachment);
+        setIsSelectionAskContextCleared(false);
         setSelectionAskAutoOpenToken(0);
 
         // DO NOT modify DOM for multi-select to avoid breaking native selection behavior
@@ -2779,8 +3100,27 @@ export function ParagraphCard({
             sourceLabel: "来自 Read",
             sourceSentence: sentenceContext?.trim() || text,
             sourceNote: articleTitle || "",
+            initialDefinition: buildPhraseInitialDefinition(item),
         });
     }, [articleTitle, articleUrl, onOpenWordPopupFromSelection, text]);
+
+    const openPhraseHoverCard = useCallback((hoverKey: string) => {
+        if (phraseHoverCloseTimerRef.current !== null) {
+            window.clearTimeout(phraseHoverCloseTimerRef.current);
+            phraseHoverCloseTimerRef.current = null;
+        }
+        setHoveredPhraseKey(hoverKey);
+    }, []);
+
+    const schedulePhraseHoverClose = useCallback((hoverKey: string) => {
+        if (phraseHoverCloseTimerRef.current !== null) {
+            window.clearTimeout(phraseHoverCloseTimerRef.current);
+        }
+        phraseHoverCloseTimerRef.current = window.setTimeout(() => {
+            setHoveredPhraseKey((current) => (current === hoverKey ? null : current));
+            phraseHoverCloseTimerRef.current = null;
+        }, 140);
+    }, []);
 
     const closePhraseAnalysis = () => {
         setSelectionRect(null);
@@ -2792,6 +3132,8 @@ export function ParagraphCard({
         setSelectionAskStreamingContent("");
         setIsSelectionAskLoading(false);
         setSelectionAskAutoOpenToken(0);
+        setSelectionAskContextAttachment(null);
+        setIsSelectionAskContextCleared(false);
         setPhraseAnalysis(null);
         setIsNoteComposerOpen(false);
         setNoteDraft("");
@@ -2985,6 +3327,7 @@ export function ParagraphCard({
 
         setShowTranslation(true);
         setIsTranslating(true);
+        setTranslationError(null);
         setReadingCoinHint(null);
         try {
             if (!forceRegenerate && hasAvailableStructuredTranslations && !translation) {
@@ -3024,6 +3367,9 @@ export function ParagraphCard({
                 setShowTranslation(false);
                 return;
             }
+            if (!res.ok) {
+                throw new Error(typeof data?.error === "string" ? data.error : "翻译生成失败，请稍后重试。");
+            }
             await syncReadingBalance(data, "translate");
             const payload = data as TranslateApiResponse;
             const nextSentenceTranslations = normalizeSentenceTranslationItems(payload.sentenceTranslations);
@@ -3049,14 +3395,25 @@ export function ParagraphCard({
                     };
                 })
                 .filter((item): item is NonNullable<typeof item> => Boolean(item));
+
+            const fullTranslation = typeof payload.translation === "string" ? payload.translation.trim() : "";
+            const displaySentenceTranslations = sentenceUnits.length > 0 && mergedSentenceTranslations.length === 0 && fullTranslation
+                ? buildFallbackSentenceTranslations(sentenceUnits, fullTranslation)
+                : mergedSentenceTranslations;
+
+            if (sentenceUnits.length > 0 && displaySentenceTranslations.length === 0) {
+                setTranslationError("翻译暂时没有返回内容，请重试。");
+                setShowTranslation(true);
+                return;
+            }
             await setStoreTranslation(text, {
-                translation: typeof payload.translation === "string" && payload.translation.trim()
-                    ? payload.translation
-                    : mergedSentenceTranslations.map((item) => item.translation).join(""),
-                sentenceTranslations: mergedSentenceTranslations,
+                translation: fullTranslation || displaySentenceTranslations.map((item) => item.translation).join(""),
+                sentenceTranslations: displaySentenceTranslations,
             });
         } catch (err) {
             console.error(err);
+            setTranslationError(err instanceof Error ? err.message : "翻译生成失败，请稍后重试。");
+            setShowTranslation(true);
         } finally {
             setIsTranslating(false);
         }
@@ -3272,6 +3629,26 @@ export function ParagraphCard({
     const shouldRenderGrammarLayer = !highlightSnippet && (
         showGrammar || (showTranslation && sentenceUnits.length > 0)
     );
+    const renderTranslationError = () => (
+        translationError ? (
+            <div
+                data-translation-error="true"
+                className="my-2 rounded-[14px] border border-rose-200/80 bg-rose-50/80 px-3 py-2.5 text-sm leading-6 text-rose-700"
+            >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span>{translationError}</span>
+                    <button
+                        type="button"
+                        onClick={() => void handleTranslate(true)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white/85 px-2.5 py-1 text-[11px] font-bold text-rose-600 transition-colors hover:bg-white hover:text-rose-700"
+                    >
+                        <RefreshCw className="h-3 w-3" />
+                        重试翻译
+                    </button>
+                </div>
+            </div>
+        ) : null
+    );
     const recallAskVocabulary = useCallback(async (questionText: string, selectionText: string) => {
         try {
             const result = await queryAskRelevantVocabulary({
@@ -3286,155 +3663,24 @@ export function ParagraphCard({
         }
     }, [text]);
 
-    const handleAskAI = async (overrideQuestion?: string, overrideBaseMessages?: AskThreadMessage[]) => {
-        const userMessage = (overrideQuestion ?? question).trim();
-        if (!userMessage) return;
-
-        const baseMessages = overrideBaseMessages ?? messages;
-        const optimisticMessages: AskThreadMessage[] = [
-            ...baseMessages,
-            { role: "user", content: userMessage, createdAt: Date.now() },
-        ];
-        setMessages(optimisticMessages);
-        setQuestion(""); // Clear input immediately
-        setIsAskLoading(true);
-        setStreamingContent("");
-        setStreamingReasoningContent("");
-        setReadingCoinHint(null);
-
-        try {
-            await persistParagraphAskThread(optimisticMessages);
-        } catch (persistError) {
-            console.error("Failed to persist paragraph ask user message:", persistError);
-        }
-
-        try {
-            const selectionText = selectedText ?? "";
-            const retrievedVocab = await recallAskVocabulary(userMessage, selectionText);
-            const res = await fetch("/api/ai/ask", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    text,
-                    question: userMessage,
-                    messages: optimisticMessages.map(m => ({ role: m.role, content: m.content })),
-                    selection: selectionText,
-                    retrievedVocab,
-                    answerMode: askAnswerMode,
-                    economyContext: readEconomyContext("ask_ai"),
-                }),
-            });
-
-            if (!res.ok) {
-                const payload = await res.json().catch(() => ({}));
-                if (payload?.errorCode === INSUFFICIENT_READING_COINS) {
-                    setReadingCoinHint("当前暂时无法 Ask AI，请稍后重试。");
-                    const insufficientMessages: AskThreadMessage[] = [
-                        ...optimisticMessages,
-                        { role: "assistant", content: "当前暂时无法回答这个问题，请稍后重试。", createdAt: Date.now() },
-                    ];
-                    setMessages(insufficientMessages);
-                    await persistParagraphAskThread(insufficientMessages);
-                    return;
-                }
-                const failureContent = resolveAskFailureMessage(payload);
-                const failureMessages: AskThreadMessage[] = [
-                    ...optimisticMessages,
-                    { role: "assistant", content: failureContent, createdAt: Date.now(), isError: true },
-                ];
-                if (isAskRateLimitPayload(payload)) {
-                    console.warn("Ask AI temporarily rate limited:", payload);
-                }
-                setMessages(failureMessages);
-                await persistParagraphAskThread(failureMessages);
-                return;
-            }
-
-            const readingBalanceHeader = res.headers.get("x-reading-coins-balance");
-            const readingDeltaHeader = Number(res.headers.get("x-reading-coins-delta") ?? 0);
-            const readingAppliedHeader = res.headers.get("x-reading-coins-applied") === "1";
-            if (readingBalanceHeader) {
-                const balanceValue = Number(readingBalanceHeader);
-                if (Number.isFinite(balanceValue) && readingAppliedHeader && readingDeltaHeader !== 0) {
-                    await applyServerProfilePatchToLocal({ reading_coins: balanceValue });
-                }
-            }
-            const readingActionHeader = res.headers.get("x-reading-coins-action");
-            if (readingAppliedHeader && Number.isFinite(readingDeltaHeader) && readingDeltaHeader !== 0 && readingActionHeader) {
-                dispatchReadingCoinFx({
-                    delta: readingDeltaHeader,
-                    action: readingActionHeader as ReadingEconomyAction,
-                });
-            }
-
-            const reader = res.body?.getReader();
-            let fullContent = "";
-            let fullReasoningContent = "";
-
-            if (reader) {
-                await readAskSseStream(reader, {
-                    onContent: (content) => {
-                        fullContent += content;
-                        setStreamingContent(fullContent);
-                    },
-                    onReasoningContent: (content) => {
-                        fullReasoningContent += content;
-                        setStreamingReasoningContent(fullReasoningContent);
-                    },
-                });
-            }
-
-            // Add completed message to history
-            const assistantMessageParts = resolveAskAssistantMessageParts(fullContent, fullReasoningContent);
-            const finalizedMessages: AskThreadMessage[] = [
-                ...optimisticMessages,
-                {
-                    role: "assistant",
-                    ...assistantMessageParts,
-                    createdAt: Date.now(),
-                },
-            ];
-            setMessages(finalizedMessages);
-            setStreamingContent("");
-            setStreamingReasoningContent("");
-            await persistParagraphAskThread(finalizedMessages);
-        } catch (err) {
-            console.error(err);
-            const failureMessages: AskThreadMessage[] = [
-                ...optimisticMessages,
-                { role: "assistant", content: "抱歉，出错了。请再试一次。", createdAt: Date.now(), isError: true },
-            ];
-            setMessages(failureMessages);
-            setStreamingContent("");
-            setStreamingReasoningContent("");
-            try {
-                await persistParagraphAskThread(failureMessages);
-            } catch (persistError) {
-                console.error("Failed to persist paragraph ask failure message:", persistError);
-            }
-        } finally {
-            setIsAskLoading(false);
-        }
-    };
-
     const handleSegmentNumberClick = (index: number) => {
         const targetUnit = sentenceUnits[index];
         if (!targetUnit || !pRef.current) return;
-        
+
         const layoutSegments = pRef.current.querySelectorAll('[data-reading-layout-segment="true"]');
         const targetSegment = layoutSegments[index];
         if (!targetSegment) return;
         const contentNode = targetSegment.querySelector('[data-segment-content="true"]');
         if (!contentNode) return;
-        
+
         const range = document.createRange();
         range.selectNodeContents(contentNode);
         window.getSelection()?.removeAllRanges();
-        
+
         const rect = range.getBoundingClientRect();
         const textStr = targetUnit.text.trim();
         const offsets = { startOffset: targetUnit.start, endOffset: targetUnit.end };
-        
+
         setSelectedText(textStr);
         setSelectionOffsets(offsets);
         setSelectionRect(rect);
@@ -3442,6 +3688,8 @@ export function ParagraphCard({
         const existingAskNote = findAskNoteByOffsets(offsets.startOffset, offsets.endOffset);
         const existingAskThread = decodeAskThreadPayload(existingAskNote?.note_text);
         const existingMessages = existingAskThread?.messages ?? [];
+        const contextAttachment = existingAskThread?.contextAttachment ?? buildAskContextAttachment("sentence", textStr, offsets);
+        const resolvedContextAttachment = onOpenAskWithContext?.(contextAttachment) ?? contextAttachment;
 
         setSelectionPopupMode("ask");
         setPhraseAnalysis(null);
@@ -3449,6 +3697,8 @@ export function ParagraphCard({
         setSelectionAskStreamingContent("");
         setSelectionAskStreamingReasoningContent("");
         setSelectionAskMessages(existingMessages);
+        setSelectionAskContextAttachment(resolvedContextAttachment);
+        setIsSelectionAskContextCleared(false);
         setIsSelectionAskLoading(false);
         setReadingCoinHint(null);
         setSelectionAskAutoOpenToken(Date.now());
@@ -3461,6 +3711,25 @@ export function ParagraphCard({
         void handleSelectionAskAI(autoQuestion, textStr, offsets, existingMessages);
     };
 
+    const handleInjectSentenceAskContext = useCallback((index: number) => {
+        const targetUnit = sentenceUnits[index];
+        if (!targetUnit) return;
+        const layoutSegments = pRef.current?.querySelectorAll('[data-reading-layout-segment="true"]');
+        const targetSegment = layoutSegments?.[index] as HTMLElement | undefined;
+        const rect = targetSegment?.getBoundingClientRect() ?? pRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 1, 1);
+        const textStr = targetUnit.text.trim();
+        const offsets = { startOffset: targetUnit.start, endOffset: targetUnit.end };
+        const attachment = buildAskContextAttachment("sentence", textStr, offsets);
+        const resolvedAttachment = injectAskContextAttachment(attachment, {
+            rect,
+            openLocalDock: !hasActiveAskDock,
+        });
+        if (resolvedAttachment && hasActiveAskDock) {
+            setSelectionRect(null);
+            setSelectionPopupMode("selection");
+        }
+    }, [buildAskContextAttachment, hasActiveAskDock, injectAskContextAttachment, sentenceUnits]);
+
     const handleSelectionAskAI = async (
         overrideMessage?: string,
         overrideText?: string,
@@ -3470,12 +3739,18 @@ export function ParagraphCard({
         const userMessage = (overrideMessage !== undefined ? overrideMessage : selectionAskQuestion).trim();
         if (!userMessage) return;
 
-        const targetText = overrideText ?? selectedText;
-        const targetOffsets = overrideOffsets ?? selectionOffsets;
+        const contextClearedForThisAsk = isSelectionAskContextCleared && !overrideText && !overrideOffsets;
+        const targetText = contextClearedForThisAsk ? text : (overrideText ?? selectedText);
+        const targetOffsets = contextClearedForThisAsk
+            ? { startOffset: 0, endOffset: text.length }
+            : (overrideOffsets ?? selectionOffsets);
         const baseMessages = overrideMessages ?? selectionAskMessages;
+        const targetAttachment = contextClearedForThisAsk
+            ? null
+            : (selectionAskContextAttachment
+                ?? (targetText && targetOffsets ? buildAskContextAttachment("selection", targetText, targetOffsets) : null));
 
         if (!targetText || !targetOffsets) {
-            await handleAskAI(userMessage);
             return;
         }
 
@@ -3492,7 +3767,7 @@ export function ParagraphCard({
         setReadingCoinHint(null);
 
         try {
-            await persistAskThreadForSelection(optimisticMessages, targetOffsets, targetText);
+            await persistAskThreadForSelection(optimisticMessages, targetOffsets, targetText, targetAttachment);
         } catch (error) {
             console.error("Failed to persist ask user message:", error);
         }
@@ -3503,13 +3778,19 @@ export function ParagraphCard({
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    text,
+                    text: targetAttachment
+                        ? targetAttachment.paragraphRanges
+                            .map((range) => `第 ${range.paragraphOrder} 段：${range.paragraphText || range.text}`)
+                            .join("\n\n")
+                        : text,
                     question: userMessage,
                     messages: optimisticMessages.map(m => ({ role: m.role, content: m.content })),
-                    selection: targetText,
+                    selection: targetAttachment ? targetText : "",
                     retrievedVocab,
                     answerMode: askAnswerMode,
-                    economyContext: readEconomyContext("ask_ai", targetText.slice(0, 42).toLowerCase()),
+                    askThinkingMode,
+                    askReasoningEffort,
+                    economyContext: readEconomyContext("ask_ai", (targetAttachment ? targetText : userMessage).slice(0, 42).toLowerCase()),
                 }),
             });
 
@@ -3524,7 +3805,7 @@ export function ParagraphCard({
                     const insufficientMessages = [...optimisticMessages, insufficientMessage];
                     setReadingCoinHint("当前暂时无法 Ask AI，请稍后重试。");
                     setSelectionAskMessages(insufficientMessages);
-                    await persistAskThreadForSelection(insufficientMessages, targetOffsets, targetText);
+                    await persistAskThreadForSelection(insufficientMessages, targetOffsets, targetText, targetAttachment);
                     return;
                 }
                 const failureContent = resolveAskFailureMessage(payload);
@@ -3536,7 +3817,7 @@ export function ParagraphCard({
                     console.warn("Ask AI temporarily rate limited:", payload);
                 }
                 setSelectionAskMessages(failureMessages);
-                await persistAskThreadForSelection(failureMessages, targetOffsets, targetText);
+                await persistAskThreadForSelection(failureMessages, targetOffsets, targetText, targetAttachment);
                 return;
             }
 
@@ -3587,7 +3868,7 @@ export function ParagraphCard({
             setSelectionAskMessages(finalizedMessages);
             setSelectionAskStreamingContent("");
             setSelectionAskStreamingReasoningContent("");
-            await persistAskThreadForSelection(finalizedMessages, targetOffsets, targetText);
+            await persistAskThreadForSelection(finalizedMessages, targetOffsets, targetText, targetAttachment);
         } catch (error) {
             console.error(error);
             const failureMessages: AskThreadMessage[] = [
@@ -3598,7 +3879,7 @@ export function ParagraphCard({
             setSelectionAskStreamingContent("");
             setSelectionAskStreamingReasoningContent("");
             try {
-                await persistAskThreadForSelection(failureMessages, targetOffsets, targetText);
+                await persistAskThreadForSelection(failureMessages, targetOffsets, targetText, targetAttachment);
             } catch (persistError) {
                 console.error("Failed to persist ask failure message:", persistError);
             }
@@ -3614,15 +3895,6 @@ export function ParagraphCard({
         return -1;
     };
 
-    const handleRetryAskAI = async () => {
-        if (isAskLoading) return;
-        const lastUserIdx = findLastUserIndex(messages);
-        if (lastUserIdx < 0) return;
-        const lastUserMessage = messages[lastUserIdx].content;
-        const trimmed = messages.slice(0, lastUserIdx);
-        await handleAskAI(lastUserMessage, trimmed);
-    };
-
     const handleRetrySelectionAskAI = async () => {
         if (isSelectionAskLoading) return;
         const lastUserIdx = findLastUserIndex(selectionAskMessages);
@@ -3636,6 +3908,51 @@ export function ParagraphCard({
             trimmed,
         );
     };
+
+    const openParagraphAskDock = useCallback(() => {
+        const rect = pRef.current?.getBoundingClientRect() ?? new DOMRect(0, 0, 1, 1);
+        const offsets = { startOffset: 0, endOffset: text.length };
+        const existingAskNote = findAskNoteByOffsets(offsets.startOffset, offsets.endOffset);
+        const existingAskThread = decodeAskThreadPayload(existingAskNote?.note_text);
+        const matchingExistingThread = askContextMatchesOffsets(existingAskThread?.contextAttachment, paragraphOrder, offsets)
+            ? existingAskThread
+            : null;
+        const requestedAttachment = matchingExistingThread?.contextAttachment ?? buildAskContextAttachment("paragraph", text, offsets);
+        const resolvedAttachment = injectAskContextAttachment(requestedAttachment, {
+            rect,
+            openLocalDock: !(hasActiveAskDock && !askContextAttachment),
+        }) ?? requestedAttachment;
+        if (hasActiveAskDock && !askContextAttachment) {
+            setSelectionRect(null);
+            setSelectionPopupMode("selection");
+            return;
+        }
+        const ownRange = resolvedAttachment.paragraphRanges.find((range) => range.paragraphOrder === paragraphOrder);
+        const selectedContextText = resolvedAttachment.kind === "paragraph" ? text : resolvedAttachment.text;
+        const selectedContextOffsets = ownRange
+            ? { startOffset: ownRange.startOffset, endOffset: ownRange.endOffset }
+            : offsets;
+        const resolvedMessages = askContextMatchesOffsets(matchingExistingThread?.contextAttachment, paragraphOrder, selectedContextOffsets)
+            ? matchingExistingThread?.messages ?? []
+            : [];
+
+        setSelectedText(selectedContextText);
+        setSelectionOffsets(selectedContextOffsets);
+        setSelectionRect(rect);
+        setSelectionPopupMode("ask");
+        setPhraseAnalysis(null);
+        setIsNoteComposerOpen(false);
+        setNoteDraft("");
+        setSelectionAskQuestion("");
+        setSelectionAskStreamingContent("");
+        setSelectionAskStreamingReasoningContent("");
+        setSelectionAskMessages(resolvedMessages);
+        setSelectionAskContextAttachment(resolvedAttachment);
+        setIsSelectionAskContextCleared(false);
+        setIsSelectionAskLoading(false);
+        setReadingCoinHint(null);
+        setSelectionAskAutoOpenToken(Date.now());
+    }, [askContextAttachment, buildAskContextAttachment, findAskNoteByOffsets, hasActiveAskDock, injectAskContextAttachment, paragraphOrder, text]);
 
     // isSplitting ref to prevent race condition between onKeyDown (split) and onBlur (update)
     const isSplitting = useRef(false);
@@ -3935,6 +4252,7 @@ export function ParagraphCard({
                         <AnimatePresence mode="wait">
                             {shouldRenderGrammarLayer ? (
                                 <motion.div key="grammar-layer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                                    {renderTranslationError()}
                                     {renderGrammarLayoutList()}
                                 </motion.div>
                             ) : (
@@ -4074,14 +4392,20 @@ export function ParagraphCard({
 
                     <button
                         data-tour-target={index === 0 ? "paragraph-ask" : undefined}
-                        onClick={() => setIsAskOpen(!isAskOpen)}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={openParagraphAskDock}
+                        title={hasActiveAskDock && !askContextAttachment ? "把本段上下文植入右侧 Ask AI" : "打开 Ask AI"}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
-                            isAskOpen ? "text-sky-500" : "text-stone-400/80 hover:text-stone-600"
+                            selectionPopupMode === "ask" && selectionAskContextAttachment?.kind === "paragraph"
+                                ? "text-sky-500"
+                                : hasActiveAskDock && !askContextAttachment
+                                    ? "text-sky-500/80 hover:text-sky-600"
+                                    : "text-stone-400/80 hover:text-stone-600"
                         )}
                     >
                         <MessageCircleQuestion className="w-3.5 h-3.5" />
-                        Ask AI
+                        {hasActiveAskDock && !askContextAttachment ? "植入上下文" : "Ask AI"}
                     </button>
 
                     <button
@@ -4132,7 +4456,7 @@ export function ParagraphCard({
                             data-paragraph-translation-block="true"
                             className="relative group/trans pt-1"
                         >
-                            {renderTranslationAside(translation)}
+                            {renderTranslationAside(translation, [], undefined, undefined, translationTextClassName)}
                             <button
                                 onClick={() => handleTranslate(true)}
                                 className="absolute right-0 top-0 rounded-full bg-white/85 p-1.5 text-stone-400 opacity-0 shadow-sm transition-all hover:bg-white hover:text-stone-700 group-hover/trans:opacity-100"
@@ -4189,167 +4513,6 @@ export function ParagraphCard({
                                                 完整分析
                                             </button>
                                         </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                <AnimatePresence>
-                    {isAskOpen && (
-                        <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.2, ease: "easeOut" }}
-                            className="mt-3 overflow-hidden origin-top"
-                        >
-                            <div className="overflow-hidden rounded-2xl border border-stone-200/70 bg-white text-stone-800 shadow-[0_8px_32px_rgba(15,23,42,0.12)] ring-1 ring-stone-200/60">
-                                <div className="flex items-center justify-between border-b border-stone-200/70 bg-stone-50/80 px-4 py-2.5">
-                                    <div className="flex items-center gap-2 text-stone-800">
-                                        <Sparkles className="h-3.5 w-3.5 text-indigo-500" />
-                                        <span className="text-xs font-bold tracking-wide">Yasi AI</span>
-                                    </div>
-                                </div>
-
-                                <div className="max-h-80 min-h-[160px] overflow-y-auto space-y-4 p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-stone-300">
-                                    {qaPairs.length === 0 ? (
-                                        <div className="flex h-full flex-col items-center justify-center space-y-2 py-6 text-center text-stone-500">
-                                            <div className="rounded-full border border-stone-200 bg-stone-50 p-2.5">
-                                                <MessageCircleQuestion className="h-5 w-5 text-stone-400" />
-                                            </div>
-                                            <p className="text-[12px]">向 AI 自由提问当前段落内容<br/>支持 Markdown 高级排版输出</p>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            {qaPairs.map((pair, index) => {
-                                                const isExpanded = expandedAskQaIds.includes(pair.id);
-                                                return (
-                                                <div key={pair.id} className="mb-4 overflow-hidden rounded-2xl border border-stone-200/70 bg-white shadow-[0_2px_8px_rgba(15,23,42,0.06)] ring-1 ring-stone-200/40">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setExpandedAskQaIds((prev) =>
-                                                                prev.includes(pair.id)
-                                                                    ? prev.filter((id) => id !== pair.id)
-                                                                    : [...prev, pair.id]
-                                                            )
-                                                        }}
-                                                        className="flex w-full items-start justify-between gap-3 border-b border-stone-200/60 bg-stone-50/60 px-4 py-3.5 text-left transition-colors hover:bg-stone-100"
-                                                    >
-                                                        <div className="flex items-start gap-2">
-                                                            <div className="mt-0.5 shrink-0 rounded-full bg-indigo-500/10 p-1 text-indigo-500">
-                                                                <MessageCircleQuestion className="h-3.5 w-3.5" />
-                                                            </div>
-                                                            <div className={cn("text-[13px] font-bold leading-relaxed text-stone-800 transition-all", !isExpanded && "line-clamp-2 text-stone-500")}>
-                                                                {pair.question || `问题 ${index + 1}`}
-                                                            </div>
-                                                        </div>
-                                                        <div className="shrink-0 pt-0.5 text-[11px] font-bold text-indigo-400">
-                                                            {isExpanded ? "收起" : "展开"}
-                                                        </div>
-                                                    </button>
-                                                    {isExpanded ? (
-                                                        <div className="px-5 py-4 text-[13px] leading-relaxed text-stone-800">
-                                                            <AskReasoningBlock content={pair.reasoningContent} isStreaming={pair.isReasoningStreaming} />
-                                                            {pair.answer ? (
-                                                                <div className="yasi-markdown">
-                                                                    {renderAskMarkdown(pair.answer)}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="flex items-center gap-2 py-1 text-indigo-400">
-                                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                                    <span className="text-[13px] font-medium">Yasi AI 正在思考...</span>
-                                                                </div>
-                                                            )}
-                                                            {pair.isStreaming && (
-                                                                <span className="ml-1 inline-block h-3.5 w-1.5 animate-pulse bg-indigo-500 align-middle" />
-                                                            )}
-                                                            {pair.isError && !pair.isStreaming && index === qaPairs.length - 1 ? (
-                                                                <div className="mt-3 flex items-center gap-2">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => { void handleRetryAskAI(); }}
-                                                                        disabled={isAskLoading}
-                                                                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200/80 bg-rose-50 px-3 py-1.5 text-[12px] font-bold text-rose-600 transition-colors hover:bg-rose-100 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                                                                    >
-                                                                        <RefreshCw className={cn("h-3.5 w-3.5", isAskLoading && "animate-spin")} />
-                                                                        重试
-                                                                    </button>
-                                                                    <span className="text-[11px] text-rose-400/80">网络或服务短时波动，重试通常即可恢复。</span>
-                                                                </div>
-                                                            ) : null}
-                                                        </div>
-                                                    ) : null}
-                                                </div>
-                                            )})}
-                                        </>
-                                    )}
-                                </div>
-
-                                <div className="border-t border-stone-200/70 bg-white p-3">
-                                    <div className="mb-3 flex items-center justify-between gap-2">
-                                        <div className="flex flex-wrap gap-1.5">
-                                            <button
-                                                onClick={() => handleAskAI("帮我分析这段话的语法结构")}
-                                                disabled={isAskLoading}
-                                                className="rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50"
-                                            >
-                                                🔍 语法分析
-                                            </button>
-                                            <button
-                                                onClick={() => handleAskAI("用一句话总结这段话的大意")}
-                                                disabled={isAskLoading}
-                                                className="rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50"
-                                            >
-                                                📝 总结大意
-                                            </button>
-                                            <button
-                                                onClick={() => handleAskAI("列出这段话中的高级词汇并解释")}
-                                                disabled={isAskLoading}
-                                                className="rounded-lg border border-stone-200 bg-stone-50 px-2.5 py-1 text-[11px] font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900 disabled:opacity-50"
-                                            >
-                                                ✨ 难词解析
-                                            </button>
-                                        </div>
-
-                                        <div className="shrink-0 flex items-center rounded-lg border border-stone-200 bg-stone-50 p-0.5">
-                                            {ASK_ANSWER_MODE_OPTIONS.map((option) => (
-                                                <button
-                                                    key={`ask-mode-paragraph-${option.mode}`}
-                                                    type="button"
-                                                    onClick={() => setAskAnswerMode(option.mode)}
-                                                    disabled={isAskLoading}
-                                                    className={cn(
-                                                        "rounded-md px-2 py-0.5 text-[10px] font-bold transition-all",
-                                                        askAnswerMode === option.mode
-                                                            ? "bg-white text-indigo-600 shadow-sm border border-stone-200"
-                                                            : "text-stone-500 hover:text-stone-800",
-                                                    )}
-                                                >
-                                                    {option.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="text"
-                                            value={question}
-                                            onChange={(e) => setQuestion(e.target.value)}
-                                            onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleAskAI()}
-                                            placeholder={selectedText ? "针对选中文本提问..." : "输入你的问题，按回车发送..."}
-                                            className="w-full rounded-xl border border-stone-200 bg-stone-50 py-2.5 pl-3.5 pr-10 text-[13px] text-stone-900 placeholder:text-stone-400 transition-colors focus:border-indigo-400 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                                        />
-                                        <button
-                                            onClick={() => handleAskAI()}
-                                            disabled={isAskLoading || !question.trim()}
-                                            className="absolute right-1.5 top-1/2 flex -translate-y-1/2 h-7 w-7 items-center justify-center rounded-lg text-indigo-500 transition-all hover:bg-indigo-500/10 disabled:text-stone-300 disabled:hover:bg-transparent disabled:cursor-not-allowed"
-                                        >
-                                            {isAskLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4 -ml-0.5" />}
-                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -4567,7 +4730,9 @@ export function ParagraphCard({
             {/* Phrase Analysis Popup - Fixed Positioning - Liquid Glass Style */}
             {selectionRect && typeof document !== 'undefined' && createPortal(
                 <SelectionActionPopup
-                    key={`selection-popup:${selectionRect.left}:${selectionRect.top}:${selectionRect.width}:${selectionRect.height}:${selectedText ?? ""}:${selectionPopupMode}:${selectionAskAutoOpenToken}`}
+                    key={selectionPopupMode === "ask" || selectionPopupMode === "ask-replay"
+                        ? "selection-ask-dock"
+                        : `selection-popup:${selectionRect.left}:${selectionRect.top}:${selectionRect.width}:${selectionRect.height}:${selectedText ?? ""}:${selectionPopupMode}:${selectionAskAutoOpenToken}`}
                     selectionRect={selectionRect}
                     selectedText={selectedText}
                     popupMode={selectionPopupMode}
@@ -4600,12 +4765,35 @@ export function ParagraphCard({
                     qaPairs={selectionQaPairs}
                     question={selectionAskQuestion}
                     onQuestionChange={setSelectionAskQuestion}
+                    askContextAttachment={selectionAskContextAttachment}
                     askAnswerMode={askAnswerMode}
                     onAskAnswerModeChange={setAskAnswerMode}
+                    askThinkingMode={askThinkingMode}
+                    onAskThinkingModeChange={setAskThinkingMode}
+                    askReasoningEffort={askReasoningEffort}
+                    onAskReasoningEffortChange={setAskReasoningEffort}
                     isAskLoading={isSelectionAskLoading}
                     onAsk={() => void handleSelectionAskAI()}
                     onRetryAsk={() => { void handleRetrySelectionAskAI(); }}
-                    onOpenAskComposer={() => setSelectionPopupMode("ask")}
+                    onClearAskContext={() => {
+                        setSelectionAskContextAttachment(null);
+                        setIsSelectionAskContextCleared(true);
+                    }}
+                    onOpenAskComposer={() => {
+                        if (hasActiveAskDock && !askContextAttachment && selectionAskContextAttachment) {
+                            const resolvedAttachment = injectAskContextAttachment(selectionAskContextAttachment, {
+                                rect: selectionRect,
+                                openLocalDock: false,
+                            });
+                            if (resolvedAttachment) {
+                                setSelectionRect(null);
+                                setSelectionPopupMode("selection");
+                            }
+                            window.getSelection()?.removeAllRanges();
+                            return;
+                        }
+                        setSelectionPopupMode("ask");
+                    }}
                     onReturnToSelection={() => setSelectionPopupMode("selection")}
                     askPanelDefaultOpenToken={selectionAskAutoOpenToken}
                     renderAskMarkdown={renderAskMarkdown}
@@ -4651,8 +4839,13 @@ export function ParagraphCard({
                     )}
                     question=""
                     onQuestionChange={() => {}}
+                    askContextAttachment={null}
                     askAnswerMode={askAnswerMode}
                     onAskAnswerModeChange={setAskAnswerMode}
+                    askThinkingMode={askThinkingMode}
+                    onAskThinkingModeChange={setAskThinkingMode}
+                    askReasoningEffort={askReasoningEffort}
+                    onAskReasoningEffortChange={setAskReasoningEffort}
                     isAskLoading={false}
                     onAsk={() => {}}
                     onRetryAsk={() => {}}
@@ -4770,6 +4963,7 @@ interface SelectionActionPopupProps {
     selectionRect: DOMRect;
     selectedText: string | null;
     popupMode?: SelectionPopupMode;
+    askContextAttachment?: AskContextAttachment | null;
     phraseAnalysis: {
         translation?: string;
         grammar_point?: string;
@@ -4807,9 +5001,14 @@ interface SelectionActionPopupProps {
     onAsk: () => void;
     /** Re-runs the last ask attempt when the most recent assistant reply was a transient error. */
     onRetryAsk?: () => void;
+    onClearAskContext?: () => void;
     onOpenAskComposer: () => void;
     onReturnToSelection: () => void;
     askPanelDefaultOpenToken?: number;
+    askThinkingMode: AskThinkingMode;
+    onAskThinkingModeChange: (mode: AskThinkingMode) => void;
+    askReasoningEffort: AskReasoningEffort;
+    onAskReasoningEffortChange: (effort: AskReasoningEffort) => void;
     renderAskMarkdown: (content: string) => React.ReactNode;
     onClose: () => void;
 }
@@ -4818,6 +5017,7 @@ export function SelectionActionPopup({
     selectionRect,
     selectedText,
     popupMode = "selection",
+    askContextAttachment,
     phraseAnalysis,
     isAnalyzingPhrase,
     isSavingReadingNote,
@@ -4849,9 +5049,14 @@ export function SelectionActionPopup({
     isAskLoading,
     onAsk,
     onRetryAsk,
+    onClearAskContext,
     onOpenAskComposer,
     onReturnToSelection,
     askPanelDefaultOpenToken,
+    askThinkingMode,
+    onAskThinkingModeChange,
+    askReasoningEffort,
+    onAskReasoningEffortChange,
     renderAskMarkdown,
     onClose,
 }: SelectionActionPopupProps) {
@@ -4876,6 +5081,7 @@ export function SelectionActionPopup({
     } | null>(null);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
     const [measuredHeight, setMeasuredHeight] = useState(240);
+    const [isAskContextExpanded, setIsAskContextExpanded] = useState(false);
     const isAskReplayMode = popupMode === "ask-replay";
     const isAskDockMode = popupMode === "ask" || isAskReplayMode;
     const isAskComposerOpen = isAskDockMode || Boolean(askPanelDefaultOpenToken);
@@ -4915,6 +5121,10 @@ export function SelectionActionPopup({
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [isAskDockMode, onClose]);
+
+    useEffect(() => {
+        setIsAskContextExpanded(false);
+    }, [askContextAttachment?.id]);
 
     useLayoutEffect(() => {
         if (!ref.current) return;
@@ -5106,6 +5316,58 @@ export function SelectionActionPopup({
             : (isAskDockMode ? "flex-1 min-h-0" : "max-h-56"),
         qaPairs.length > 0 && !isAskReplayMode ? "py-2 space-y-3" : "py-0 space-y-3",
     );
+    const askContextText = askContextAttachment?.text || "";
+    const askContextPreview = askContextAttachment?.excerpt || askContextText;
+    const canExpandAskContext = askContextText.length > askContextPreview.length || askContextText.length > 180;
+    const renderAskContextCard = () => (
+        askContextAttachment ? (
+            <div
+                data-ask-context-card="true"
+                className="rounded-[16px] border border-indigo-200/70 bg-indigo-50/80 px-3 py-2.5 text-left shadow-sm"
+            >
+                <div className="mb-1 flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                            {askContextAttachment.label}
+                        </span>
+                        {askContextAttachment.rangeLabel ? (
+                            <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold text-indigo-500">
+                                {askContextAttachment.rangeLabel}
+                            </span>
+                        ) : null}
+                    </div>
+                    {!isAskReplayMode && onClearAskContext ? (
+                        <button
+                            type="button"
+                            data-ask-context-clear="true"
+                            aria-label="取消上下文附件"
+                            title="取消上下文附件"
+                            onClick={onClearAskContext}
+                            className="-mr-1 -mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-indigo-400 transition-colors hover:bg-white/80 hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/70"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    ) : null}
+                </div>
+                <p className={cn(
+                    "text-[12px] leading-5 text-indigo-950/75",
+                    !isAskContextExpanded && "line-clamp-3",
+                )}>
+                    {isAskContextExpanded ? askContextText : askContextPreview}
+                </p>
+                {canExpandAskContext ? (
+                    <button
+                        type="button"
+                        data-ask-context-toggle="true"
+                        onClick={() => setIsAskContextExpanded((current) => !current)}
+                        className="mt-1.5 text-[10px] font-black text-indigo-500 transition-colors hover:text-indigo-700"
+                    >
+                        {isAskContextExpanded ? "收起上下文" : "展开全文"}
+                    </button>
+                ) : null}
+            </div>
+        ) : null
+    );
 
     return (
         <div
@@ -5139,7 +5401,7 @@ export function SelectionActionPopup({
                             </motion.button>
                         ) : null}
                         <h3 className="line-clamp-2 text-[15px] font-bold leading-tight text-theme-text tracking-tight">
-                            {selectedText || "选中文本"}
+                            {selectedText || (isAskDockMode ? "Ask AI" : "选中文本")}
                         </h3>
                     </div>
                     <motion.button
@@ -5267,6 +5529,7 @@ export function SelectionActionPopup({
                         onPointerCancel={!isAskDockMode && isAskReplayMode ? handleDragEnd : undefined}
                     >
                         <div className={askBodyClassName}>
+                            {isAskReplayMode ? renderAskContextCard() : null}
                             {qaPairs.length > 0 && (
                                 <>
                                     {qaPairs.map((pair, index) => {
@@ -5359,8 +5622,49 @@ export function SelectionActionPopup({
                                         ))}
                                     </div>
                                 </div>
+                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-1">
+                                    <button
+                                        type="button"
+                                        data-ask-thinking-toggle="true"
+                                        onClick={() => onAskThinkingModeChange(askThinkingMode === "on" ? "off" : "on")}
+                                        disabled={isAskLoading}
+                                        className={cn(
+                                            "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black transition-colors",
+                                            askThinkingMode === "on"
+                                                ? "border-indigo-200 bg-indigo-50 text-indigo-600"
+                                                : "border-theme-border/20 bg-theme-surface text-theme-text-muted hover:bg-theme-active-bg",
+                                        )}
+                                    >
+                                        <Lightbulb className="h-3 w-3" />
+                                        深度思考 {askThinkingMode === "on" ? "开" : "关"}
+                                    </button>
+                                    <div className="inline-flex items-center gap-1 rounded-full border border-theme-border/10 bg-theme-surface p-0.5">
+                                        <span className="pl-2 text-[10px] font-bold text-theme-text-muted">推理</span>
+                                        {ASK_REASONING_EFFORT_OPTIONS.map((option) => (
+                                            <button
+                                                key={`ask-reasoning-${option.effort}`}
+                                                type="button"
+                                                data-ask-reasoning-effort={option.effort}
+                                                onClick={() => onAskReasoningEffortChange(option.effort)}
+                                                disabled={isAskLoading || askThinkingMode !== "on"}
+                                                className={cn(
+                                                    "rounded-full px-2 py-0.5 text-[10px] font-black transition-colors",
+                                                    askReasoningEffort === option.effort
+                                                        ? "bg-theme-active-hover text-theme-text shadow-sm"
+                                                        : "text-theme-text-muted hover:bg-theme-active-bg",
+                                                    askThinkingMode !== "on" && "opacity-45",
+                                                )}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
 
-                                <div className="flex items-center gap-2 rounded-full border border-theme-border/20 bg-theme-surface px-4 py-1.5 shadow-sm">
+                                <div
+                                    data-ask-composer-input-row="true"
+                                    className="flex items-center gap-2 rounded-full border border-theme-border/20 bg-theme-surface px-4 py-1.5 shadow-sm"
+                                >
                                     <input
                                         type="text"
                                         value={question}
@@ -5376,6 +5680,7 @@ export function SelectionActionPopup({
                                     />
                                     <motion.button
                                         type="button"
+                                        data-selection-ask-send="true"
                                         onClick={onAsk}
                                         disabled={isAskLoading || !question.trim()}
                                         whileTap={{ scale: 0.95 }}
@@ -5384,6 +5689,7 @@ export function SelectionActionPopup({
                                         {isAskLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                                     </motion.button>
                                 </div>
+                                {renderAskContextCard()}
                             </div>
                         )}
                     </div>

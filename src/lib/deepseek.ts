@@ -18,8 +18,13 @@ import {
     DEFAULT_GLM_THINKING_MODE,
     DEFAULT_GITHUB_MODEL,
     DEFAULT_MIMO_MODEL,
+    DEFAULT_MIMO_PROVIDER_PARAMS,
     DEFAULT_NVIDIA_MODEL,
+    normalizeAiProviderParams,
     normalizeAiProvider,
+    normalizeMimoProviderParams,
+    normalizeProfileMimoReasoningEffort,
+    normalizeProfileMimoThinkingMode,
     normalizeProfileDeepSeekModel,
     normalizeProfileDeepSeekReasoningEffort,
     normalizeProfileDeepSeekThinkingMode,
@@ -32,6 +37,8 @@ import {
     type DeepSeekReasoningEffort,
     type DeepSeekThinkingMode,
     type GlmThinkingMode,
+    type MimoProviderParamsPreference,
+    type MimoThinkingMode,
 } from "@/lib/profile-settings";
 import { buildGlmModelSummaries, glmModelSupportsThinking } from "@/lib/glm-model-catalog";
 import {
@@ -69,6 +76,13 @@ const GLM_THINKING_MODE_COOKIE_NAME = "yasi_glm_thinking_mode";
 const NVIDIA_MODEL_COOKIE_NAME = "yasi_nvidia_model";
 const GITHUB_MODEL_COOKIE_NAME = "yasi_github_model";
 const MIMO_MODEL_COOKIE_NAME = "yasi_mimo_model";
+const MIMO_THINKING_MODE_COOKIE_NAME = "yasi_mimo_thinking_mode";
+const MIMO_REASONING_EFFORT_COOKIE_NAME = "yasi_mimo_reasoning_effort";
+const MIMO_REASONING_MAX_COMPLETION_TOKENS: Record<MimoProviderParamsPreference["reasoning_effort"], number> = {
+    low: 2048,
+    medium: 4096,
+    high: 8192,
+};
 
 type CompletionRequestOptions = Parameters<OpenAI["chat"]["completions"]["create"]>[1];
 type CachedProfileEntry = {
@@ -81,6 +95,7 @@ type CachedProfileEntry = {
     nvidiaModel: string;
     githubModel: string;
     mimoModel: string;
+    mimoParams: MimoProviderParamsPreference;
     expiresAt: number;
 };
 type ProviderContext = {
@@ -91,6 +106,7 @@ type ProviderContext = {
     deepseekThinkingMode?: DeepSeekThinkingMode;
     deepseekReasoningEffort?: DeepSeekReasoningEffort;
     glmThinkingMode?: GlmThinkingMode;
+    mimoParams?: MimoProviderParamsPreference;
 };
 type ProviderConnectionPayload = {
     ai_provider: AiProvider;
@@ -107,6 +123,8 @@ type ProviderConnectionPayload = {
     github_model?: string;
     mimo_api_key?: string;
     mimo_model?: string;
+    mimo_thinking_mode?: string;
+    mimo_reasoning_effort?: string;
 };
 export type OpenAiCompatibleClient = {
     chat: {
@@ -292,7 +310,77 @@ function buildProviderSpecificBody(
         };
     }
 
+    if (context.provider === "mimo") {
+        const params = normalizeMimoProviderParams(context.mimoParams ?? DEFAULT_MIMO_PROVIDER_PARAMS);
+        nextBody.thinking = {
+            type: params.thinking_mode === "on" ? "enabled" : "disabled",
+        };
+        if (params.thinking_mode === "on") {
+            const budget = MIMO_REASONING_MAX_COMPLETION_TOKENS[params.reasoning_effort];
+            const requestedMaxTokens = typeof body.max_tokens === "number" ? body.max_tokens : 0;
+            nextBody.max_completion_tokens = Math.max(requestedMaxTokens, budget);
+            delete nextBody.max_tokens;
+        }
+    }
+
     return nextBody;
+}
+
+function withProviderThinkingDisabled(context: ProviderContext): ProviderContext {
+    if (context.provider === "deepseek") {
+        return {
+            ...context,
+            deepseekThinkingMode: "off",
+        };
+    }
+
+    if (context.provider === "glm") {
+        return {
+            ...context,
+            glmThinkingMode: "off",
+        };
+    }
+
+    if (context.provider === "mimo") {
+        const params = normalizeMimoProviderParams(context.mimoParams ?? DEFAULT_MIMO_PROVIDER_PARAMS);
+        return {
+            ...context,
+            mimoParams: normalizeMimoProviderParams({
+                ...params,
+                thinking_mode: "off",
+            }),
+        };
+    }
+
+    return context;
+}
+
+function buildExecutionFingerprint(context: ProviderContext, requestedModel: string) {
+    const model = resolveModel(context.provider, requestedModel, context.selectedModel);
+    const deepseekThinkingMode = context.provider === "deepseek"
+        ? normalizeProfileDeepSeekThinkingMode(context.deepseekThinkingMode)
+        : undefined;
+    const deepseekReasoningEffort = context.provider === "deepseek" && deepseekThinkingMode === "on"
+        ? normalizeProfileDeepSeekReasoningEffort(context.deepseekReasoningEffort)
+        : undefined;
+    const mimoParams = context.provider === "mimo"
+        ? normalizeMimoProviderParams(context.mimoParams)
+        : undefined;
+
+    return {
+        provider: context.provider,
+        providerLabel: getProviderLabel(context.provider),
+        model,
+        deepseekThinkingMode,
+        deepseekReasoningEffort,
+        cacheSignature: context.provider === "deepseek"
+            ? `${context.provider}:${model}:thinking=${deepseekThinkingMode}:reasoning=${deepseekReasoningEffort ?? "off"}`
+            : context.provider === "glm" && glmModelSupportsThinking(model)
+                ? `${context.provider}:${model}:thinking=${normalizeProfileGlmThinkingMode(context.glmThinkingMode)}`
+            : context.provider === "mimo"
+                ? `${context.provider}:${model}:thinking=${mimoParams?.thinking_mode ?? "off"}:reasoning=${mimoParams?.thinking_mode === "on" ? mimoParams.reasoning_effort : "off"}`
+            : `${context.provider}:${model}`,
+    };
 }
 
 function wait(ms: number) {
@@ -389,6 +477,7 @@ async function getProviderHintFromCookies(): Promise<{
     nvidiaModel?: string;
     githubModel?: string;
     mimoModel?: string;
+    mimoParams?: MimoProviderParamsPreference;
 } | null> {
     try {
         const cookieStore = await cookies();
@@ -405,6 +494,10 @@ async function getProviderHintFromCookies(): Promise<{
         const nvidiaModel = normalizeProfileNvidiaModel(cookieStore.get(NVIDIA_MODEL_COOKIE_NAME)?.value);
         const githubModel = normalizeGithubChatModelId(cookieStore.get(GITHUB_MODEL_COOKIE_NAME)?.value);
         const mimoModel = normalizeProfileMimoModel(cookieStore.get(MIMO_MODEL_COOKIE_NAME)?.value);
+        const mimoParams = normalizeMimoProviderParams({
+            thinking_mode: normalizeProfileMimoThinkingMode(cookieStore.get(MIMO_THINKING_MODE_COOKIE_NAME)?.value),
+            reasoning_effort: normalizeProfileMimoReasoningEffort(cookieStore.get(MIMO_REASONING_EFFORT_COOKIE_NAME)?.value),
+        });
 
         return {
             provider,
@@ -416,6 +509,7 @@ async function getProviderHintFromCookies(): Promise<{
             nvidiaModel: provider === "nvidia" ? nvidiaModel : undefined,
             githubModel: provider === "github" ? githubModel : undefined,
             mimoModel: provider === "mimo" ? mimoModel : undefined,
+            mimoParams: provider === "mimo" ? mimoParams : undefined,
         };
     } catch {
         return null;
@@ -432,6 +526,7 @@ async function getProviderContextForCurrentUser(overrides?: {
     nvidiaModel?: string;
     githubModel?: string;
     mimoModel?: string;
+    mimoParams?: MimoProviderParamsPreference;
 }): Promise<ProviderContext> {
     const providerHint = await getProviderHintFromCookies();
     let preferredProvider: AiProvider | null = overrides?.provider ?? providerHint?.provider ?? null;
@@ -443,6 +538,7 @@ async function getProviderContextForCurrentUser(overrides?: {
     let preferredNvidiaModel = normalizeProfileNvidiaModel(overrides?.nvidiaModel ?? providerHint?.nvidiaModel);
     let preferredGithubModel = normalizeGithubChatModelId(overrides?.githubModel ?? providerHint?.githubModel);
     let preferredMimoModel = normalizeProfileMimoModel(overrides?.mimoModel ?? providerHint?.mimoModel);
+    let preferredMimoParams = normalizeMimoProviderParams(overrides?.mimoParams ?? providerHint?.mimoParams);
 
     try {
         const supabase = await createServerClient();
@@ -452,7 +548,10 @@ async function getProviderContextForCurrentUser(overrides?: {
 
         if (user) {
             const cached = cachedProfiles.get(user.id);
-            if (cached && cached.expiresAt > Date.now()) {
+            // Cookie/override hints are request-local and update immediately after provider switches.
+            // Without them, read the remote profile so a cached DeepSeek profile cannot mask MiMo.
+            const canTrustCachedProfile = Boolean(providerHint || overrides?.provider);
+            if (canTrustCachedProfile && cached && cached.expiresAt > Date.now()) {
                 const provider = overrides?.provider ?? providerHint?.provider ?? cached.aiProvider;
                 preferredProvider = provider;
                 preferredDeepSeekModel = normalizeDeepSeekChatModelId(overrides?.deepseekModel ?? providerHint?.deepseekModel ?? cached.deepseekModel);
@@ -463,6 +562,7 @@ async function getProviderContextForCurrentUser(overrides?: {
                 preferredNvidiaModel = normalizeProfileNvidiaModel(overrides?.nvidiaModel ?? providerHint?.nvidiaModel ?? cached.nvidiaModel);
                 preferredGithubModel = normalizeGithubChatModelId(overrides?.githubModel ?? providerHint?.githubModel ?? cached.githubModel);
                 preferredMimoModel = normalizeProfileMimoModel(overrides?.mimoModel ?? providerHint?.mimoModel ?? cached.mimoModel);
+                preferredMimoParams = normalizeMimoProviderParams(overrides?.mimoParams ?? providerHint?.mimoParams ?? cached.mimoParams);
                 const resolvedApiKey = getFallbackApiKey(provider);
                 if (resolvedApiKey) {
                     return {
@@ -483,13 +583,14 @@ async function getProviderContextForCurrentUser(overrides?: {
                         deepseekThinkingMode: provider === "deepseek" ? preferredDeepSeekThinkingMode : undefined,
                         deepseekReasoningEffort: provider === "deepseek" ? preferredDeepSeekReasoningEffort : undefined,
                         glmThinkingMode: provider === "glm" ? preferredGlmThinkingMode : undefined,
+                        mimoParams: provider === "mimo" ? preferredMimoParams : undefined,
                     };
                 }
             }
 
             let { data, error } = await supabase
                 .from("profiles")
-                .select("ai_provider, deepseek_model, deepseek_thinking_mode, deepseek_reasoning_effort, nvidia_model, github_model, mimo_model")
+                .select("ai_provider, deepseek_model, deepseek_thinking_mode, deepseek_reasoning_effort, nvidia_model, github_model, mimo_model, learning_preferences")
                 .eq("user_id", user.id)
                 .maybeSingle();
 
@@ -523,6 +624,13 @@ async function getProviderContextForCurrentUser(overrides?: {
                 preferredGithubModel = normalizeGithubChatModelId(overrides?.githubModel ?? providerHint?.githubModel ?? githubModel);
                 const mimoModel = typeof data?.mimo_model === "string" && data.mimo_model.trim() ? data.mimo_model : undefined;
                 preferredMimoModel = normalizeProfileMimoModel(overrides?.mimoModel ?? providerHint?.mimoModel ?? mimoModel);
+                const rawLearningPreferences = data && typeof data === "object" && "learning_preferences" in data
+                    ? (data as { learning_preferences?: { ai_provider_params?: unknown } }).learning_preferences
+                    : undefined;
+                const learningPreferences = normalizeAiProviderParams(
+                    rawLearningPreferences?.ai_provider_params as Partial<ReturnType<typeof normalizeAiProviderParams>> | undefined,
+                );
+                preferredMimoParams = normalizeMimoProviderParams(overrides?.mimoParams ?? providerHint?.mimoParams ?? learningPreferences.mimo);
 
                 cachedProfiles.set(user.id, {
                     aiProvider: provider,
@@ -534,6 +642,7 @@ async function getProviderContextForCurrentUser(overrides?: {
                     nvidiaModel: preferredNvidiaModel,
                     githubModel: preferredGithubModel || DEFAULT_GITHUB_MODEL,
                     mimoModel: preferredMimoModel || DEFAULT_MIMO_MODEL,
+                    mimoParams: preferredMimoParams,
                     expiresAt: Date.now() + PROFILE_KEY_CACHE_TTL_MS,
                 });
 
@@ -557,6 +666,7 @@ async function getProviderContextForCurrentUser(overrides?: {
                         deepseekThinkingMode: provider === "deepseek" ? preferredDeepSeekThinkingMode : undefined,
                         deepseekReasoningEffort: provider === "deepseek" ? preferredDeepSeekReasoningEffort : undefined,
                         glmThinkingMode: provider === "glm" ? preferredGlmThinkingMode : undefined,
+                        mimoParams: provider === "mimo" ? preferredMimoParams : undefined,
                     };
                 }
             }
@@ -586,6 +696,7 @@ async function getProviderContextForCurrentUser(overrides?: {
                 deepseekThinkingMode: preferredProvider === "deepseek" ? normalizeProfileDeepSeekThinkingMode(preferredDeepSeekThinkingMode) : undefined,
                 deepseekReasoningEffort: preferredProvider === "deepseek" ? normalizeProfileDeepSeekReasoningEffort(preferredDeepSeekReasoningEffort) : undefined,
                 glmThinkingMode: preferredProvider === "glm" ? normalizeProfileGlmThinkingMode(preferredGlmThinkingMode) : undefined,
+                mimoParams: preferredProvider === "mimo" ? normalizeMimoProviderParams(preferredMimoParams) : undefined,
             };
         }
 
@@ -642,6 +753,7 @@ async function getProviderContextForCurrentUser(overrides?: {
             apiKey: mimoFallbackApiKey,
             baseURL: getBaseUrl("mimo"),
             selectedModel: DEFAULT_MIMO_MODEL,
+            mimoParams: DEFAULT_MIMO_PROVIDER_PARAMS,
         };
     }
 
@@ -678,6 +790,10 @@ function getProviderContextFromPayload(payload: ProviderConnectionPayload): Prov
     const nvidiaModel = normalizeProfileNvidiaModel(payload.nvidia_model);
     const githubModel = normalizeGithubChatModelId(payload.github_model);
     const mimoModel = normalizeProfileMimoModel(payload.mimo_model);
+    const mimoParams = normalizeMimoProviderParams({
+        thinking_mode: normalizeProfileMimoThinkingMode(payload.mimo_thinking_mode),
+        reasoning_effort: normalizeProfileMimoReasoningEffort(payload.mimo_reasoning_effort),
+    });
     const apiKey = getFallbackApiKey(provider);
 
     if (!apiKey) {
@@ -702,6 +818,7 @@ function getProviderContextFromPayload(payload: ProviderConnectionPayload): Prov
         deepseekThinkingMode: provider === "deepseek" ? deepseekThinkingMode : undefined,
         deepseekReasoningEffort: provider === "deepseek" ? deepseekReasoningEffort : undefined,
         glmThinkingMode: provider === "glm" ? glmThinkingMode : undefined,
+        mimoParams: provider === "mimo" ? mimoParams : undefined,
     };
 }
 
@@ -804,8 +921,42 @@ export async function createDeepSeekClientForCurrentUserWithOverride(overrides: 
     nvidiaModel?: string;
     githubModel?: string;
     mimoModel?: string;
+    mimoParams?: MimoProviderParamsPreference;
 }): Promise<OpenAiCompatibleClient> {
     const context = await getProviderContextForCurrentUser(overrides);
+    const cacheKey = `${context.provider}:${context.baseURL}:${context.apiKey}`;
+    const cachedClient = cachedClientsByProviderKey.get(cacheKey);
+    const client = cachedClient ?? new OpenAI(buildOpenAiClientOptions(context));
+    if (!cachedClient) {
+        cachedClientsByProviderKey.set(cacheKey, client);
+    }
+
+    function complete(
+        body: ChatCompletionCreateParamsNonStreaming,
+        options?: CompletionRequestOptions,
+    ): Promise<ChatCompletion>;
+    function complete(
+        body: ChatCompletionCreateParamsStreaming,
+        options?: CompletionRequestOptions,
+    ): Promise<Stream<ChatCompletionChunk>>;
+    function complete(
+        body: ChatCompletionCreateParamsNonStreaming | ChatCompletionCreateParamsStreaming,
+        options?: CompletionRequestOptions,
+    ): Promise<ChatCompletion | Stream<ChatCompletionChunk>> {
+        return createCompletionWithContext(client, context, body as never, options);
+    }
+
+    return {
+        chat: {
+            completions: {
+                create: complete,
+            },
+        },
+    };
+}
+
+export async function createDeepSeekClientForCurrentUserWithoutThinking(): Promise<OpenAiCompatibleClient> {
+    const context = withProviderThinkingDisabled(await getProviderContextForCurrentUser());
     const cacheKey = `${context.provider}:${context.baseURL}:${context.apiKey}`;
     const cachedClient = cachedClientsByProviderKey.get(cacheKey);
     const client = cachedClient ?? new OpenAI(buildOpenAiClientOptions(context));
@@ -852,26 +1003,12 @@ export async function getCurrentAiExecutionTargetForCurrentUser(requestedModel: 
 
 export async function getCurrentAiExecutionFingerprintForCurrentUser(requestedModel: string = DEEPSEEK_CHAT_MODEL) {
     const context = await getProviderContextForCurrentUser();
-    const model = resolveModel(context.provider, requestedModel, context.selectedModel);
-    const deepseekThinkingMode = context.provider === "deepseek"
-        ? normalizeProfileDeepSeekThinkingMode(context.deepseekThinkingMode)
-        : undefined;
-    const deepseekReasoningEffort = context.provider === "deepseek" && deepseekThinkingMode === "on"
-        ? normalizeProfileDeepSeekReasoningEffort(context.deepseekReasoningEffort)
-        : undefined;
+    return buildExecutionFingerprint(context, requestedModel);
+}
 
-    return {
-        provider: context.provider,
-        providerLabel: getProviderLabel(context.provider),
-        model,
-        deepseekThinkingMode,
-        deepseekReasoningEffort,
-        cacheSignature: context.provider === "deepseek"
-            ? `${context.provider}:${model}:thinking=${deepseekThinkingMode}:reasoning=${deepseekReasoningEffort ?? "off"}`
-            : context.provider === "glm" && glmModelSupportsThinking(model)
-                ? `${context.provider}:${model}:thinking=${normalizeProfileGlmThinkingMode(context.glmThinkingMode)}`
-            : `${context.provider}:${model}`,
-    };
+export async function getCurrentAiExecutionFingerprintForCurrentUserWithoutThinking(requestedModel: string = DEEPSEEK_CHAT_MODEL) {
+    const context = withProviderThinkingDisabled(await getProviderContextForCurrentUser());
+    return buildExecutionFingerprint(context, requestedModel);
 }
 
 export async function testAiProviderConnection(payload: ProviderConnectionPayload) {

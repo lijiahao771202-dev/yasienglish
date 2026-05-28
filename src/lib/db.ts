@@ -8,6 +8,7 @@ import type {
     AIGenerationRagMode,
     AIGenerationRagSource,
     LongformLengthTierMeta,
+    LongformTrack,
     LongformStyleMeta,
 } from "@/lib/ai-reading-generation";
 import { resetVocabularySchedulingState } from "@/lib/fsrs";
@@ -140,6 +141,7 @@ export interface CachedArticle {
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     isAIGenerated?: boolean;
     generationMode?: AIGenerationMode;
+    longformTrack?: LongformTrack;
     ragMode?: AIGenerationRagMode;
     ragSource?: AIGenerationRagSource;
     ragAppliedWords?: string[];

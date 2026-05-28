@@ -421,6 +421,167 @@ describe("deepseek provider resolution", () => {
         }));
     });
 
+    it("applies MiMo thinking settings from learning preferences", async () => {
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+            },
+            from: vi.fn(() => ({
+                select: vi.fn(() => ({
+                    eq: vi.fn(() => ({
+                        maybeSingle: vi.fn().mockResolvedValue({
+                            data: {
+                                ai_provider: "mimo",
+                                mimo_model: "mimo-v2-pro",
+                                learning_preferences: {
+                                    ai_provider_params: {
+                                        mimo: {
+                                            thinking_mode: "on",
+                                            reasoning_effort: "high",
+                                        },
+                                    },
+                                },
+                            },
+                            error: null,
+                        }),
+                    })),
+                })),
+            })),
+        });
+        cookiesMock.mockResolvedValue(buildCookieStore({}));
+        openAiCreateMock.mockResolvedValue({
+            choices: [{ message: { content: "OK" } }],
+        });
+
+        const { createDeepSeekClientForCurrentUserWithOverride } = await import("./deepseek");
+        const client = await createDeepSeekClientForCurrentUserWithOverride({});
+        await client.chat.completions.create({
+            model: "deepseek-chat",
+            max_tokens: 128,
+            messages: [{ role: "user", content: "Ping" }],
+        } as never);
+
+        const payload = openAiCreateMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+        expect(payload).toEqual(expect.objectContaining({
+            model: "mimo-v2-pro",
+            thinking: { type: "enabled" },
+            max_completion_tokens: 8192,
+        }));
+        expect(payload).not.toHaveProperty("max_tokens");
+    });
+
+    it("does not add MiMo reasoning budget when thinking is disabled", async () => {
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        cookiesMock.mockResolvedValue(buildCookieStore({
+            yasi_ai_provider: "mimo",
+            yasi_mimo_model: "mimo-v2.5-pro",
+            yasi_mimo_thinking_mode: "off",
+            yasi_mimo_reasoning_effort: "high",
+        }));
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+            },
+        });
+        openAiCreateMock.mockResolvedValue({
+            choices: [{ message: { content: "OK" } }],
+        });
+
+        const { createDeepSeekClientForCurrentUserWithOverride } = await import("./deepseek");
+        const client = await createDeepSeekClientForCurrentUserWithOverride({});
+        await client.chat.completions.create({
+            model: "deepseek-chat",
+            messages: [{ role: "user", content: "Ping" }],
+        } as never);
+
+        const payload = openAiCreateMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+        expect(payload).toEqual(expect.objectContaining({
+            model: "mimo-v2.5-pro",
+            thinking: { type: "disabled" },
+        }));
+        expect(payload).not.toHaveProperty("max_completion_tokens");
+    });
+
+    it("creates a current-user client with thinking disabled while preserving the selected MiMo model", async () => {
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        cookiesMock.mockResolvedValue(buildCookieStore({
+            yasi_ai_provider: "mimo",
+            yasi_mimo_model: "mimo-v2.5-pro",
+            yasi_mimo_thinking_mode: "on",
+            yasi_mimo_reasoning_effort: "high",
+        }));
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+            },
+        });
+        openAiCreateMock.mockResolvedValue({
+            choices: [{ message: { content: "OK" } }],
+        });
+
+        const { createDeepSeekClientForCurrentUserWithoutThinking } = await import("./deepseek");
+        const client = await createDeepSeekClientForCurrentUserWithoutThinking();
+        await client.chat.completions.create({
+            model: "deepseek-chat",
+            max_tokens: 128,
+            messages: [{ role: "user", content: "Translate." }],
+        } as never);
+
+        const payload = openAiCreateMock.mock.calls.at(-1)?.[0] as Record<string, unknown>;
+        expect(payload).toEqual(expect.objectContaining({
+            model: "mimo-v2.5-pro",
+            thinking: { type: "disabled" },
+            max_tokens: 128,
+        }));
+        expect(payload).not.toHaveProperty("max_completion_tokens");
+    });
+
+    it("includes MiMo thinking settings in the execution cache fingerprint", async () => {
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        cookiesMock.mockResolvedValue(buildCookieStore({
+            yasi_ai_provider: "mimo",
+            yasi_mimo_model: "mimo-v2-pro",
+            yasi_mimo_thinking_mode: "on",
+            yasi_mimo_reasoning_effort: "high",
+        }));
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+            },
+        });
+
+        const { getCurrentAiExecutionFingerprintForCurrentUser } = await import("./deepseek");
+        const result = await getCurrentAiExecutionFingerprintForCurrentUser();
+
+        expect(result.cacheSignature).toBe("mimo:mimo-v2-pro:thinking=on:reasoning=high");
+    });
+
+    it("builds a no-thinking execution fingerprint for JSON-sensitive requests", async () => {
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        cookiesMock.mockResolvedValue(buildCookieStore({
+            yasi_ai_provider: "mimo",
+            yasi_mimo_model: "mimo-v2-pro",
+            yasi_mimo_thinking_mode: "on",
+            yasi_mimo_reasoning_effort: "high",
+        }));
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: null }, error: null }),
+            },
+        });
+
+        const { getCurrentAiExecutionFingerprintForCurrentUserWithoutThinking } = await import("./deepseek");
+        const result = await getCurrentAiExecutionFingerprintForCurrentUserWithoutThinking();
+
+        expect(result).toEqual(expect.objectContaining({
+            provider: "mimo",
+            providerLabel: "Xiaomi MiMo",
+            model: "mimo-v2-pro",
+            cacheSignature: "mimo:mimo-v2-pro:thinking=off:reasoning=off",
+        }));
+    });
+
     it("uses a MiMo cookie preference with the server env key", async () => {
         process.env.DEEPSEEK_API_KEY = "deepseek-env";
         process.env.MIMO_API_KEY = "mimo-env-key";
@@ -441,6 +602,57 @@ describe("deepseek provider resolution", () => {
             provider: "mimo",
             providerLabel: "Xiaomi MiMo",
             model: "mimo-v2-pro",
+        });
+    });
+
+    it("does not keep using a stale cached profile after the remote provider changes", async () => {
+        process.env.DEEPSEEK_API_KEY = "deepseek-env";
+        process.env.MIMO_API_KEY = "mimo-env-key";
+        cookiesMock.mockResolvedValue(buildCookieStore({}));
+        let remoteProfile = {
+            ai_provider: "deepseek",
+            deepseek_model: "deepseek-v4-flash",
+            deepseek_thinking_mode: "off",
+            deepseek_reasoning_effort: "high",
+            nvidia_model: "z-ai/glm5",
+            github_model: "openai/gpt-4.1",
+            mimo_model: "mimo-v2.5-pro",
+        };
+        const maybeSingle = vi.fn(async () => ({
+            data: remoteProfile,
+            error: null,
+        }));
+        createServerClientMock.mockResolvedValue({
+            auth: {
+                getUser: vi.fn().mockResolvedValue({ data: { user: { id: "user-1" } }, error: null }),
+            },
+            from: vi.fn(() => ({
+                select: vi.fn(() => ({
+                    eq: vi.fn(() => ({
+                        maybeSingle,
+                    })),
+                })),
+            })),
+        });
+
+        const { getCurrentAiExecutionTargetForCurrentUser } = await import("./deepseek");
+
+        await expect(getCurrentAiExecutionTargetForCurrentUser()).resolves.toEqual({
+            provider: "deepseek",
+            providerLabel: "DeepSeek",
+            model: "deepseek-v4-flash",
+        });
+
+        remoteProfile = {
+            ...remoteProfile,
+            ai_provider: "mimo",
+            mimo_model: "mimo-v2.5",
+        };
+
+        await expect(getCurrentAiExecutionTargetForCurrentUser()).resolves.toEqual({
+            provider: "mimo",
+            providerLabel: "Xiaomi MiMo",
+            model: "mimo-v2.5",
         });
     });
 

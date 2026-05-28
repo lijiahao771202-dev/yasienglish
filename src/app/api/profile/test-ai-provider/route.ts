@@ -14,6 +14,8 @@ type TestAiProviderBody = {
     nvidia_model?: string;
     github_model?: string;
     mimo_model?: string;
+    mimo_thinking_mode?: string;
+    mimo_reasoning_effort?: string;
 };
 
 export async function POST(request: Request) {
@@ -48,6 +50,8 @@ export async function POST(request: Request) {
             nvidia_model: body.nvidia_model,
             github_model: body.github_model,
             mimo_model: body.mimo_model,
+            mimo_thinking_mode: body.mimo_thinking_mode,
+            mimo_reasoning_effort: body.mimo_reasoning_effort,
         });
 
         return NextResponse.json({

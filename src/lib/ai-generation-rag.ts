@@ -1,4 +1,5 @@
 import { ensureBGEReady, requestRagQuery, type BGEStatus } from "@/lib/bge-client";
+import { db, type CachedArticle, type VocabItem } from "@/lib/db";
 import { scheduleVocabularyRagIngestion } from "@/lib/rag-ingestion";
 import { waitForRagReady } from "@/lib/rag-readiness";
 import { normalizeWordKey } from "./user-sync";
@@ -24,6 +25,7 @@ interface CollectAIGenerationVocabularyParams {
     generationMode?: AIGenerationMode;
     ragMode?: AIGenerationRagMode;
     ragSource?: AIGenerationRagSource;
+    recentlyUsedWords?: string[];
 }
 
 interface AIGenerationRagWord {
@@ -43,12 +45,16 @@ const AI_GENERATION_VOCAB_TOP_K = 32;
 const AI_GENERATION_SYSTEM_TOP_K = 28;
 const AI_GENERATION_VOCAB_THRESHOLD = 0.18;
 const AI_GENERATION_SYSTEM_THRESHOLD = 0.18;
+const DEFAULT_RAG_COOLDOWN_ARTICLE_COUNT = 3;
+
+type AIGenerationRagCooldownArticle = Pick<CachedArticle, "url" | "timestamp" | "isAIGenerated" | "isCatMode" | "ragAppliedWords">;
 
 interface RagDeps {
     ensureReady: typeof ensureBGEReady;
     requestRagQuery: typeof requestRagQuery;
     scheduleVocabularySync: typeof scheduleVocabularyRagIngestion;
     waitForReady: typeof waitForRagReady;
+    listVocabulary: () => Promise<VocabItem[]>;
 }
 
 const DEFAULT_DEPS: RagDeps = {
@@ -56,6 +62,7 @@ const DEFAULT_DEPS: RagDeps = {
     requestRagQuery,
     scheduleVocabularySync: scheduleVocabularyRagIngestion,
     waitForReady: waitForRagReady,
+    listVocabulary: () => db.vocabulary.toArray(),
 };
 
 function normalizeAIGenerationRagText(
@@ -106,6 +113,80 @@ function filterRelevantWords(items: AIGenerationRagWord[]) {
             ? AI_GENERATION_VOCAB_THRESHOLD
             : AI_GENERATION_SYSTEM_THRESHOLD;
         return Number.isFinite(item.score) && item.score >= minScore;
+    });
+}
+
+function getRagWordKey(item: AIGenerationRagWord) {
+    return normalizeWordKey(normalizeAIGenerationRagText(item.text, item.metadata));
+}
+
+function buildCooldownWordSet(words?: string[]) {
+    return new Set(
+        (words ?? [])
+            .map((word) => normalizeWordKey(normalizeAIGenerationRagText(word)))
+            .filter(Boolean),
+    );
+}
+
+function filterRecentlyUsedWords(
+    hits: AIGenerationRagWord[],
+    recentlyUsedWords?: string[],
+) {
+    const cooldownWords = buildCooldownWordSet(recentlyUsedWords);
+    if (cooldownWords.size === 0) return hits;
+
+    return hits.filter((item) => {
+        const wordKey = getRagWordKey(item);
+        return Boolean(wordKey && !cooldownWords.has(wordKey));
+    });
+}
+
+export function collectRecentAIGenerationRagCooldownWords(
+    articles: AIGenerationRagCooldownArticle[],
+    limit = DEFAULT_RAG_COOLDOWN_ARTICLE_COUNT,
+) {
+    const seen = new Set<string>();
+    const words: string[] = [];
+
+    const recentArticles = [...articles]
+        .filter((item) => (
+            Boolean(item.isAIGenerated)
+            && !Boolean(item.isCatMode)
+            && !item.url.startsWith("cat://")
+            && Array.isArray(item.ragAppliedWords)
+            && item.ragAppliedWords.length > 0
+        ))
+        .sort((left, right) => (right.timestamp || 0) - (left.timestamp || 0))
+        .slice(0, Math.max(0, limit));
+
+    for (const article of recentArticles) {
+        for (const word of article.ragAppliedWords ?? []) {
+            if (typeof word !== "string") continue;
+            const cleaned = normalizeAIGenerationRagText(word);
+            const normalized = normalizeWordKey(cleaned);
+            if (!normalized || seen.has(normalized)) continue;
+            seen.add(normalized);
+            words.push(cleaned);
+        }
+    }
+
+    return words;
+}
+
+function filterActiveLearnerHits(
+    hits: AIGenerationRagWord[],
+    vocabulary: VocabItem[],
+) {
+    const activeWordKeys = new Set(
+        vocabulary
+            .filter((item) => !item.archived_at)
+            .map((item) => normalizeWordKey(item.word_key || item.word))
+            .filter(Boolean),
+    );
+
+    return hits.filter((item) => {
+        const wordKey = getRagWordKey(item);
+        return Boolean(wordKey && activeWordKeys.has(wordKey));
     });
 }
 
@@ -161,24 +242,31 @@ export async function collectAIGenerationVocabulary(
 
     void Promise.resolve(resolved.scheduleVocabularySync()).catch(() => void 0);
 
-    const [learnerHits, systemHits] = await Promise.all([
-        ragSource === "dictionary"
+    const shouldQueryLearnerVocab = ragSource !== "dictionary";
+    const [rawLearnerHits, systemHits, vocabulary] = await Promise.all([
+        !shouldQueryLearnerVocab
             ? Promise.resolve([])
             : resolved.requestRagQuery(params.queryTopic, AI_GENERATION_VOCAB_TOP_K, AI_GENERATION_VOCAB_THRESHOLD, "vocab"),
         ragSource === "vocab"
             ? Promise.resolve([])
             : collectSystemDictionaryWords(params.queryTopic, params.difficulty, resolved.requestRagQuery),
+        shouldQueryLearnerVocab
+            ? resolved.listVocabulary()
+            : Promise.resolve([]),
     ]);
-
-    const merged = dedupeRankedWords(filterRelevantWords([
-        ...learnerHits.map((item) => ({
+    const learnerHits = shouldQueryLearnerVocab
+        ? filterActiveLearnerHits(rawLearnerHits.map((item) => ({
             text: item.text,
             score: item.score,
             source: "vocab" as const,
             metadata: item.metadata,
-        })),
+        })), vocabulary)
+        : [];
+
+    const merged = dedupeRankedWords(filterRecentlyUsedWords(filterRelevantWords([
+        ...learnerHits,
         ...systemHits,
-    ]));
+    ]), params.recentlyUsedWords));
 
     return {
         mode: ragMode,

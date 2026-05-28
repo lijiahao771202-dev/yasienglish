@@ -4,6 +4,7 @@ import {
     DEFAULT_LEARNING_PREFERENCES,
     normalizeAiProvider,
     normalizeLearningPreferences,
+    normalizeMimoProviderParams,
     RANDOM_ENGLISH_TTS_VOICE,
     resolveLearningPreferenceTtsVoice,
 } from "./profile-settings";
@@ -39,5 +40,29 @@ describe("profile settings", () => {
         expect(normalizeAiProvider("nvidia")).toBe("nvidia");
         expect(normalizeAiProvider("mimo")).toBe("mimo");
         expect(normalizeAiProvider("unknown")).toBe("deepseek");
+    });
+
+    it("normalizes MiMo provider parameters", () => {
+        expect(normalizeMimoProviderParams({
+            thinking_mode: "enabled",
+            reasoning_effort: "high",
+        })).toEqual({
+            thinking_mode: "on",
+            reasoning_effort: "high",
+        });
+    });
+
+    it("preserves AI provider parameter preferences", () => {
+        expect(normalizeLearningPreferences({
+            ai_provider_params: {
+                mimo: {
+                    thinking_mode: "on",
+                    reasoning_effort: "low",
+                },
+            },
+        }).ai_provider_params?.mimo).toEqual({
+            thinking_mode: "on",
+            reasoning_effort: "low",
+        });
     });
 });

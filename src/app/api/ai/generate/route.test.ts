@@ -114,6 +114,41 @@ describe("ai generate route", () => {
         expect(prompt).toContain("Treat them as optional support, not as a mandatory checklist.");
     });
 
+    it("parses JSON returned inside a markdown code fence", async () => {
+        createMock.mockResolvedValue({
+            choices: [
+                {
+                    message: {
+                        content: `\`\`\`json
+{
+  "title": "Fenced Article",
+  "content": "Paragraph one.\\n\\nParagraph two.",
+  "byline": "AI Generator · CET-4 (大学英语四级)",
+  "wordCount": 320
+}
+\`\`\``,
+                    },
+                },
+            ],
+        });
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: "cet4",
+                    ragMode: "off",
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        expect(data.title).toBe("Fenced Article");
+        expect(data.blocks).toHaveLength(2);
+    });
+
     it("allows a much larger topic-filtered reference pool in generation prompts", async () => {
         const injectedVocabulary = Array.from({ length: 32 }, (_, index) => `housing-term-${index + 1}`);
         createMock.mockResolvedValue({
@@ -305,6 +340,62 @@ describe("ai generate route", () => {
         expect(prompt).toContain("Use semi-academic vocabulary with explicit reasoning and controlled clause layering.");
         expect(prompt).toContain("The style controls voice, pacing, and paragraph behavior only");
         expect(request?.max_tokens).toBeGreaterThanOrEqual(3200);
+    });
+
+    it("builds a dedicated native-reader longform prompt without falling back to exam-style writing", async () => {
+        createMock.mockResolvedValue({
+            choices: [
+                {
+                    message: {
+                        content: JSON.stringify({
+                            title: "What Cities Sound Like After Midnight",
+                            content: "Paragraph one.\n\nParagraph two.",
+                            byline: "AI Generator · Native Reader",
+                            wordCount: 2140,
+                        }),
+                    },
+                },
+            ],
+        });
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    generationMode: "longform",
+                    longformTrack: "native",
+                    longformStyleId: "reportage",
+                    lengthTierId: "w2200",
+                    topicSeed: {
+                        source: "random",
+                        domainId: "city-life",
+                        domainLabel: "城市与生活",
+                        subtopicId: "public-space",
+                        subtopicLabel: "公共空间",
+                        angle: "How late-night public spaces reveal the rhythm of a city",
+                        topicLine: "公共空间 · How late-night public spaces reveal the rhythm of a city",
+                    },
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(200);
+        const data = await response.json();
+        const request = createMock.mock.calls.at(-1)?.[0];
+        const prompt = request?.messages?.[0]?.content as string;
+
+        expect(data.generationMode).toBe("longform");
+        expect(data.longformTrack).toBe("native");
+        expect(data.difficulty).toBeUndefined();
+        expect(data.quizEligible).toBe(false);
+        expect(prompt).toContain("NATIVE LONGFORM MODE");
+        expect(prompt).toContain("Native reading objective");
+        expect(prompt).toContain("Do NOT write in CET-4, CET-6, or IELTS exam style");
+        expect(prompt).toContain("more like a strong magazine feature, blog essay, narrative explainer, or longform commentary");
+        expect(prompt).not.toContain("CET-4 LONGFORM PROFILE");
+        expect(prompt).not.toContain("CET-6 LONGFORM PROFILE");
+        expect(prompt).not.toContain("IELTS LONGFORM PROFILE");
     });
 
     it("builds a detailed longform prompt that explicitly guides step-by-step explanation", async () => {

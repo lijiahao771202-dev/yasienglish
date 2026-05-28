@@ -24,6 +24,7 @@ export interface PopupState {
     sourceLabel?: string;
     sourceSentence?: string;
     sourceNote?: string;
+    initialDefinition?: DefinitionData;
 }
 
 export interface DefinitionData {
@@ -391,8 +392,9 @@ export function WordPopup({
     // Initial Load & Dictionary Search
     useEffect(() => {
         let isMounted = true;
-        setDefinition(null);
-        setIsLoadingDict(true);
+        const initialDefinition = popup.initialDefinition ?? null;
+        setDefinition(initialDefinition);
+        setIsLoadingDict(!initialDefinition);
         setIsSaving(false);
         setIsSaved(false);
         setSaveError(null);
@@ -412,6 +414,10 @@ export function WordPopup({
 
         // Auto-play pronunciation with cache + cooldown to prevent repeated network/audio startup.
         playPronunciation(popup.word);
+
+        if (initialDefinition) {
+            return () => { isMounted = false; };
+        }
 
         const normalized = normalizeLookupWord(popup.word).toLowerCase();
         const cachedDict = dictionaryMemoryCache.get(normalized);
@@ -537,7 +543,7 @@ export function WordPopup({
             });
 
         return () => { isMounted = false; };
-    }, [battleConsumeLookupTicket, battleInsufficientHint, isReadingMode, mode, normalizedPopupWord, popup.word, popup.context, popup.articleUrl, requestAiDefinition, sessionUser?.id, syncReadingBalance]); // Re-run if word changes
+    }, [battleConsumeLookupTicket, battleInsufficientHint, isReadingMode, mode, normalizedPopupWord, popup.word, popup.context, popup.articleUrl, popup.initialDefinition, requestAiDefinition, sessionUser?.id, syncReadingBalance]); // Re-run if word changes
 
     // Close on click outside
     useEffect(() => {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { deepseek } from "@/lib/deepseek";
+import { createDeepSeekClientForCurrentUserWithoutThinking } from "@/lib/deepseek";
+import { parseJsonObjectFromAi } from "@/lib/ai-json";
 import {
     chargeReadingCoins,
     insufficientReadingCoinsPayload,
@@ -139,7 +140,8 @@ export async function POST(req: Request) {
             };
         }
 
-        const completion = await deepseek.chat.completions.create({
+        const client = await createDeepSeekClientForCurrentUserWithoutThinking();
+        const completion = await client.chat.completions.create({
             model: "deepseek-chat",
             response_format: { type: "json_object" },
             messages: [{
@@ -149,7 +151,10 @@ export async function POST(req: Request) {
         });
 
         const rawContent = completion.choices[0]?.message?.content?.trim() || "{}";
-        const parsed = JSON.parse(rawContent) as Partial<TranslateResponsePayload>;
+        const parsed = parseJsonObjectFromAi(rawContent) as Partial<TranslateResponsePayload> | null;
+        if (!parsed) {
+            throw new Error("Translation response did not contain a valid JSON object");
+        }
         const sentenceTranslations = sanitizeSentenceTranslations(parsed.sentenceTranslations);
         const translation = typeof parsed.translation === "string" && parsed.translation.trim()
             ? parsed.translation.trim()

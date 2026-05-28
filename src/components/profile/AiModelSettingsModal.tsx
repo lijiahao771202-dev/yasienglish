@@ -29,7 +29,9 @@ import {
     DEFAULT_GLM_THINKING_MODE,
     DEFAULT_GITHUB_MODEL,
     DEFAULT_MIMO_MODEL,
+    DEFAULT_MIMO_PROVIDER_PARAMS,
     normalizeAiProvider,
+    normalizeMimoProviderParams,
     normalizeProfileDeepSeekModel,
     normalizeProfileDeepSeekReasoningEffort,
     normalizeProfileDeepSeekThinkingMode,
@@ -37,6 +39,8 @@ import {
     normalizeProfileGlmThinkingMode,
     normalizeProfileGithubModel,
     normalizeProfileMimoModel,
+    type MimoProviderParamsPreference,
+    type MimoReasoningEffort,
     type AiProvider,
     type DeepSeekModel,
     type DeepSeekReasoningEffort,
@@ -59,6 +63,7 @@ function writeAiProviderCookies(payload: {
     nvidia_model: string;
     github_model: string;
     mimo_model: string;
+    mimo_params: MimoProviderParamsPreference;
 }) {
     if (typeof document === "undefined") return;
 
@@ -71,6 +76,8 @@ function writeAiProviderCookies(payload: {
     document.cookie = `yasi_nvidia_model=${encodeURIComponent(payload.nvidia_model)}; Path=/; Max-Age=31536000; SameSite=Lax`;
     document.cookie = `yasi_github_model=${encodeURIComponent(payload.github_model)}; Path=/; Max-Age=31536000; SameSite=Lax`;
     document.cookie = `yasi_mimo_model=${encodeURIComponent(payload.mimo_model)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_mimo_thinking_mode=${encodeURIComponent(payload.mimo_params.thinking_mode)}; Path=/; Max-Age=31536000; SameSite=Lax`;
+    document.cookie = `yasi_mimo_reasoning_effort=${encodeURIComponent(payload.mimo_params.reasoning_effort)}; Path=/; Max-Age=31536000; SameSite=Lax`;
 }
 
 const NVIDIA_CATEGORIES = [
@@ -242,6 +249,32 @@ const MIMO_MODEL_OPTIONS = [
     },
 ];
 
+const MIMO_REASONING_OPTIONS: Array<{
+    id: MimoReasoningEffort;
+    label: string;
+    detail: string;
+    maxCompletionTokens: number;
+}> = [
+    {
+        id: "low",
+        label: "轻量",
+        detail: "响应更快，适合短问答",
+        maxCompletionTokens: 2048,
+    },
+    {
+        id: "medium",
+        label: "均衡",
+        detail: "日常翻译、语法和 AskAI",
+        maxCompletionTokens: 4096,
+    },
+    {
+        id: "high",
+        label: "加强",
+        detail: "复杂解释和长回复更稳",
+        maxCompletionTokens: 8192,
+    },
+];
+
 export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalProps) {
     const profile = useLiveQuery(() => db.user_profile.orderBy("id").first(), []);
 
@@ -254,6 +287,7 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
     const [nvidiaModel, setNvidiaModel] = useState("z-ai/glm-5.1");
     const [githubModel, setGithubModel] = useState(DEFAULT_GITHUB_MODEL);
     const [mimoModel, setMimoModel] = useState(DEFAULT_MIMO_MODEL);
+    const [mimoParams, setMimoParams] = useState<MimoProviderParamsPreference>(DEFAULT_MIMO_PROVIDER_PARAMS);
 
     const [profileLoaded, setProfileLoaded] = useState(false);
     
@@ -284,13 +318,14 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
             setNvidiaModel(profile.nvidia_model || "z-ai/glm-5.1");
             setGithubModel(normalizeProfileGithubModel(profile.github_model));
             setMimoModel(normalizeProfileMimoModel(profile.mimo_model));
+            setMimoParams(normalizeMimoProviderParams(profile.learning_preferences?.ai_provider_params?.mimo));
             setProfileLoaded(true);
         }
     }, [profile, profileLoaded]);
 
     useEffect(() => {
         setConnectionMessage(null);
-    }, [aiProvider, deepSeekModel, deepSeekThinkingMode, deepSeekReasoningEffort, glmModel, glmThinkingMode, nvidiaModel, githubModel, mimoModel]);
+    }, [aiProvider, deepSeekModel, deepSeekThinkingMode, deepSeekReasoningEffort, glmModel, glmThinkingMode, nvidiaModel, githubModel, mimoModel, mimoParams]);
 
     useEffect(() => {
         if (!glmModelSupportsThinking(glmModel) && glmThinkingMode !== "off") {
@@ -308,7 +343,8 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
         nvidia_model: nvidiaModel,
         github_model: githubModel,
         mimo_model: mimoModel,
-    }), [aiProvider, deepSeekModel, deepSeekThinkingMode, deepSeekReasoningEffort, glmModel, glmThinkingMode, nvidiaModel, githubModel, mimoModel]);
+        mimo_params: mimoParams,
+    }), [aiProvider, deepSeekModel, deepSeekThinkingMode, deepSeekReasoningEffort, glmModel, glmThinkingMode, nvidiaModel, githubModel, mimoModel, mimoParams]);
 
     const payloadSignature = useMemo(() => JSON.stringify(activePayload), [activePayload]);
     const hasHydratedRef = useRef(false);
@@ -335,7 +371,22 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
         setAiSettingsMessage("Saving...");
         const timer = window.setTimeout(async () => {
             try {
-                await saveProfilePatch(activePayload);
+                await saveProfilePatch({
+                    ...activePayload,
+                    learning_preferences: {
+                        target_mode: profile.learning_preferences?.target_mode ?? "read",
+                        english_level: profile.learning_preferences?.english_level ?? "B1",
+                        daily_goal_minutes: profile.learning_preferences?.daily_goal_minutes ?? 20,
+                        ui_theme_preference: profile.learning_preferences?.ui_theme_preference ?? "bubblegum_pop",
+                        tts_voice: profile.learning_preferences?.tts_voice ?? "en-US-JennyNeural",
+                        rebuild_auto_open_shadowing_prompt: profile.learning_preferences?.rebuild_auto_open_shadowing_prompt ?? true,
+                        ai_reading_rag: profile.learning_preferences?.ai_reading_rag,
+                        ai_provider_params: {
+                            ...(profile.learning_preferences?.ai_provider_params ?? {}),
+                            mimo: mimoParams,
+                        },
+                    },
+                });
                 lastSavedSignatureRef.current = payloadSignature;
                 setAiSettingsMessage("Saved automatically");
             } catch (error) {
@@ -344,7 +395,7 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
         }, 500);
 
         return () => window.clearTimeout(timer);
-    }, [payloadSignature, activePayload, isOpen, profileLoaded]);
+    }, [payloadSignature, activePayload, isOpen, profileLoaded, profile?.learning_preferences, mimoParams]);
 
     const handleTestConnection = async () => {
         setConnectionBusy(true);
@@ -359,7 +410,11 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
                     "Content-Type": "application/json",
                     ...authHeaders,
                 },
-                body: JSON.stringify(activePayload),
+                body: JSON.stringify({
+                    ...activePayload,
+                    mimo_thinking_mode: activePayload.mimo_params.thinking_mode,
+                    mimo_reasoning_effort: activePayload.mimo_params.reasoning_effort,
+                }),
             });
             const data = await response.json().catch(() => ({}));
             if (!response.ok) {
@@ -971,8 +1026,13 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
                                             </div>
 
                                             <div className="space-y-3">
-                                                <div className="text-[11px] font-semibold uppercase tracking-widest text-theme-text-muted/80">
-                                                    MiMo 模型
+                                                <div className="flex items-center justify-between">
+                                                    <div className="text-[11px] font-semibold uppercase tracking-widest text-theme-text-muted/80">
+                                                        MiMo 模型
+                                                    </div>
+                                                    <span className="text-[11px] text-theme-text-muted">
+                                                        参数会同步影响翻译 / 语法 / AskAI
+                                                    </span>
                                                 </div>
                                                 <div className="grid gap-2 sm:grid-cols-2">
                                                     {MIMO_MODEL_OPTIONS.map((model) => {
@@ -1019,6 +1079,83 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
                                                     placeholder="Custom model ID (e.g. mimo-v2.5-pro)"
                                                     className="w-full rounded-lg border border-theme-border/60 bg-theme-base-bg px-3 py-2 text-[13px] text-theme-text placeholder:text-theme-text-muted/50 focus:border-indigo-500 focus:outline-none transition-all font-mono"
                                                 />
+                                            </div>
+
+                                            <div className="space-y-4 rounded-xl border border-theme-border/50 bg-theme-base-bg/60 p-4">
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div>
+                                                        <div className="text-[13px] font-semibold text-theme-text">
+                                                            深度思考
+                                                        </div>
+                                                        <p className="mt-1 text-[11px] leading-relaxed text-theme-text-muted">
+                                                            开启后会给 MiMo 请求加入 thinking，并按推理强度放宽输出预算。
+                                                        </p>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        aria-label="MiMo thinking"
+                                                        aria-pressed={mimoParams.thinking_mode === "on"}
+                                                        onClick={() => {
+                                                            setMimoParams((current) => normalizeMimoProviderParams({
+                                                                ...current,
+                                                                thinking_mode: current.thinking_mode === "on" ? "off" : "on",
+                                                            }));
+                                                        }}
+                                                        className={`relative h-7 w-12 shrink-0 rounded-full border transition ${
+                                                            mimoParams.thinking_mode === "on"
+                                                                ? "border-sky-500 bg-sky-500"
+                                                                : "border-theme-border/60 bg-theme-card-bg"
+                                                        }`}
+                                                    >
+                                                        <span
+                                                            className={`absolute top-1 h-5 w-5 rounded-full bg-white transition ${
+                                                                mimoParams.thinking_mode === "on" ? "left-6" : "left-1"
+                                                            }`}
+                                                        />
+                                                    </button>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="text-[11px] font-semibold uppercase tracking-widest text-theme-text-muted/80">
+                                                            推理强度
+                                                        </div>
+                                                        <span className="text-[11px] text-theme-text-muted">
+                                                            当前：{mimoParams.thinking_mode === "on" ? "已启用" : "未启用"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid gap-2 sm:grid-cols-3">
+                                                        {MIMO_REASONING_OPTIONS.map((option) => {
+                                                        const active = mimoParams.reasoning_effort === option.id;
+                                                        return (
+                                                            <button
+                                                                key={option.id}
+                                                                type="button"
+                                                                data-mimo-reasoning={option.id}
+                                                                onClick={() => setMimoParams((current) => normalizeMimoProviderParams({
+                                                                    ...current,
+                                                                    reasoning_effort: option.id,
+                                                                }))}
+                                                                className={`rounded-lg border px-3 py-2 text-left transition ${
+                                                                    active
+                                                                        ? "border-sky-500 bg-sky-50 text-sky-800"
+                                                                        : "border-theme-border/60 bg-theme-card-bg text-theme-text hover:border-sky-300"
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center justify-between gap-2">
+                                                                    <span className="text-[12px] font-semibold">{option.label}</span>
+                                                                    <span className="font-mono text-[10px] text-theme-text-muted">
+                                                                        {option.maxCompletionTokens}
+                                                                    </span>
+                                                                </div>
+                                                                <div className={`mt-1 text-[10px] leading-snug ${active ? "text-sky-700/75" : "text-theme-text-muted"}`}>
+                                                                    {option.detail}
+                                                                </div>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     )}

@@ -1,5 +1,10 @@
-import { deepseek } from "@/lib/deepseek";
+import {
+    createDeepSeekClientForCurrentUser,
+    createDeepSeekClientForCurrentUserWithOverride,
+    getCurrentAiExecutionFingerprintForCurrentUser,
+} from "@/lib/deepseek";
 import type { AskRetrievedVocabItem } from "@/lib/ask-vocab-memory";
+import { normalizeMimoProviderParams, type MimoReasoningEffort, type MimoThinkingMode } from "@/lib/profile-settings";
 import {
     chargeReadingCoins,
     insufficientReadingCoinsPayload,
@@ -11,14 +16,112 @@ import {
     getAiProviderRetryAfterSeconds,
     isAiProviderRateLimitError,
 } from "@/lib/ai-provider-errors";
+import { createHash } from "crypto";
 
 type AskAnswerMode = "default" | "short" | "detailed";
+type AskThinkingMode = MimoThinkingMode;
+type AskReasoningEffort = MimoReasoningEffort;
 type AskQuestionComplexity = "simple" | "complex";
 type AskResponseProfile = "adaptive_simple" | "adaptive_complex" | "forced_short" | "forced_detailed";
 type AskTeachingGoal = "general" | "sentence_coach";
 
 const ASK_SHORT_MAX_TOKENS = 1600;
 const ASK_DETAILED_MAX_TOKENS = 3600;
+const ASK_CACHE_TTL_MS = 1000 * 60 * 30;
+const ASK_PROMPT_VERSION = "ask-ai-v20260527-cache-gloss-v1";
+
+interface AskCacheEntry {
+    expiresAt: number;
+    payload: {
+        content: string;
+        reasoningContent: string;
+    };
+}
+
+const globalForAskCache = globalThis as typeof globalThis & {
+    __yasiAskServerCache?: Map<string, AskCacheEntry>;
+};
+
+function getAskCacheMap() {
+    if (!globalForAskCache.__yasiAskServerCache) {
+        globalForAskCache.__yasiAskServerCache = new Map<string, AskCacheEntry>();
+    }
+    return globalForAskCache.__yasiAskServerCache;
+}
+
+function getServerAskCache(key: string) {
+    const cache = getAskCacheMap();
+    const entry = cache.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+        cache.delete(key);
+        return null;
+    }
+    return entry.payload;
+}
+
+function setServerAskCache(key: string, payload: AskCacheEntry["payload"], ttlMs = ASK_CACHE_TTL_MS) {
+    const cache = getAskCacheMap();
+    cache.set(key, {
+        payload,
+        expiresAt: Date.now() + Math.max(1, ttlMs),
+    });
+
+    if (cache.size > 500) {
+        const firstKey = cache.keys().next().value;
+        if (typeof firstKey === "string") cache.delete(firstKey);
+    }
+}
+
+export function clearServerAskCache() {
+    getAskCacheMap().clear();
+}
+
+function normalizeAskCacheText(value: string) {
+    return value
+        .replace(/[“”]/g, "\"")
+        .replace(/[‘’]/g, "'")
+        .replace(/[—–]/g, "-")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function buildAskCacheKey(params: {
+    text: string;
+    question: string;
+    selection: string;
+    answerMode: AskAnswerMode;
+    responseProfile: AskResponseProfile;
+    teachingGoal: AskTeachingGoal;
+    providerSignature: string;
+    retrievedVocab: AskRetrievedVocabItem[];
+}) {
+    const vocabFingerprint = params.retrievedVocab
+        .map((item) => [
+            normalizeAskCacheText(item.word).toLowerCase(),
+            normalizeAskCacheText(item.translation),
+            normalizeAskCacheText(item.definition ?? ""),
+            normalizeAskCacheText(item.example ?? ""),
+            normalizeAskCacheText(item.sourceSentence ?? ""),
+        ].join("\u001f"))
+        .join("\u001e");
+    const raw = JSON.stringify({
+        version: ASK_PROMPT_VERSION,
+        provider: params.providerSignature,
+        text: normalizeAskCacheText(params.text),
+        question: normalizeAskCacheText(params.question),
+        selection: normalizeAskCacheText(params.selection),
+        answerMode: params.answerMode,
+        responseProfile: params.responseProfile,
+        teachingGoal: params.teachingGoal,
+        retrievedVocab: vocabFingerprint,
+    });
+    return `ask:${createHash("sha1").update(raw).digest("hex")}`;
+}
+
+function enqueueAskSse(controller: ReadableStreamDefaultController<Uint8Array>, encoder: TextEncoder, payload: unknown) {
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+}
 
 function normalizeInlineText(value: unknown, maxLength: number) {
     return String(value ?? "").trim().replace(/\s+/g, " ").slice(0, maxLength);
@@ -91,6 +194,19 @@ ${lines.join("\n\n")}`;
 function normalizeAskAnswerMode(rawMode: unknown): AskAnswerMode {
     if (rawMode === "short" || rawMode === "detailed") return rawMode;
     return "default";
+}
+
+function normalizeAskThinkingMode(rawMode: unknown): AskThinkingMode | undefined {
+    if (rawMode === "on") return "on";
+    if (rawMode === "off") return "off";
+    return undefined;
+}
+
+function normalizeAskReasoningEffort(rawEffort: unknown): AskReasoningEffort | undefined {
+    if (rawEffort === "low" || rawEffort === "medium" || rawEffort === "high") {
+        return rawEffort;
+    }
+    return undefined;
 }
 
 export function detectAskQuestionComplexity(question: string): AskQuestionComplexity {
@@ -186,6 +302,13 @@ General instructions:
 4. If the answer is not supported by the paragraph, say so politely.
 5. If explaining grammar, clearly label structures (e.g., 主语, 谓语, 定语从句).
 6. If explaining vocabulary, mention practical collocation/usage when helpful.
+
+English-with-Chinese requirement:
+1. The user is a Chinese learner. EVERY time you quote or introduce an English word, phrase, collocation, example sentence, grammar formula, or clause, it must be immediately followed by a concise Simplified Chinese gloss in full-width parentheses.
+2. This applies to all Ask AI answer types, not only sentence teaching mode. Do not leave English-only explanations that the user may not understand.
+3. Correct examples: \`main signal\`（主要信号）, \`solidify new memories\`（巩固新记忆）, \`be likely to\`（很可能）, \`that clause\`（that 引导的从句）.
+4. If a full English example sentence is useful, write it with a Chinese gloss right after it, for example: \`The policy sent a clear signal.\`（这项政策释放了清晰信号。）
+5. Section headings can stay Chinese, but English inside headings, bullets, tables, examples, or inline code still needs the Chinese gloss.
 
 Visual rendering capabilities:
 1. In 结构拆解, you may organise the chunk-by-chunk breakdown as a Markdown table OR as numbered mini blocks — pick whichever is cleanest. A table is encouraged when the sentence has many chunks because it makes the layout easier to scan side-by-side.
@@ -373,6 +496,13 @@ You may add an optional ## 总结 at the end only when a one-line recap genuinel
 
     return `You are an expert English tutor and linguist helping Chinese learners.
 
+Stable task contract:
+- Purpose: answer a reading-page Ask AI question for a Chinese learner.
+- Output language: primarily Simplified Chinese.
+- English-with-Chinese requirement is mandatory across every answer.
+- Keep explanations grounded in the provided paragraph and selected text.
+- Use Markdown only; avoid unsupported diagram fences unless a policy below explicitly allows one.
+
 Context Paragraph:
 """
 ${text}
@@ -392,12 +522,14 @@ ${profileInstructions}${teachingGoal === "sentence_coach" ? `\n${sentenceCoachAd
 
 export async function POST(req: Request) {
     try {
-        const { text, question, messages, selection, answerMode, economyContext, retrievedVocab } = await req.json() as {
+        const { text, question, messages, selection, answerMode, askThinkingMode, askReasoningEffort, economyContext, retrievedVocab } = await req.json() as {
             text?: string;
             question?: string;
             messages?: { role: "user" | "assistant", content: string }[];
             selection?: string;
             answerMode?: AskAnswerMode;
+            askThinkingMode?: AskThinkingMode;
+            askReasoningEffort?: AskReasoningEffort;
             economyContext?: ReadingEconomyContext;
             retrievedVocab?: AskRetrievedVocabItem[];
         };
@@ -406,6 +538,8 @@ export async function POST(req: Request) {
         const normalizedQuestion = typeof question === "string" ? question.trim() : "";
         const normalizedSelection = typeof selection === "string" ? selection.trim() : "";
         const normalizedAnswerMode = normalizeAskAnswerMode(answerMode);
+        const normalizedAskThinkingMode = normalizeAskThinkingMode(askThinkingMode);
+        const normalizedAskReasoningEffort = normalizeAskReasoningEffort(askReasoningEffort);
         const normalizedRetrievedVocab = normalizeRetrievedVocab(retrievedVocab);
 
         if (!normalizedText || !normalizedQuestion) {
@@ -421,6 +555,18 @@ export async function POST(req: Request) {
         const maxTokens = responseProfile === "adaptive_simple" || responseProfile === "forced_short"
             ? ASK_SHORT_MAX_TOKENS
             : ASK_DETAILED_MAX_TOKENS;
+        const executionFingerprint = await getCurrentAiExecutionFingerprintForCurrentUser("deepseek-chat");
+        const providerSignature = executionFingerprint.cacheSignature;
+        const askCacheKey = buildAskCacheKey({
+            text: normalizedText,
+            question: normalizedQuestion,
+            selection: normalizedSelection,
+            answerMode: normalizedAnswerMode,
+            responseProfile,
+            teachingGoal,
+            providerSignature,
+            retrievedVocab: normalizedRetrievedVocab,
+        });
 
         let readingCoinMutation: {
             balance: number;
@@ -489,6 +635,8 @@ export async function POST(req: Request) {
             chatMessages.push({ role: "user", content: normalizedQuestion });
         }
 
+        const cachedAnswer = getServerAskCache(askCacheKey);
+
         // Create a ReadableStream for SSE.
         // IMPORTANT: We do NOT await deepseek.chat.completions.create() out here. Doing so
         // would force the HTTP response to wait for DeepSeek's TTFT (which can be 2-8s for
@@ -501,9 +649,30 @@ export async function POST(req: Request) {
             async start(controller) {
                 try {
                     // Synthetic ready signal: lets the client know the request is in flight.
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ ready: true })}\n\n`));
+                    enqueueAskSse(controller, encoder, { ready: true });
 
-                    const stream = await deepseek.chat.completions.create({
+                    if (cachedAnswer) {
+                        enqueueAskSse(controller, encoder, { cache: { hit: true, layer: "server" } });
+                        if (cachedAnswer.reasoningContent) {
+                            enqueueAskSse(controller, encoder, { reasoningContent: cachedAnswer.reasoningContent });
+                        }
+                        if (cachedAnswer.content) {
+                            enqueueAskSse(controller, encoder, { content: cachedAnswer.content });
+                        }
+                        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                        controller.close();
+                        return;
+                    }
+
+                    const aiClient = normalizedAskThinkingMode
+                        ? await createDeepSeekClientForCurrentUserWithOverride({
+                            mimoParams: normalizeMimoProviderParams({
+                                thinking_mode: normalizedAskThinkingMode,
+                                reasoning_effort: normalizedAskReasoningEffort ?? "medium",
+                            }),
+                        })
+                        : await createDeepSeekClientForCurrentUser();
+                    const stream = await aiClient.chat.completions.create({
                         messages: chatMessages,
                         model: "deepseek-chat",
                         temperature: 0.4,
@@ -586,7 +755,7 @@ export async function POST(req: Request) {
                             { role: "assistant", content: visibleSoFar.slice(-5000) },
                             { role: "user", content: continuationInstruction },
                         ];
-                        const continuationStream = await deepseek.chat.completions.create({
+                        const continuationStream = await aiClient.chat.completions.create({
                             messages: continuationMessages,
                             model: "deepseek-chat",
                             temperature: 0.25,
@@ -595,9 +764,23 @@ export async function POST(req: Request) {
                         });
                         await pumpStreamToClient(continuationStream, "continuation");
                     }
+                    const cacheableContent = streamedContent.trim();
+                    const cacheableReasoningContent = streamedReasoningContent.trim();
+                    if (cacheableContent || cacheableReasoningContent) {
+                        setServerAskCache(askCacheKey, {
+                            content: cacheableContent,
+                            reasoningContent: cacheableReasoningContent,
+                        });
+                    }
                     controller.enqueue(encoder.encode("data: [DONE]\n\n"));
                     controller.close();
                 } catch (err) {
+                    if (isAiProviderRateLimitError(err)) {
+                        enqueueAskSse(controller, encoder, buildAiProviderRateLimitPayload("当前 AI 模型正在处理上一个请求，请稍等几秒再试。"));
+                        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                        controller.close();
+                        return;
+                    }
                     controller.error(err);
                 }
             },

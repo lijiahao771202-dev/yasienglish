@@ -24,6 +24,7 @@ export interface WordToken {
 const SENTENCE_END_CHARS = new Set([".", "!", "?", "。", "！", "？"]);
 const SENTENCE_CLOSERS = new Set(["\"", "'", ")", "]", "}", "）", "】", "》", "」", "』", "”", "’"]);
 const WORD_TOKEN_RE = /[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g;
+const SPEAKABLE_CONTENT_RE = /[A-Za-z0-9\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u4E00-\u9FFF]/;
 
 export function normalizeWordForMatch(raw: string) {
     return raw
@@ -44,6 +45,13 @@ function normalizeBoundaries(text: string, boundaries: number[]) {
     }
 
     return Array.from(unique).sort((a, b) => a - b);
+}
+
+function buildSpeakText(chunk: string) {
+    return chunk
+        .replace(/(?:\s*\.\s*){2,}/g, "...")
+        .replace(/\s+/g, " ")
+        .trim();
 }
 
 export function compactSentenceBoundaries(text: string, boundaries: number[]) {
@@ -110,6 +118,7 @@ export function buildAutoSentenceBoundaries(text: string) {
 export function buildSentenceUnits(text: string, boundaries: number[]) {
     const normalized = compactSentenceBoundaries(text, boundaries);
     const units: SentenceUnit[] = [];
+    let pendingPunctuationStart: number | null = null;
 
     for (let index = 0; index < normalized.length - 1; index += 1) {
         const start = normalized[index];
@@ -117,21 +126,36 @@ export function buildSentenceUnits(text: string, boundaries: number[]) {
         if (end <= start) continue;
 
         const chunk = text.slice(start, end);
-        const speakText = chunk.replace(/\s+/g, " ").trim();
+        const speakText = buildSpeakText(chunk);
 
         if (!speakText) continue;
+        if (!SPEAKABLE_CONTENT_RE.test(speakText)) {
+            const previous = units[units.length - 1];
+            if (previous) {
+                previous.end = end;
+                previous.text = text.slice(previous.start, end);
+                previous.speakText = buildSpeakText(previous.text);
+            } else if (pendingPunctuationStart === null) {
+                pendingPunctuationStart = start;
+            }
+            continue;
+        }
+
+        const unitStart = pendingPunctuationStart ?? start;
+        pendingPunctuationStart = null;
+        const unitText = text.slice(unitStart, end);
 
         units.push({
             index: units.length,
-            start,
+            start: unitStart,
             end,
-            text: chunk,
-            speakText,
+            text: unitText,
+            speakText: buildSpeakText(unitText),
         });
     }
 
     if (units.length === 0 && text.trim()) {
-        const speakText = text.replace(/\s+/g, " ").trim();
+        const speakText = buildSpeakText(text);
         units.push({ index: 0, start: 0, end: text.length, text, speakText });
     }
 

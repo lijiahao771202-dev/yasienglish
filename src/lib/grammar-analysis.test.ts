@@ -50,6 +50,17 @@ describe("grammar analysis helpers", () => {
         })).toBe("glm:glm-5.1:thinking=on");
 
         expect(buildReadingGrammarExecutionSignature({
+            ai_provider: "mimo",
+            mimo_model: "mimo-v2-pro",
+            ai_provider_params: {
+                mimo: {
+                    thinking_mode: "on",
+                    reasoning_effort: "high",
+                },
+            },
+        })).toBe("mimo:mimo-v2-pro:thinking=on:reasoning=high");
+
+        expect(buildReadingGrammarExecutionSignature({
             ai_provider: "github",
             github_model: "openai/gpt-4.1-mini",
         })).toBe("github:openai/gpt-4.1-mini");
@@ -80,6 +91,18 @@ describe("grammar analysis helpers", () => {
         expect(sanitized.data.difficult_sentences[1].sentence).toBe("Second sentence!");
         expect(sanitized.retryRecommended).toBe(true);
         expect(sanitized.qualityScore).toBeGreaterThan(0);
+    });
+
+    it("filters standalone punctuation fragments from spaced ellipses", () => {
+        const text = "\"remembering the old routine. . . feeling tightness in the jaw. . . sense of panic rising. . . judging myself for feeling weak. .\" This intensive articulation prevents the mind from weaving a coherent narrative.";
+
+        expect(splitGrammarSentences(text)).toEqual([
+            "\"remembering the old routine...",
+            "feeling tightness in the jaw...",
+            "sense of panic rising...",
+            "judging myself for feeling weak...\"",
+            "This intensive articulation prevents the mind from weaving a coherent narrative.",
+        ]);
     });
 
     it("treats partial basic analysis with at least one highlighted sentence as usable", () => {
@@ -245,6 +268,122 @@ describe("grammar analysis helpers", () => {
         expect(sanitized.issues.some((issue) => issue.includes("chunking is too coarse"))).toBe(true);
     });
 
+    it("flags four oversized chunks on what-cleft style long sentences for retry", () => {
+        const sentence = "What AI systems still struggle with—what they may struggle with for a very long time—is the integration of multiple skills applied to messy, real-world situations with incomplete information and high stakes.";
+        const sanitized = sanitizeGrammarBasicPayload({
+            tags: ["语法"],
+            overview: "句子分析",
+            difficult_sentences: [
+                {
+                    sentence,
+                    translation: "AI 系统仍然难以处理的东西，也是它们可能在很长时间内都会难以处理的东西，是把多种技能整合起来，应用到信息不完整、风险很高的混乱现实场景中。",
+                    highlights: [
+                        {
+                            substring: "What AI systems still struggle with",
+                            type: "主语从句",
+                            explanation: "主语从句，说明 AI 系统难以处理的内容。",
+                            segment_translation: "AI 系统仍然难以处理的东西",
+                        },
+                        {
+                            substring: "what they may struggle with for a very long time",
+                            type: "插入语",
+                            explanation: "插入补充说明前面的内容。",
+                            segment_translation: "它们可能很长时间都会难以处理的东西",
+                        },
+                        {
+                            substring: "is the integration of multiple skills",
+                            type: "谓语",
+                            explanation: "把系动词和表语合在一起说明核心判断。",
+                            segment_translation: "是多种技能的整合",
+                        },
+                        {
+                            substring: "applied to messy, real-world situations with incomplete information and high stakes",
+                            type: "后置定语",
+                            explanation: "后置定语，说明这些技能应用到什么场景。",
+                            segment_translation: "应用到信息不完整且风险很高的混乱现实场景中",
+                        },
+                    ],
+                },
+            ],
+        }, sentence);
+
+        expect(sanitized.retryRecommended).toBe(true);
+        expect(sanitized.issues.some((issue) => issue.includes("chunking is too coarse"))).toBe(true);
+    });
+
+    it("accepts fine-grained chunking on what-cleft style long sentences", () => {
+        const sentence = "What AI systems still struggle with—what they may struggle with for a very long time—is the integration of multiple skills applied to messy, real-world situations with incomplete information and high stakes.";
+        const sanitized = sanitizeGrammarBasicPayload({
+            tags: ["语法"],
+            overview: "句子分析",
+            difficult_sentences: [
+                {
+                    sentence,
+                    translation: "AI 系统仍然难以处理的东西，也是它们可能在很长时间内都会难以处理的东西，是把多种技能整合起来，应用到信息不完整、风险很高的混乱现实场景中。",
+                    highlights: [
+                        {
+                            substring: "What AI systems still struggle with",
+                            type: "主语从句",
+                            explanation: "主语从句，整体充当句子的主语。",
+                            segment_translation: "AI 系统仍然难以处理的东西",
+                        },
+                        {
+                            substring: "what they may struggle with for a very long time",
+                            type: "插入语",
+                            explanation: "插入补充说明前面的主语内容。",
+                            segment_translation: "它们可能很长时间都会难以处理的东西",
+                        },
+                        {
+                            substring: "may struggle with",
+                            type: "谓语",
+                            explanation: "插入部分内部的谓语结构。",
+                            segment_translation: "可能会难以处理",
+                        },
+                        {
+                            substring: "for a very long time",
+                            type: "时间状语",
+                            explanation: "说明 struggle with 可能持续多久。",
+                            segment_translation: "在很长一段时间里",
+                        },
+                        {
+                            substring: "is",
+                            type: "谓语",
+                            explanation: "全句主干中的系动词，连接主语和表语。",
+                            segment_translation: "是",
+                        },
+                        {
+                            substring: "the integration of multiple skills",
+                            type: "表语",
+                            explanation: "说明主语真正指向的核心内容。",
+                            segment_translation: "多种技能的整合",
+                        },
+                        {
+                            substring: "of multiple skills",
+                            type: "介词短语",
+                            explanation: "补充 integration 整合的对象。",
+                            segment_translation: "多种技能的",
+                        },
+                        {
+                            substring: "applied to messy, real-world situations",
+                            type: "分词短语",
+                            explanation: "后置修饰 skills，说明这些技能被应用到哪里。",
+                            segment_translation: "应用到混乱的现实场景中",
+                        },
+                        {
+                            substring: "with incomplete information and high stakes",
+                            type: "介词短语",
+                            explanation: "进一步说明现实场景的条件特征。",
+                            segment_translation: "在信息不完整且风险很高的情况下",
+                        },
+                    ],
+                },
+            ],
+        }, sentence);
+
+        expect(sanitized.retryRecommended).toBe(false);
+        expect(sanitized.issues.some((issue) => issue.includes("chunking is too coarse"))).toBe(false);
+    });
+
     it("supports sentence-array sanitization for batch analysis", () => {
         const sanitized = sanitizeGrammarBasicPayload({
             tags: ["主语"],
@@ -285,14 +424,17 @@ describe("grammar analysis helpers", () => {
             "Sample sentence two?",
         ]);
 
-        expect(GRAMMAR_BASIC_PROMPT_VERSION).toBe("2026-05-26-basic-v13");
+        expect(GRAMMAR_BASIC_PROMPT_VERSION).toMatch(/^2026-05-\d{2}-basic-v\d+$/);
         expect(basicPrompt).toContain("Target sentences");
         expect(basicPrompt).toContain("Every highlight.explanation MUST be Markdown-ready and teacher-like.");
         expect(basicPrompt).toContain("Lead with one bold judgment sentence.");
         expect(basicPrompt).toContain("Prefer the most specific grammar type possible");
         expect(basicPrompt).toContain("Do NOT stop at the outer clause boundary");
         expect(basicPrompt).toContain("Avoid oversized chunks");
+        expect(basicPrompt).toContain("For sentences longer than 22 English words, normally return 6-12 highlights");
+        expect(basicPrompt).toContain("Do NOT merge the predicate and complement/predicative into one huge chunk");
         expect(basicPrompt).toContain("Long noun phrases must be decomposed");
+        expect(basicPrompt).toContain("what...is...");
         expect(basicPrompt).toContain("时间状语从句 / 条件状语从句 / 让步状语从句 / 原因状语从句 / 目的状语从句");
         expect(basicPrompt).toContain("宾语从句 / 主语从句 / 表语从句 / 同位语从句");
         expect(basicPrompt).toContain("介词短语 / 分词短语 / 不定式短语 / 动名词短语");

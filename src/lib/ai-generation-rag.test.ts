@@ -1,10 +1,44 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { collectAIGenerationVocabulary } from "./ai-generation-rag";
+import { collectRecentAIGenerationRagCooldownWords } from "./ai-generation-rag";
+import type { VocabItem } from "@/lib/db";
+
+function createVocab(word: string, archivedAt?: number): VocabItem {
+    return {
+        word,
+        word_key: word.toLowerCase(),
+        definition: "",
+        translation: "",
+        context: "",
+        example: "",
+        timestamp: 1,
+        stability: 0,
+        difficulty: 0,
+        elapsed_days: 0,
+        scheduled_days: 0,
+        reps: 0,
+        lapses: 0,
+        learning_steps: 0,
+        state: 0,
+        last_review: 0,
+        due: 1,
+        archived_at: archivedAt,
+    };
+}
 
 describe("collectAIGenerationVocabulary", () => {
+    const listVocabulary = vi.fn(async () => [
+        createVocab("affordability"),
+        createVocab("allocation"),
+        createVocab("resilience"),
+        createVocab("housing-term-1"),
+        ...Array.from({ length: 28 }, (_, index) => createVocab(`housing-term-${index + 1}`)),
+    ]);
+
     beforeEach(() => {
         vi.restoreAllMocks();
+        listVocabulary.mockClear();
     });
 
     it("syncs the latest learner vocab before querying learner and system namespaces separately", async () => {
@@ -33,6 +67,7 @@ describe("collectAIGenerationVocabulary", () => {
                 waitForReady,
                 requestRagQuery,
                 ensureReady: vi.fn(),
+                listVocabulary,
             },
         );
 
@@ -93,6 +128,7 @@ describe("collectAIGenerationVocabulary", () => {
                 waitForReady: vi.fn().mockResolvedValue(true),
                 requestRagQuery,
                 ensureReady: vi.fn(),
+                listVocabulary,
             },
         );
 
@@ -107,7 +143,7 @@ describe("collectAIGenerationVocabulary", () => {
     });
 
     it("does not block article generation on a long-running vocabulary catch-up task", async () => {
-        const scheduleVocabularySync = vi.fn(() => new Promise(() => void 0));
+        const scheduleVocabularySync = vi.fn((): Promise<{ processed: number; total: number; skipped?: boolean }> => new Promise(() => void 0));
         const requestRagQuery = vi.fn()
             .mockResolvedValueOnce([
                 { id: "v1", text: "resilience", score: 0.84, source: "vocab", metadata: { vocabId: "resilience" } },
@@ -129,6 +165,7 @@ describe("collectAIGenerationVocabulary", () => {
                 waitForReady: vi.fn().mockResolvedValue(true),
                 requestRagQuery,
                 ensureReady: vi.fn(),
+                listVocabulary,
             },
         );
 
@@ -211,12 +248,41 @@ describe("collectAIGenerationVocabulary", () => {
                 waitForReady: vi.fn().mockResolvedValue(true),
                 requestRagQuery,
                 ensureReady: vi.fn(),
+                listVocabulary,
             },
         );
 
         expect(requestRagQuery).toHaveBeenCalledTimes(1);
         expect(result.words.map((item) => item.text)).toEqual(["resilience"]);
         expect(result.source).toBe("vocab");
+    });
+
+    it("excludes archived learner vocab hits even when stale vectors still exist", async () => {
+        const requestRagQuery = vi.fn().mockResolvedValueOnce([
+            { id: "vocab:active", text: "resilience - 复原力", score: 0.91, source: "vocab", metadata: { vocabId: "resilience", wordKey: "resilience" } },
+            { id: "vocab:archived", text: "craving - 渴望", score: 0.9, source: "vocab", metadata: { vocabId: "craving", wordKey: "craving" } },
+            { id: "vocab:ghost", text: "obsolete - 过期", score: 0.89, source: "vocab", metadata: { vocabId: "obsolete", wordKey: "obsolete" } },
+        ]);
+
+        const result = await collectAIGenerationVocabulary(
+            {
+                queryTopic: "校园成长 · Resilience under pressure",
+                difficulty: "cet6",
+                ragSource: "vocab",
+            },
+            {
+                scheduleVocabularySync: vi.fn(),
+                waitForReady: vi.fn().mockResolvedValue(true),
+                requestRagQuery,
+                ensureReady: vi.fn(),
+                listVocabulary: vi.fn(async () => [
+                    createVocab("resilience"),
+                    createVocab("craving", 2),
+                ]),
+            },
+        );
+
+        expect(result.words.map((item) => item.text)).toEqual(["resilience"]);
     });
 
     it("queries only mapped system dictionaries when rag source is dictionary", async () => {
@@ -235,6 +301,7 @@ describe("collectAIGenerationVocabulary", () => {
                 waitForReady: vi.fn().mockResolvedValue(true),
                 requestRagQuery,
                 ensureReady: vi.fn(),
+                listVocabulary,
             },
         );
 
@@ -267,6 +334,7 @@ describe("collectAIGenerationVocabulary", () => {
                 waitForReady: vi.fn().mockResolvedValue(true),
                 requestRagQuery,
                 ensureReady: vi.fn(),
+                listVocabulary,
             },
         );
 
@@ -274,6 +342,44 @@ describe("collectAIGenerationVocabulary", () => {
             "negotiation",
             "to fit in",
             "tradeoff",
+        ]);
+    });
+
+    it("excludes recently injected words from the next article vocabulary pool", async () => {
+        const requestRagQuery = vi.fn()
+            .mockResolvedValueOnce([
+                { id: "v1", text: "resilience - 复原力", score: 0.94, source: "vocab", metadata: { vocabId: "resilience", wordKey: "resilience" } },
+                { id: "v2", text: "belonging - 归属感", score: 0.9, source: "vocab", metadata: { vocabId: "belonging", wordKey: "belonging" } },
+            ])
+            .mockResolvedValueOnce([
+                { id: "s1", text: "support network", score: 0.86, source: "system", metadata: { level: "cet6" } },
+            ])
+            .mockResolvedValueOnce([
+                { id: "s2", text: "coping strategy", score: 0.82, source: "system", metadata: { level: "cefr" } },
+            ]);
+
+        const result = await collectAIGenerationVocabulary(
+            {
+                queryTopic: "校园成长 · Resilience and belonging",
+                difficulty: "cet6",
+                ragSource: "hybrid",
+                recentlyUsedWords: ["resilience", "support network - 支持网络"],
+            },
+            {
+                scheduleVocabularySync: vi.fn(),
+                waitForReady: vi.fn().mockResolvedValue(true),
+                requestRagQuery,
+                ensureReady: vi.fn(),
+                listVocabulary: vi.fn(async () => [
+                    createVocab("resilience"),
+                    createVocab("belonging"),
+                ]),
+            },
+        );
+
+        expect(result.words.map((item) => item.text)).toEqual([
+            "belonging",
+            "coping strategy",
         ]);
     });
 
@@ -313,6 +419,7 @@ describe("collectAIGenerationVocabulary", () => {
                 waitForReady: vi.fn().mockResolvedValue(true),
                 requestRagQuery,
                 ensureReady: vi.fn(),
+                listVocabulary,
             },
         );
 
@@ -320,5 +427,42 @@ describe("collectAIGenerationVocabulary", () => {
         expect(result.words.some((item) => item.text === "irrelevant-low-score")).toBe(false);
         expect(result.words.at(0)?.source).toBe("vocab");
         expect(result.words.some((item) => item.text === "housing-pressure")).toBe(true);
+    });
+});
+
+describe("collectRecentAIGenerationRagCooldownWords", () => {
+    it("collects deduped RAG words from the latest non-CAT AI articles only", () => {
+        const result = collectRecentAIGenerationRagCooldownWords([
+            {
+                url: "ai-gen://cet6/4",
+                timestamp: 4,
+                isAIGenerated: true,
+                ragAppliedWords: ["resilience", "belonging"],
+            },
+            {
+                url: "cat://session/1",
+                timestamp: 3,
+                isAIGenerated: true,
+                isCatMode: true,
+                ragAppliedWords: ["cat-only"],
+            },
+            {
+                url: "ai-gen://ielts/2",
+                timestamp: 2,
+                isAIGenerated: true,
+                ragAppliedWords: ["Resilience", "policy spillover - 政策外溢"],
+            },
+            {
+                url: "https://example.com/feed",
+                timestamp: 1,
+                ragAppliedWords: ["feed-only"],
+            },
+        ]);
+
+        expect(result).toEqual([
+            "resilience",
+            "belonging",
+            "policy spillover",
+        ]);
     });
 });

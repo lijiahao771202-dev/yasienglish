@@ -5,7 +5,11 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ParagraphCard } from "./ParagraphCard";
-import { buildGrammarCacheKey, GRAMMAR_BASIC_PROMPT_VERSION } from "@/lib/grammar-analysis";
+import {
+    buildGrammarCacheKey,
+    buildReadingGrammarExecutionSignature,
+    GRAMMAR_BASIC_PROMPT_VERSION,
+} from "@/lib/grammar-analysis";
 import { saveVocabulary } from "@/lib/user-repository";
 
 const mountedRoots: Root[] = [];
@@ -42,7 +46,11 @@ const {
         stop: vi.fn(),
     },
     readingSettingsMock: {
+        fontClass: "font-serif",
         fontSizeClass: "text-base",
+        translationFontClass: "font-serif",
+        translationFontSizeClass: "text-base",
+        translationColorClass: "text-stone-500/95",
         isBionicMode: false,
         phraseDisplayMode: "capsule",
     },
@@ -210,10 +218,56 @@ vi.mock("@/lib/tts-client", () => ({
 }));
 
 vi.mock("@/lib/ask-thread", () => ({
-    buildAskQaPairs: () => [],
+    buildAskQaPairs: (
+        messages: Array<{ role: "user" | "assistant"; content: string; reasoningContent?: string; isError?: boolean }> = [],
+        streamingContent = "",
+        isLoading = false,
+        streamingReasoningContent = "",
+    ) => {
+        const pairs: Array<{
+            id: number;
+            question: string;
+            answer: string;
+            reasoningContent: string;
+            isStreaming: boolean;
+            isReasoningStreaming: boolean;
+            isError: boolean;
+        }> = [];
+
+        for (let index = 0; index < messages.length; index += 1) {
+            const message = messages[index];
+            if (message.role !== "user") continue;
+            const assistant = messages[index + 1]?.role === "assistant" ? messages[index + 1] : null;
+            pairs.push({
+                id: pairs.length + 1,
+                question: message.content,
+                answer: assistant?.content ?? "",
+                reasoningContent: assistant?.reasoningContent ?? "",
+                isStreaming: false,
+                isReasoningStreaming: false,
+                isError: Boolean(assistant?.isError),
+            });
+        }
+
+        if (isLoading && messages.at(-1)?.role === "user") {
+            const existingLast = pairs.at(-1);
+            if (existingLast && !existingLast.answer) {
+                existingLast.answer = streamingContent;
+                existingLast.reasoningContent = streamingReasoningContent;
+                existingLast.isStreaming = true;
+                existingLast.isReasoningStreaming = Boolean(streamingReasoningContent);
+            }
+        }
+
+        return pairs;
+    },
     buildAskThreadPreview: () => "",
     decodeAskThreadPayload: decodeAskThreadPayloadMock,
     encodeAskThreadPayload: () => "",
+    resolveAskAssistantMessageParts: (content: string, reasoningContent: string) => ({
+        content,
+        ...(reasoningContent ? { reasoningContent } : {}),
+    }),
     isLikelyTransientAskFailure: () => false,
 }));
 
@@ -226,7 +280,7 @@ vi.mock("@/lib/bionic", () => ({
 }));
 
 vi.mock("./selection-helpers", () => ({
-    hasMeaningfulTextSelection: () => false,
+    hasMeaningfulTextSelection: vi.fn(() => false),
 }));
 
 vi.mock("@/lib/pressable", () => ({
@@ -274,8 +328,8 @@ function getPhraseTags(container: HTMLElement) {
     return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-translation-phrase-tag="true"]'));
 }
 
-function getInlinePhraseButtons(container: HTMLElement) {
-    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-translation-inline-phrase="true"]'));
+function getInlinePhraseTriggers(container: HTMLElement) {
+    return Array.from(container.querySelectorAll<HTMLElement>('[data-translation-inline-phrase="true"]'));
 }
 
 function createRangeAtTextOffset(root: Node, offset: number) {
@@ -393,8 +447,13 @@ afterEach(async () => {
     useTtsMock.setPlaybackRate.mockReset();
     useTtsMock.stop.mockReset();
     readingSettingsMock.fontSizeClass = "text-base";
+    readingSettingsMock.fontClass = "font-serif";
+    readingSettingsMock.translationFontClass = "font-serif";
+    readingSettingsMock.translationFontSizeClass = "text-base";
+    readingSettingsMock.translationColorClass = "text-stone-500/95";
     readingSettingsMock.isBionicMode = false;
     readingSettingsMock.phraseDisplayMode = "capsule";
+    vi.useRealTimers();
     vi.unstubAllGlobals();
 });
 
@@ -494,6 +553,82 @@ describe("ParagraphCard", () => {
         expect(container.textContent).toContain("stay strong");
         expect(container.textContent).toContain("保持强壮");
         expect(container.querySelector('[data-paragraph-translation-block="true"]')).toBeNull();
+        expect(getTranslationAsides(container)[0]?.className).toContain("block");
+        expect(getTranslationAsides(container)[0]?.className).toContain("w-full");
+    });
+
+    it("applies reading appearance font and size to translation-mode english sentence lines", async () => {
+        readingSettingsMock.fontSizeClass = "text-2xl";
+        (readingSettingsMock as typeof readingSettingsMock & { fontClass?: string }).fontClass = "font-[Arial,sans-serif]";
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const sentenceBody = container.querySelector('[data-translation-sentence-body="true"]');
+        expect(sentenceBody?.className).toContain("text-2xl");
+        expect(sentenceBody?.className).toContain("font-[Arial,sans-serif]");
+    });
+
+    it("applies dedicated chinese appearance settings to translation lines", async () => {
+        readingSettingsMock.translationFontSizeClass = "text-lg";
+        readingSettingsMock.translationFontClass = "font-[Helvetica,sans-serif]";
+        readingSettingsMock.translationColorClass = "text-sky-700";
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const translationLine = container.querySelector<HTMLElement>('[data-translation-line="true"]');
+        expect(translationLine?.className).toContain("text-lg");
+        expect(translationLine?.className).toContain("font-[Helvetica,sans-serif]");
+        expect(translationLine?.className).toContain("text-sky-700");
     });
 
     it("uses the grammar sentence list immediately when translate is clicked", async () => {
@@ -545,6 +680,64 @@ describe("ParagraphCard", () => {
         expect(getTranslationAsides(container)).toHaveLength(2);
         const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
         expect(translationLines).toHaveLength(2);
+    });
+
+    it("falls back to the full translation when sentence translations are missing", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(container.querySelector('[data-translation-error="true"]')).toBeNull();
+        expect(getTranslationAsides(container)).toHaveLength(2);
+        const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+        expect(translationLines[0]?.textContent).toContain("植物需要阳光和水才能生长。");
+        expect(translationLines[1]?.textContent).toContain("水能帮助根部保持强壮。");
+    });
+
+    it("shows a retryable translation error when the API returns no usable translation content", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "",
+                sentenceTranslations: [],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(container.textContent).toContain("翻译暂时没有返回内容，请重试。");
+        expect(container.querySelector('[data-translation-error="true"]')).toBeTruthy();
+        expect(container.textContent).toContain("重试翻译");
     });
 
     it("refreshes a legacy paragraph translation cache into sentence translations when opening translate mode", async () => {
@@ -957,6 +1150,14 @@ describe("ParagraphCard", () => {
             sourceLabel: "来自 Read",
             sourceSentence: "Plants need sunlight and water to grow.",
             sourceNote: "Photosynthesis basics",
+            initialDefinition: expect.objectContaining({
+                context_meaning: {
+                    definition: "在该句中指：阳光和水分",
+                    translation: "阳光和水分",
+                },
+                meaning_groups: [{ pos: "phr.", meanings: ["阳光和水分"] }],
+                highlighted_meanings: ["阳光和水分"],
+            }),
         }));
     });
 
@@ -1006,13 +1207,64 @@ describe("ParagraphCard", () => {
         });
 
         expect(getPhraseTags(container)).toHaveLength(0);
-        const inlinePhraseButtons = getInlinePhraseButtons(container);
-        expect(inlinePhraseButtons).toHaveLength(2);
-        expect(inlinePhraseButtons[0]?.textContent).toContain("sunlight and water");
-        expect(inlinePhraseButtons[1]?.textContent).toContain("stay strong");
+        const inlinePhraseTriggers = getInlinePhraseTriggers(container);
+        expect(inlinePhraseTriggers).toHaveLength(2);
+        expect(inlinePhraseTriggers[0]?.textContent).toContain("sunlight and water");
+        expect(inlinePhraseTriggers[1]?.textContent).toContain("stay strong");
     });
 
-    it("opens the word popup when an inline wavy phrase is clicked", async () => {
+    it("inherits reading typography and uses a continuous inline phrase line in mode 2", async () => {
+        readingSettingsMock.phraseDisplayMode = "inline_wavy";
+        readingSettingsMock.fontSizeClass = "text-2xl";
+        readingSettingsMock.fontClass = "font-[Arial,sans-serif]";
+        vi.stubGlobal("fetch", fetchMock);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const inlineSentence = container.querySelector<HTMLElement>('[data-translation-inline-phrases="true"]');
+        expect(inlineSentence).toBeTruthy();
+        expect(inlineSentence?.className).not.toContain("font-serif");
+        expect(inlineSentence?.className).not.toContain("text-[15px]");
+        expect(inlineSentence?.style.font).toBe("inherit");
+
+        const phraseVisual = inlineSentence?.querySelector<HTMLElement>('span[aria-label]');
+        expect(phraseVisual).toBeTruthy();
+        expect(phraseVisual?.style.textDecorationLine).toBe("underline");
+        expect(phraseVisual?.style.textDecorationStyle).toBe("solid");
+        expect(phraseVisual?.style.textDecorationSkipInk).toBe("none");
+        expect(phraseVisual?.style.borderBottom).toBe("");
+    });
+
+    it("lets inline phrase highlights fall through to the single-word click handler", async () => {
         readingSettingsMock.phraseDisplayMode = "inline_wavy";
         vi.stubGlobal("fetch", fetchMock);
         fetchMock.mockResolvedValueOnce({
@@ -1043,13 +1295,13 @@ describe("ParagraphCard", () => {
                 ],
             }),
         });
-        const onOpenWordPopupFromSelection = vi.fn();
+        const onWordClick = vi.fn();
 
         const container = await renderCard({
             text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
             articleTitle: "Photosynthesis basics",
             articleUrl: "https://example.com/photosynthesis",
-            onOpenWordPopupFromSelection,
+            onWordClick,
         });
         const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
         expect(translateButton).toBeTruthy();
@@ -1061,23 +1313,14 @@ describe("ParagraphCard", () => {
             await Promise.resolve();
         });
 
-        const inlinePhraseButtons = getInlinePhraseButtons(container);
-        expect(inlinePhraseButtons).toHaveLength(2);
+        const inlinePhraseTriggers = getInlinePhraseTriggers(container);
+        expect(inlinePhraseTriggers).toHaveLength(2);
 
         await act(async () => {
-            inlinePhraseButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            inlinePhraseTriggers[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
-        expect(onOpenWordPopupFromSelection).toHaveBeenCalledTimes(1);
-        expect(onOpenWordPopupFromSelection).toHaveBeenCalledWith(expect.objectContaining({
-            word: "sunlight and water",
-            context: "Plants need sunlight and water to grow.",
-            articleUrl: "https://example.com/photosynthesis",
-            sourceKind: "read",
-            sourceLabel: "来自 Read",
-            sourceSentence: "Plants need sunlight and water to grow.",
-            sourceNote: "Photosynthesis basics",
-        }));
+        expect(onWordClick).toHaveBeenCalledTimes(1);
     });
 
     it("shows an inline hover card save action for wavy phrases", async () => {
@@ -1115,11 +1358,12 @@ describe("ParagraphCard", () => {
             await Promise.resolve();
         });
 
-        const inlinePhraseButtons = getInlinePhraseButtons(container);
-        expect(inlinePhraseButtons).toHaveLength(1);
+        const inlinePhraseTriggers = getInlinePhraseTriggers(container);
+        expect(inlinePhraseTriggers).toHaveLength(1);
 
         await act(async () => {
-            inlinePhraseButtons[0]?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+            inlinePhraseTriggers[0]?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+            await Promise.resolve();
         });
 
         const hoverCard = container.querySelector('[data-translation-inline-hover-card="open"]');
@@ -1138,6 +1382,148 @@ describe("ParagraphCard", () => {
             translation: "阳光和水分",
             source_sentence: "Plants need sunlight and water to grow.",
         }));
+    });
+
+    it("opens the full phrase word popup from the inline hover card", async () => {
+        readingSettingsMock.phraseDisplayMode = "inline_wavy";
+        vi.stubGlobal("fetch", fetchMock);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+        const onOpenWordPopupFromSelection = vi.fn();
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+            articleTitle: "Photosynthesis basics",
+            articleUrl: "https://example.com/photosynthesis",
+            onOpenWordPopupFromSelection,
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const inlinePhraseTriggers = getInlinePhraseTriggers(container);
+        expect(inlinePhraseTriggers).toHaveLength(1);
+
+        await act(async () => {
+            inlinePhraseTriggers[0]?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+            await Promise.resolve();
+        });
+
+        const hoverCard = container.querySelector('[data-translation-inline-hover-card="open"]');
+        expect(hoverCard).toBeTruthy();
+
+        const inspectButton = Array.from(hoverCard?.querySelectorAll("button") ?? []).find((button) => button.textContent?.includes("查看短语"));
+        expect(inspectButton).toBeTruthy();
+
+        await act(async () => {
+            inspectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onOpenWordPopupFromSelection).toHaveBeenCalledTimes(1);
+        expect(onOpenWordPopupFromSelection).toHaveBeenCalledWith(expect.objectContaining({
+            word: "sunlight and water",
+            context: "Plants need sunlight and water to grow.",
+            articleUrl: "https://example.com/photosynthesis",
+            sourceKind: "read",
+            sourceLabel: "来自 Read",
+            sourceSentence: "Plants need sunlight and water to grow.",
+            sourceNote: "Photosynthesis basics",
+            initialDefinition: expect.objectContaining({
+                context_meaning: {
+                    definition: "在该句中指：阳光和水分",
+                    translation: "阳光和水分",
+                },
+                meaning_groups: [{ pos: "phr.", meanings: ["阳光和水分"] }],
+                highlighted_meanings: ["阳光和水分"],
+            }),
+        }));
+    });
+
+    it("keeps the inline hover card open while moving from the phrase highlight into the card", async () => {
+        readingSettingsMock.phraseDisplayMode = "inline_wavy";
+        vi.useFakeTimers();
+        vi.stubGlobal("fetch", fetchMock);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            {
+                                source: "sunlight and water",
+                                translation: "阳光和水分",
+                            },
+                        ],
+                    },
+                ],
+            }),
+        });
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const inlinePhraseTriggers = getInlinePhraseTriggers(container);
+        expect(inlinePhraseTriggers).toHaveLength(1);
+
+        await act(async () => {
+            inlinePhraseTriggers[0]?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+            await Promise.resolve();
+        });
+
+        const hoverCard = container.querySelector<HTMLElement>('[data-translation-inline-hover-card="open"]');
+        expect(hoverCard).toBeTruthy();
+
+        await act(async () => {
+            inlinePhraseTriggers[0]?.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: hoverCard ?? undefined }));
+            hoverCard?.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, relatedTarget: inlinePhraseTriggers[0] ?? undefined }));
+            vi.advanceTimersByTime(180);
+        });
+
+        expect(container.querySelector('[data-translation-inline-hover-card="open"]')).toBeTruthy();
+
+        const saveButton = Array.from(hoverCard?.querySelectorAll("button") ?? []).find((button) => button.textContent?.includes("加入生词本"));
+        expect(saveButton).toBeTruthy();
+
+        await act(async () => {
+            saveButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(saveVocabulary).toHaveBeenCalledTimes(1);
     });
 
     it("clicking grammar only expands the sentence list and does not auto-request analysis", async () => {
@@ -1232,7 +1618,7 @@ describe("ParagraphCard", () => {
 
             const sentenceButtons = Array.from(container.querySelectorAll("button")).filter((button) => {
                 const label = button.getAttribute("aria-label") ?? "";
-                return label.includes("第 1 句") || label.includes("第 2 句");
+                return label === "第 1 句" || label === "第 2 句";
             });
             expect(sentenceButtons).toHaveLength(2);
 
@@ -1695,8 +2081,486 @@ describe("ParagraphCard", () => {
         expect(document.body.textContent).toContain("回答模式");
     });
 
+    it("opens the right-side ask dock with paragraph context instead of rendering the old bottom ask panel", async () => {
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+            paragraphOrder: 3,
+        });
+
+        const askButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("Ask AI"));
+        expect(askButton).toBeTruthy();
+
+        await act(async () => {
+            askButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(container.textContent).not.toContain("向 AI 自由提问当前段落内容");
+
+        const dock = document.body.querySelector('[data-selection-ask-dock="true"]');
+        expect(dock).toBeTruthy();
+        const contextCard = document.body.querySelector('[data-ask-context-card="true"]');
+        expect(contextCard?.textContent).toContain("整段上下文");
+        expect(contextCard?.textContent).toContain("第 3 段");
+        expect(contextCard?.textContent).toContain("Plants need sunlight and water to grow.");
+        expect(fetchMock).not.toHaveBeenCalledWith("/api/ai/ask", expect.anything());
+    });
+
+    it("uses parent-resolved selected context when paragraph Ask is opened with an active selection", async () => {
+        decodeAskThreadPayloadMock.mockReturnValue({
+            messages: [
+                { role: "user", content: "旧整段问题", createdAt: 1 },
+                { role: "assistant", content: "旧整段回答", createdAt: 2 },
+            ],
+            contextAttachment: {
+                id: "ask-context:p2:0-39",
+                kind: "paragraph",
+                label: "整段上下文",
+                rangeLabel: "第 2 段",
+                text: "Plants need sunlight and water to grow.",
+                excerpt: "Plants need sunlight and water to grow.",
+                paragraphRanges: [{
+                    paragraphOrder: 2,
+                    paragraphBlockIndex: 0,
+                    startOffset: 0,
+                    endOffset: 39,
+                    text: "Plants need sunlight and water to grow.",
+                    paragraphText: "Plants need sunlight and water to grow.",
+                }],
+            },
+        });
+        const resolvedContext = {
+            id: "ask-context:2:0-5|3:0-6",
+            kind: "cross_paragraph" as const,
+            label: "跨段选区",
+            rangeLabel: "第 2-3 段",
+            text: "First Second",
+            excerpt: "First Second",
+            paragraphRanges: [
+                {
+                    paragraphOrder: 2,
+                    paragraphBlockIndex: 1,
+                    startOffset: 0,
+                    endOffset: 5,
+                    text: "First",
+                    paragraphText: "First paragraph.",
+                },
+                {
+                    paragraphOrder: 3,
+                    paragraphBlockIndex: 2,
+                    startOffset: 0,
+                    endOffset: 6,
+                    text: "Second",
+                    paragraphText: "Second paragraph.",
+                },
+            ],
+        };
+        const onOpenAskWithContext = vi.fn(() => resolvedContext);
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+            paragraphOrder: 2,
+            onOpenAskWithContext,
+        });
+
+        const askButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("Ask AI"));
+        expect(askButton).toBeTruthy();
+
+        await act(async () => {
+            askButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onOpenAskWithContext).toHaveBeenCalledTimes(1);
+        const contextCard = document.body.querySelector('[data-ask-context-card="true"]');
+        expect(contextCard?.textContent).toContain("跨段选区");
+        expect(contextCard?.textContent).toContain("第 2-3 段");
+        expect(contextCard?.textContent).toContain("First Second");
+        expect(document.body.textContent).not.toContain("旧整段问题");
+    });
+
+    it("turns paragraph Ask into context injection when a global ask dock is already open", async () => {
+        const onOpenAskWithContext = vi.fn((attachment) => attachment);
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+            paragraphOrder: 4,
+            hasActiveAskDock: true,
+            onOpenAskWithContext,
+        });
+
+        const injectButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("植入上下文"));
+        expect(injectButton).toBeTruthy();
+
+        await act(async () => {
+            injectButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onOpenAskWithContext).toHaveBeenCalledWith(expect.objectContaining({
+            kind: "paragraph",
+            label: "整段上下文",
+            rangeLabel: "第 4 段",
+            text: "Plants need sunlight and water to grow.",
+        }));
+        expect(document.body.querySelector('[data-selection-ask-dock="true"]')).toBeNull();
+    });
+
+    it("keeps multi-select action popup visible instead of auto injecting into an existing Ask dock", async () => {
+        vi.mocked(await import("./selection-helpers")).hasMeaningfulTextSelection?.mockImplementation?.(() => true);
+        const onOpenAskWithContext = vi.fn((attachment) => attachment);
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+            paragraphOrder: 4,
+            hasActiveAskDock: true,
+            onOpenAskWithContext,
+        });
+        const paragraphText = container.querySelector<HTMLElement>('[data-paragraph-text="true"]');
+        expect(paragraphText?.firstChild).toBeTruthy();
+
+        const startRange = createRangeAtTextOffset(paragraphText!, 0);
+        const endRange = createRangeAtTextOffset(paragraphText!, 6);
+        const range = document.createRange();
+        range.setStart(startRange.startContainer, startRange.startOffset);
+        range.setEnd(endRange.startContainer, endRange.startOffset);
+        Object.defineProperty(range, "getBoundingClientRect", {
+            configurable: true,
+            value: () => new DOMRect(120, 140, 96, 22),
+        });
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        await act(async () => {
+            paragraphText?.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        });
+
+        expect(onOpenAskWithContext).not.toHaveBeenCalled();
+        expect(document.body.textContent).toContain("向AI提问");
+        expect(document.body.querySelector('[data-selection-ask-dock="true"]')).toBeNull();
+        selection?.removeAllRanges();
+    });
+
+    it("keeps the current Ask conversation when injecting a new external context", async () => {
+        const text = "Plants need sunlight and water to grow.";
+        const existingContext = {
+            id: "ask-context:p1:0-39",
+            kind: "paragraph" as const,
+            label: "整段上下文",
+            rangeLabel: "第 1 段",
+            text,
+            excerpt: text,
+            paragraphRanges: [{
+                paragraphOrder: 1,
+                paragraphBlockIndex: 0,
+                startOffset: 0,
+                endOffset: text.length,
+                text,
+                paragraphText: text,
+            }],
+        };
+        const injectedContext = {
+            id: "ask-context:p9:0-22",
+            kind: "paragraph" as const,
+            label: "整段上下文",
+            rangeLabel: "第 9 段",
+            text: "New paragraph context.",
+            excerpt: "New paragraph context.",
+            paragraphRanges: [{
+                paragraphOrder: 9,
+                paragraphBlockIndex: 8,
+                startOffset: 0,
+                endOffset: 22,
+                text: "New paragraph context.",
+                paragraphText: "New paragraph context.",
+            }],
+        };
+
+        decodeAskThreadPayloadMock.mockReturnValue({
+            messages: [
+                { role: "user", content: "旧整段问题", createdAt: 1 },
+                { role: "assistant", content: "旧整段回答", createdAt: 2 },
+            ],
+            contextAttachment: existingContext,
+        });
+
+        globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        mountedRoots.push(root);
+        const baseProps: React.ComponentProps<typeof ParagraphCard> = {
+            text,
+            index: 0,
+            paragraphOrder: 1,
+            articleTitle: "Sample article",
+            articleUrl: "https://example.com/article",
+            onWordClick: vi.fn(),
+            readingNotes: [{
+                id: 201,
+                article_key: "reading::sample",
+                selected_text: text,
+                note_text: "encoded-thread",
+                mark_type: "ask",
+                start_offset: 0,
+                end_offset: text.length,
+                created_at: Date.now(),
+                updated_at: Date.now(),
+            }],
+        };
+
+        await act(async () => {
+            root.render(<ParagraphCard {...baseProps} />);
+        });
+
+        const askButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("Ask AI"));
+        expect(askButton).toBeTruthy();
+
+        await act(async () => {
+            askButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(document.body.textContent).toContain("旧整段问题");
+        expect(document.body.textContent).toContain("旧整段回答");
+
+        await act(async () => {
+            root.render(
+                <ParagraphCard
+                    {...baseProps}
+                    hasActiveAskDock
+                    askContextAttachment={injectedContext}
+                />,
+            );
+        });
+
+        const contextCard = document.body.querySelector('[data-ask-context-card="true"]');
+        expect(contextCard?.textContent).toContain("第 9 段");
+        expect(contextCard?.textContent).toContain("New paragraph context.");
+        expect(document.body.textContent).toContain("旧整段问题");
+        expect(document.body.textContent).toContain("旧整段回答");
+    });
+
+    it("sends Ask-specific thinking controls with the Ask AI request", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            headers: new Headers(),
+            body: {
+                getReader: () => ({
+                    read: vi.fn()
+                        .mockResolvedValueOnce({
+                            done: false,
+                            value: new TextEncoder().encode("data: {\"content\":\"Answer.\"}\n\n"),
+                        })
+                        .mockResolvedValueOnce({ done: true, value: undefined }),
+                    releaseLock: vi.fn(),
+                }),
+            },
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        queryAskRelevantVocabularyMock.mockResolvedValueOnce({ vocabulary: [] });
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+            paragraphOrder: 1,
+        });
+
+        const askButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("Ask AI"));
+        await act(async () => {
+            askButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const thinkingToggle = document.body.querySelector<HTMLButtonElement>('[data-ask-thinking-toggle="true"]');
+        expect(thinkingToggle).toBeTruthy();
+        await act(async () => {
+            thinkingToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const highReasoningButton = document.body.querySelector<HTMLButtonElement>('[data-ask-reasoning-effort="high"]');
+        expect(highReasoningButton).toBeTruthy();
+        await act(async () => {
+            highReasoningButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const input = document.body.querySelector<HTMLInputElement>('input[placeholder="针对选中文本提问..."]');
+        expect(input).toBeTruthy();
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "解释这一段");
+            input?.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        const sendButton = document.body.querySelector<HTMLButtonElement>('[data-selection-ask-send="true"]');
+        await act(async () => {
+            sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const [, requestInit] = fetchMock.mock.calls[0];
+        const payload = JSON.parse(String(requestInit.body));
+        expect(payload.askThinkingMode).toBe("on");
+        expect(payload.askReasoningEffort).toBe("high");
+    });
+
+    it("persists cross-paragraph ask threads to every involved paragraph range", async () => {
+        const onCreateReadingNote = vi.fn();
+        vi.stubGlobal("fetch", fetchMock);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            headers: new Headers(),
+            body: {
+                getReader: () => ({
+                    read: vi.fn()
+                        .mockResolvedValueOnce({
+                            done: false,
+                            value: new TextEncoder().encode("data: {\"content\":\"Answer.\"}\n\n"),
+                        })
+                        .mockResolvedValueOnce({ done: true, value: undefined }),
+                    releaseLock: vi.fn(),
+                }),
+            },
+        });
+        queryAskRelevantVocabularyMock.mockResolvedValueOnce({ vocabulary: [] });
+        const contextAttachment = {
+            id: "ask-context:1:0-6|2:0-7",
+            kind: "cross_paragraph" as const,
+            label: "跨段选区",
+            rangeLabel: "第 1-2 段",
+            text: "Plants Another",
+            excerpt: "Plants Another",
+            paragraphRanges: [
+                {
+                    paragraphOrder: 1,
+                    paragraphBlockIndex: 0,
+                    startOffset: 0,
+                    endOffset: 6,
+                    text: "Plants",
+                    paragraphText: "Plants need sunlight and water to grow.",
+                },
+                {
+                    paragraphOrder: 2,
+                    paragraphBlockIndex: 1,
+                    startOffset: 0,
+                    endOffset: 7,
+                    text: "Another",
+                    paragraphText: "Another paragraph continues the idea.",
+                },
+            ],
+        };
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow.",
+            paragraphOrder: 1,
+            askContextAttachment: contextAttachment,
+            onCreateReadingNote,
+        });
+
+        const input = document.body.querySelector<HTMLInputElement>('input[placeholder="针对选中文本提问..."]');
+        expect(input).toBeTruthy();
+
+        await act(async () => {
+            input?.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: "为什么跨段？" }));
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "为什么跨段？");
+            input?.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+        const sendButton = document.body.querySelector<HTMLButtonElement>('[data-selection-ask-send="true"]');
+        expect(sendButton).toBeTruthy();
+
+        await act(async () => {
+            sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(onCreateReadingNote).toHaveBeenCalledWith(expect.objectContaining({
+            paragraphOrder: 1,
+            paragraphBlockIndex: 0,
+            selectedText: "Plants",
+            markType: "ask",
+            startOffset: 0,
+            endOffset: 6,
+        }));
+        expect(onCreateReadingNote).toHaveBeenCalledWith(expect.objectContaining({
+            paragraphOrder: 2,
+            paragraphBlockIndex: 1,
+            selectedText: "Another",
+            markType: "ask",
+            startOffset: 0,
+            endOffset: 7,
+        }));
+
+        expect(container.textContent).toContain("Plants need sunlight and water to grow.");
+    });
+
+    it("clears the Ask context card and sends a paragraph-only ask without selection", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            headers: new Headers(),
+            body: {
+                getReader: () => ({
+                    read: vi.fn()
+                        .mockResolvedValueOnce({
+                            done: false,
+                            value: new TextEncoder().encode("data: {\"content\":\"Answer.\"}\n\n"),
+                        })
+                        .mockResolvedValueOnce({ done: true, value: undefined }),
+                    releaseLock: vi.fn(),
+                }),
+            },
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        queryAskRelevantVocabularyMock.mockResolvedValueOnce({ vocabulary: [] });
+
+        const contextAttachment = {
+            id: "ask-context:1:0-6",
+            kind: "selection" as const,
+            label: "选中文本",
+            rangeLabel: "第 1 段",
+            text: "Plants",
+            excerpt: "Plants",
+            paragraphRanges: [{
+                paragraphOrder: 1,
+                paragraphBlockIndex: 0,
+                startOffset: 0,
+                endOffset: 6,
+                text: "Plants",
+                paragraphText: "Plants need sunlight and water to grow.",
+            }],
+        };
+        await renderCard({
+            text: "Plants need sunlight and water to grow.",
+            paragraphOrder: 1,
+            askContextAttachment: contextAttachment,
+        });
+
+        const clearButton = document.body.querySelector<HTMLButtonElement>('[data-ask-context-clear="true"]');
+        expect(clearButton).toBeTruthy();
+
+        await act(async () => {
+            clearButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(document.body.querySelector('[data-ask-context-card="true"]')).toBeNull();
+
+        const input = document.body.querySelector<HTMLInputElement>('input[placeholder="针对选中文本提问..."], input[placeholder="输入你的问题..."]');
+        expect(input).toBeTruthy();
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "解释这一段");
+            input?.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        const sendButton = document.body.querySelector<HTMLButtonElement>('[data-selection-ask-send="true"]');
+        await act(async () => {
+            sendButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const [, requestInit] = fetchMock.mock.calls[0];
+        const payload = JSON.parse(String(requestInit.body));
+        expect(payload.text).toBe("Plants need sunlight and water to grow.");
+        expect(payload.selection).toBe("");
+        expect(queryAskRelevantVocabularyMock).toHaveBeenCalledWith({
+            paragraph: "Plants need sunlight and water to grow.",
+            question: "解释这一段",
+            selection: "Plants need sunlight and water to grow.",
+        });
+    });
+
     it("includes retrieved vocab memory when auto-asking from a sentence badge", async () => {
         const text = "Research shows that sleep helps solidify new memories.";
+        const onOpenAskWithContext = vi.fn((attachment) => attachment);
         queryAskRelevantVocabularyMock.mockResolvedValue({
             status: "hit",
             vocabulary: [
@@ -1727,7 +2591,7 @@ describe("ParagraphCard", () => {
             value: () => new DOMRect(12, 24, 220, 36),
         });
 
-        const container = await renderCard({ text });
+        const container = await renderCard({ text, paragraphOrder: 5, onOpenAskWithContext });
         const layoutButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("排版"));
         expect(layoutButton).toBeTruthy();
 
@@ -1743,6 +2607,12 @@ describe("ParagraphCard", () => {
             sentenceBadge?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
+        expect(onOpenAskWithContext).toHaveBeenCalledWith(expect.objectContaining({
+            kind: "sentence",
+            label: "句子上下文",
+            rangeLabel: "第 5 段",
+            text,
+        }));
         expect(queryAskRelevantVocabularyMock).toHaveBeenCalledWith({
             paragraph: text,
             question: "请翻译这句话，并解析它的核心语法结构与词汇搭配。",
@@ -1896,5 +2766,250 @@ describe("ParagraphCard", () => {
 
         const firstSentenceLength = "Plants need sunlight and water to grow.".length;
         expect(audioInstances[0]?.currentTime).toBeCloseTo((clickOffset / firstSentenceLength) * 5, 4);
+    });
+
+    it("renders sentence play buttons at the end of each translated sentence", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const sentencePlayButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('button[aria-label^="播放第 "]'));
+        expect(sentencePlayButtons).toHaveLength(2);
+        expect(sentencePlayButtons[0]?.getAttribute("aria-label")).toContain("第 1 句");
+        expect(sentencePlayButtons[1]?.getAttribute("aria-label")).toContain("第 2 句");
+    });
+
+    it("plays and seeks within a translated sentence from the sentence-level controls", async () => {
+        const audioInstances = installFakeAudio(5);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const text = "Plants need sunlight and water to grow. Water helps roots stay strong.";
+        const container = await renderCard({ text });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const sentenceContent = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-speaking-segment-content="true"]');
+        expect(sentenceContent).toBeTruthy();
+
+        const clickOffset = 7;
+        const clickRange = createRangeAtTextOffset(sentenceContent!, clickOffset);
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: vi.fn(() => clickRange),
+        });
+
+        await act(async () => {
+            sentenceContent?.dispatchEvent(new MouseEvent("click", {
+                bubbles: true,
+                clientX: 240,
+                clientY: 90,
+            }));
+        });
+
+        const firstSentenceLength = "Plants need sunlight and water to grow.".length;
+        expect(audioInstances).toHaveLength(1);
+        expect(audioInstances[0]?.currentTime).toBeCloseTo((clickOffset / firstSentenceLength) * 5, 4);
+    });
+
+    it("keeps grammar refresh affordance while adding a sentence play button", async () => {
+        const text = "Plants need sunlight and water to grow.";
+        const cacheKey = buildGrammarCacheKey({
+            text: text.trim(),
+            mode: "basic",
+            promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+            model: buildReadingGrammarExecutionSignature({
+                ai_provider: "deepseek",
+                deepseek_model: "deepseek-v4-flash",
+                deepseek_thinking_mode: "off",
+                deepseek_reasoning_effort: "high",
+            }),
+        });
+
+        analysisStoreMock.grammarAnalyses = {
+            [cacheKey]: {
+                difficult_sentences: [
+                    {
+                        sentence: text,
+                        translation: "植物需要阳光和水才能生长。",
+                        highlights: [
+                            {
+                                substring: "Plants",
+                                type: "主语",
+                                explanation: "结构判断：Plants 作主语；句中作用：发出 need 这一动作。",
+                            },
+                        ],
+                    },
+                ],
+            },
+        };
+
+        const container = await renderCard({ text });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+        expect(speakingButton).toBeTruthy();
+        expect(grammarButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        const refreshButton = container.querySelector<HTMLButtonElement>('button[aria-label="重新生成第 1 句解析"]');
+
+        expect(playButton).toBeTruthy();
+        expect(refreshButton).toBeTruthy();
+    });
+
+    it("returns to full-paragraph seek after replaying the full track from sentence mode", async () => {
+        const audioInstances = installFakeAudio(5);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        useTtsMock.currentTime = 6;
+        useTtsMock.duration = 40;
+        useTtsMock.marks = [
+            { time: 0, type: "word", start: 0, end: 500, value: "Plants" },
+            { time: 500, type: "word", start: 500, end: 1000, value: "need" },
+            { time: 1000, type: "word", start: 1000, end: 1500, value: "sunlight" },
+            { time: 1500, type: "word", start: 1500, end: 2000, value: "and" },
+            { time: 2000, type: "word", start: 2000, end: 2500, value: "water" },
+            { time: 2500, type: "word", start: 2500, end: 3000, value: "to" },
+            { time: 3000, type: "word", start: 3000, end: 3500, value: "grow" },
+        ];
+
+        const text = "Plants need sunlight and water to grow. Water helps roots stay strong.";
+        const container = await renderCard({ text });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const sentencePlayButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(sentencePlayButton).toBeTruthy();
+
+        await act(async () => {
+            sentencePlayButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const fullTrackButton = Array.from(container.querySelectorAll('[data-testid="speaking-panel"] button')).find((button) => button.textContent?.includes("听全部"));
+        expect(fullTrackButton).toBeTruthy();
+
+        await act(async () => {
+            fullTrackButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const sentenceContent = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-speaking-segment-content="true"]');
+        expect(sentenceContent).toBeTruthy();
+
+        const waterOffset = "Plants need sunlight and water to grow.".indexOf("water") + 2;
+        const clickRange = createRangeAtTextOffset(sentenceContent!, waterOffset);
+
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: vi.fn(() => clickRange),
+        });
+
+        await act(async () => {
+            sentenceContent?.dispatchEvent(new MouseEvent("click", {
+                bubbles: true,
+                clientX: 180,
+                clientY: 60,
+            }));
+        });
+
+        expect(audioInstances).toHaveLength(1);
+        expect(audioInstances[0]?.currentTime).toBe(0);
+        expect(useTtsMock.seekToMs).toHaveBeenCalledTimes(1);
+        expect(useTtsMock.seekToMs.mock.calls[0]?.[0]).toBe(2000);
     });
 });

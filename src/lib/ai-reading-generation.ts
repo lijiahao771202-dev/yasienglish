@@ -2,6 +2,7 @@ export type ReadingDifficulty = "cet4" | "cet6" | "ielts";
 export type AIGenerationMode = "standard" | "longform";
 export type AIGenerationRagMode = "off" | "reference" | "strict";
 export type AIGenerationRagSource = "vocab" | "dictionary" | "hybrid";
+export type LongformTrack = "exam" | "native";
 export type LongformStyleId =
     | "story"
     | "science"
@@ -49,8 +50,9 @@ export interface LongformLengthTierMeta {
 export interface AIGenerationRequestBody {
     topic?: string;
     topicSeed?: unknown;
-    difficulty: ReadingDifficulty;
+    difficulty?: ReadingDifficulty;
     generationMode: AIGenerationMode;
+    longformTrack?: LongformTrack;
     ragMode?: AIGenerationRagMode;
     ragSource?: AIGenerationRagSource;
     longformStyleId?: LongformStyleId;
@@ -204,6 +206,10 @@ export function normalizeAIGenerationRagSource(value: unknown): AIGenerationRagS
     return value === "vocab" || value === "dictionary" ? value : "hybrid";
 }
 
+export function normalizeLongformTrack(value: unknown): LongformTrack {
+    return value === "native" ? "native" : "exam";
+}
+
 export function normalizeLongformStyleId(value: unknown): LongformStyleId | null {
     if (typeof value !== "string") return null;
     if (LONGFORM_STYLE_OPTIONS.some((item) => item.id === value)) {
@@ -240,8 +246,9 @@ export function getLongformLengthTierMeta(id: LongformLengthTierId | null | unde
 export function buildAIGenerationRequestBody(params: {
     topic?: string | null;
     topicSeed?: unknown;
-    difficulty: ReadingDifficulty;
+    difficulty?: ReadingDifficulty | null;
     generationMode?: AIGenerationMode | null;
+    longformTrack?: LongformTrack | null;
     ragMode?: AIGenerationRagMode | null;
     ragSource?: AIGenerationRagSource | null;
     longformStyleId?: LongformStyleId | null;
@@ -251,6 +258,9 @@ export function buildAIGenerationRequestBody(params: {
 }): AIGenerationRequestBody {
     const normalizedTopic = params.topic?.trim() || undefined;
     const generationMode = normalizeAIGenerationMode(params.generationMode);
+    const longformTrack = generationMode === "longform"
+        ? normalizeLongformTrack(params.longformTrack)
+        : undefined;
     const ragMode = normalizeAIGenerationRagMode(params.ragMode);
     const ragSource = normalizeAIGenerationRagSource(params.ragSource);
     const customStylePrompt = params.customStylePrompt?.trim() || undefined;
@@ -261,8 +271,9 @@ export function buildAIGenerationRequestBody(params: {
     return {
         topic: normalizedTopic,
         topicSeed: params.topicSeed,
-        difficulty: params.difficulty,
+        difficulty: params.difficulty ?? undefined,
         generationMode,
+        longformTrack,
         ragMode,
         ragSource,
         longformStyleId: generationMode === "longform" ? params.longformStyleId ?? undefined : undefined,
@@ -279,21 +290,27 @@ export function getStrictRagLimit(generationMode: AIGenerationMode) {
 export function isQuizEligibleArticle(article: {
     isAIGenerated?: boolean | null;
     difficulty?: ReadingDifficulty | null;
+    longformTrack?: LongformTrack | null;
     quizEligible?: boolean | null;
 } | null | undefined) {
-    if (!article?.isAIGenerated || !article?.difficulty) return false;
+    if (!article?.isAIGenerated) return false;
+    if (article.longformTrack === "native") return false;
+    if (!article?.difficulty) return false;
     return article.quizEligible !== false;
 }
 
 export function formatLongformHistoryDescriptor(article: {
     difficulty?: ReadingDifficulty | null;
     generationMode?: AIGenerationMode | null;
+    longformTrack?: LongformTrack | null;
     longformStyle?: { name?: string | null } | null;
     lengthTier?: { targetWordCount?: number | null } | null;
 }) {
     if (article?.generationMode !== "longform") return null;
 
-    const difficultyLabel = article.difficulty === "cet4"
+    const difficultyLabel = article.longformTrack === "native"
+        ? "母语者"
+        : article.difficulty === "cet4"
         ? "四级"
         : article.difficulty === "cet6"
             ? "六级"

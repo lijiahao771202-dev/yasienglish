@@ -7,7 +7,7 @@ describe("ai history helpers", () => {
         { title: "One", link: "1", pubDate: "2026-01-01T00:00:00.000Z", source: "AI Gen", difficulty: "cet4" as const },
         { title: "Two", link: "2", pubDate: "2026-01-02T00:00:00.000Z", source: "AI Gen", difficulty: "cet6" as const },
         { title: "Three", link: "3", pubDate: "2026-01-03T00:00:00.000Z", source: "AI Gen", difficulty: "ielts" as const },
-        { title: "Four", link: "4", pubDate: "2026-01-04T00:00:00.000Z", source: "AI Gen" as const },
+        { title: "Four", link: "4", pubDate: "2026-01-04T00:00:00.000Z", source: "AI Gen" as const, generationMode: "longform" as const, longformTrack: "native" as const },
     ];
 
     it("counts AI history items by difficulty", () => {
@@ -32,8 +32,16 @@ describe("ai history helpers", () => {
         expect(formatLongformHistoryDescriptor({
             difficulty: "ielts",
             generationMode: "longform",
+            longformTrack: "exam",
             longformStyle: { name: "机制拆解" },
             lengthTier: { targetWordCount: 1600 },
         })).toBe("雅思 · 长文 · 机制拆解 · 1600词");
+
+        expect(formatLongformHistoryDescriptor({
+            generationMode: "longform",
+            longformTrack: "native",
+            longformStyle: { name: "观点评论" },
+            lengthTier: { targetWordCount: 2200 },
+        })).toBe("母语者 · 长文 · 观点评论 · 2200词");
     });
 });

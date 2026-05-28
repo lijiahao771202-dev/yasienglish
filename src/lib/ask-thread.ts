@@ -14,11 +14,33 @@ export interface AskThreadMessage {
     isError?: boolean;
 }
 
+export type AskContextAttachmentKind = "paragraph" | "selection" | "cross_paragraph" | "sentence";
+
+export interface AskContextParagraphRange {
+    paragraphOrder: number;
+    paragraphBlockIndex: number;
+    startOffset: number;
+    endOffset: number;
+    text: string;
+    paragraphText: string;
+}
+
+export interface AskContextAttachment {
+    id: string;
+    kind: AskContextAttachmentKind;
+    label: string;
+    rangeLabel: string;
+    text: string;
+    excerpt: string;
+    paragraphRanges: AskContextParagraphRange[];
+}
+
 export interface AskThreadPayload {
     version: 1;
     updatedAt: number;
     messages: AskThreadMessage[];
     summary?: string;
+    contextAttachment?: AskContextAttachment;
 }
 
 export interface AskQaPair {
@@ -52,6 +74,60 @@ export function isLikelyTransientAskFailure(content: string): boolean {
 
 function isAskRole(raw: unknown): raw is AskRole {
     return raw === "user" || raw === "assistant";
+}
+
+function sanitizeText(value: unknown, maxLength = 20000) {
+    if (typeof value !== "string") return "";
+    return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+export function sanitizeAskContextAttachment(input: unknown): AskContextAttachment | undefined {
+    if (!input || typeof input !== "object") return undefined;
+    const item = input as Record<string, unknown>;
+    const kind = item.kind;
+    if (kind !== "paragraph" && kind !== "selection" && kind !== "cross_paragraph" && kind !== "sentence") {
+        return undefined;
+    }
+
+    const text = sanitizeText(item.text);
+    if (!text) return undefined;
+
+    const paragraphRanges = Array.isArray(item.paragraphRanges)
+        ? item.paragraphRanges
+            .map((range): AskContextParagraphRange | null => {
+                if (!range || typeof range !== "object") return null;
+                const raw = range as Record<string, unknown>;
+                const paragraphOrder = Number(raw.paragraphOrder);
+                const paragraphBlockIndex = Number(raw.paragraphBlockIndex);
+                const startOffset = Number(raw.startOffset);
+                const endOffset = Number(raw.endOffset);
+                const rangeText = sanitizeText(raw.text);
+                const paragraphText = sanitizeText(raw.paragraphText);
+                if (!Number.isFinite(paragraphOrder) || paragraphOrder < 1) return null;
+                if (!Number.isFinite(paragraphBlockIndex) || paragraphBlockIndex < 0) return null;
+                if (!Number.isFinite(startOffset) || !Number.isFinite(endOffset) || endOffset < startOffset) return null;
+                if (!rangeText) return null;
+                return {
+                    paragraphOrder,
+                    paragraphBlockIndex,
+                    startOffset,
+                    endOffset,
+                    text: rangeText,
+                    paragraphText,
+                };
+            })
+            .filter((range): range is AskContextParagraphRange => range !== null)
+        : [];
+
+    return {
+        id: sanitizeText(item.id, 200) || `ask-context:${Date.now()}`,
+        kind,
+        label: sanitizeText(item.label, 40) || (kind === "cross_paragraph" ? "跨段选区" : kind === "paragraph" ? "整段上下文" : kind === "sentence" ? "句子上下文" : "选中文本"),
+        rangeLabel: sanitizeText(item.rangeLabel, 80),
+        text,
+        excerpt: sanitizeText(item.excerpt, 280) || (text.length > 160 ? `${text.slice(0, 160)}...` : text),
+        paragraphRanges,
+    };
 }
 
 export function sanitizeAskThreadMessages(input: unknown): AskThreadMessage[] {
@@ -99,17 +175,20 @@ export function decodeAskThreadPayload(raw: string | null | undefined): AskThrea
             updatedAt?: unknown;
             messages?: unknown;
             summary?: unknown;
+            contextAttachment?: unknown;
         };
 
         const messages = sanitizeAskThreadMessages(parsed?.messages);
         const updatedAt = Number(parsed?.updatedAt);
         const summary = typeof parsed?.summary === "string" ? parsed.summary.trim() : undefined;
+        const contextAttachment = sanitizeAskContextAttachment(parsed?.contextAttachment);
 
         return {
             version: ASK_THREAD_VERSION,
             updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : Date.now(),
             messages,
             ...(summary ? { summary } : {}),
+            ...(contextAttachment ? { contextAttachment } : {}),
         };
     } catch {
         return {
@@ -120,12 +199,18 @@ export function decodeAskThreadPayload(raw: string | null | undefined): AskThrea
     }
 }
 
-export function encodeAskThreadPayload(messages: AskThreadMessage[], summary?: string): string {
+export function encodeAskThreadPayload(
+    messages: AskThreadMessage[],
+    summary?: string,
+    contextAttachment?: AskContextAttachment,
+): string {
+    const sanitizedContext = sanitizeAskContextAttachment(contextAttachment);
     const payload: AskThreadPayload = {
         version: ASK_THREAD_VERSION,
         updatedAt: Date.now(),
         messages: sanitizeAskThreadMessages(messages),
         ...(summary?.trim() ? { summary: summary.trim() } : {}),
+        ...(sanitizedContext ? { contextAttachment: sanitizedContext } : {}),
     };
     return JSON.stringify(payload);
 }

@@ -23,16 +23,38 @@ export async function readAskSseStream(
             return;
         }
 
+        let parsed: {
+            content?: unknown;
+            reasoningContent?: unknown;
+            error?: unknown;
+            errorCode?: unknown;
+            retryable?: unknown;
+        };
         try {
-            const parsed = JSON.parse(data) as { content?: unknown; reasoningContent?: unknown };
-            if (typeof parsed.reasoningContent === "string" && parsed.reasoningContent.length > 0) {
-                handlers.onReasoningContent?.(parsed.reasoningContent);
-            }
-            if (typeof parsed.content === "string" && parsed.content.length > 0) {
-                handlers.onContent(parsed.content);
-            }
+            parsed = JSON.parse(data) as typeof parsed;
         } catch (error) {
             console.warn("[AskAI] Ignoring malformed SSE event:", error);
+            return;
+        }
+
+        if (typeof parsed.error === "string" || typeof parsed.errorCode === "string") {
+            const error = new Error(
+                typeof parsed.error === "string" && parsed.error.trim()
+                    ? parsed.error
+                    : "Ask AI 暂时不可用，请稍后重试。",
+            ) as Error & { responseData?: unknown };
+            error.responseData = {
+                error: parsed.error,
+                errorCode: parsed.errorCode,
+                retryable: parsed.retryable,
+            };
+            throw error;
+        }
+        if (typeof parsed.reasoningContent === "string" && parsed.reasoningContent.length > 0) {
+            handlers.onReasoningContent?.(parsed.reasoningContent);
+        }
+        if (typeof parsed.content === "string" && parsed.content.length > 0) {
+            handlers.onContent(parsed.content);
         }
     };
 

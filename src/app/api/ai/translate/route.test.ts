@@ -2,22 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
     createCompletionMock,
+    createNoThinkingClientMock,
     chargeReadingCoinsMock,
     insufficientReadingCoinsPayloadMock,
 } = vi.hoisted(() => ({
     createCompletionMock: vi.fn(),
+    createNoThinkingClientMock: vi.fn(),
     chargeReadingCoinsMock: vi.fn(),
     insufficientReadingCoinsPayloadMock: vi.fn(),
 }));
 
 vi.mock("@/lib/deepseek", () => ({
-    deepseek: {
-        chat: {
-            completions: {
-                create: createCompletionMock,
-            },
-        },
-    },
+    createDeepSeekClientForCurrentUserWithoutThinking: createNoThinkingClientMock,
 }));
 
 vi.mock("@/lib/reading-economy-server", () => ({
@@ -41,8 +37,16 @@ function buildRequest(body: Record<string, unknown>) {
 describe("translate route", () => {
     beforeEach(() => {
         createCompletionMock.mockReset();
+        createNoThinkingClientMock.mockReset();
         chargeReadingCoinsMock.mockReset();
         insufficientReadingCoinsPayloadMock.mockReset();
+        createNoThinkingClientMock.mockResolvedValue({
+            chat: {
+                completions: {
+                    create: createCompletionMock,
+                },
+            },
+        });
         chargeReadingCoinsMock.mockResolvedValue({
             ok: true,
             balance: 0,
@@ -126,6 +130,7 @@ describe("translate route", () => {
             model: "deepseek-chat",
             response_format: { type: "json_object" },
         }));
+        expect(createNoThinkingClientMock).toHaveBeenCalledTimes(1);
     });
 
     it("falls back to joining sentence translations when full translation is missing", async () => {
@@ -141,6 +146,42 @@ describe("translate route", () => {
                                 },
                             ],
                         }),
+                    },
+                },
+            ],
+        });
+
+        const response = await POST(buildRequest({
+            text: "Plants need sunlight and water to grow.",
+            context: "Plants need sunlight and water to grow.",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.translation).toBe("植物需要阳光和水才能生长。");
+        expect(data.sentenceTranslations).toHaveLength(1);
+    });
+
+    it("extracts JSON when a thinking provider wraps the response in prose and fences", async () => {
+        createCompletionMock.mockResolvedValueOnce({
+            choices: [
+                {
+                    message: {
+                        content: [
+                            "我先确认句子边界，然后给出 JSON。",
+                            "```json",
+                            JSON.stringify({
+                                translation: "植物需要阳光和水才能生长。",
+                                sentenceTranslations: [
+                                    {
+                                        sentence: "Plants need sunlight and water to grow.",
+                                        translation: "植物需要阳光和水才能生长。",
+                                        phraseTranslations: [],
+                                    },
+                                ],
+                            }),
+                            "```",
+                        ].join("\n"),
                     },
                 },
             ],

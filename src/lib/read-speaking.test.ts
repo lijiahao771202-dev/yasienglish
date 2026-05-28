@@ -38,6 +38,20 @@ describe("read-speaking segmentation", () => {
         ]);
     });
 
+    it("does not create standalone punctuation units from spaced ellipses", () => {
+        const text = "\"remembering the old routine. . . feeling tightness in the jaw. . . sense of panic rising. . . judging myself for feeling weak. .\" This intensive articulation prevents the mind from weaving a coherent narrative.";
+        const units = buildSentenceUnits(text, buildAutoSentenceBoundaries(text));
+
+        expect(units.map((unit) => unit.speakText)).toEqual([
+            "\"remembering the old routine...",
+            "feeling tightness in the jaw...",
+            "sense of panic rising...",
+            "judging myself for feeling weak...\"",
+            "This intensive articulation prevents the mind from weaving a coherent narrative.",
+        ]);
+        expect(units.every((unit) => /[A-Za-z0-9]/.test(unit.speakText))).toBe(true);
+    });
+
     it("shifts one boundary in word-aligned steps", () => {
         const text = "Alpha beta gamma. Delta epsilon zeta.";
         const initial = buildAutoSentenceBoundaries(text);

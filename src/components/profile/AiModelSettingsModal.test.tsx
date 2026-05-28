@@ -24,6 +24,20 @@ vi.mock("dexie-react-hooks", () => ({
         github_model: "openai/gpt-4.1",
         mimo_api_key: "",
         mimo_model: "mimo-v2.5-pro",
+        learning_preferences: {
+            target_mode: "read",
+            english_level: "B1",
+            daily_goal_minutes: 20,
+            ui_theme_preference: "bubblegum_pop",
+            tts_voice: "en-US-JennyNeural",
+            rebuild_auto_open_shadowing_prompt: true,
+            ai_provider_params: {
+                mimo: {
+                    thinking_mode: "off",
+                    reasoning_effort: "medium",
+                },
+            },
+        },
     }),
 }));
 
@@ -173,9 +187,13 @@ describe("AiModelSettingsModal", () => {
         });
 
         expect(document.cookie).toContain("yasi_ai_provider=mimo");
+        expect(document.cookie).toContain("yasi_mimo_reasoning_effort=medium");
         expect(saveProfilePatchMock).not.toHaveBeenCalled();
 
         expect(container.textContent).toContain("MIMO_API_KEY");
+        expect(container.textContent).toContain("深度思考");
+        expect(container.textContent).toContain("推理强度");
+        expect(container.textContent).toContain("均衡");
         expect(container.querySelector<HTMLInputElement>('input[name="mimo_api_key_override"]')).toBeNull();
 
         const mimoV25Button = container.querySelector<HTMLButtonElement>('button[data-mimo-model="mimo-v2.5"]');
@@ -188,6 +206,15 @@ describe("AiModelSettingsModal", () => {
         expect(document.cookie).toContain("yasi_mimo_model=mimo-v2.5");
         expect(saveProfilePatchMock).not.toHaveBeenCalled();
 
+        const thinkingToggle = container.querySelector<HTMLButtonElement>('button[aria-label="MiMo thinking"]');
+        expect(thinkingToggle).toBeTruthy();
+
+        await act(async () => {
+            thinkingToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(document.cookie).toContain("yasi_mimo_thinking_mode=on");
+
         await act(async () => {
             vi.advanceTimersByTime(600);
         });
@@ -195,6 +222,14 @@ describe("AiModelSettingsModal", () => {
         expect(saveProfilePatchMock).toHaveBeenLastCalledWith(expect.objectContaining({
             ai_provider: "mimo",
             mimo_model: "mimo-v2.5",
+            learning_preferences: expect.objectContaining({
+                ai_provider_params: expect.objectContaining({
+                    mimo: expect.objectContaining({
+                        thinking_mode: "on",
+                        reasoning_effort: "medium",
+                    }),
+                }),
+            }),
         }));
         expect(saveProfilePatchMock.mock.calls.at(-1)?.[0]).not.toHaveProperty("mimo_api_key");
 
@@ -235,6 +270,57 @@ describe("AiModelSettingsModal", () => {
                 "Content-Type": "application/json",
                 Authorization: "Bearer local-session",
             },
+        }));
+
+        await act(async () => {
+            root.unmount();
+        });
+    });
+
+    it("sends MiMo parameter settings to connection tests", async () => {
+        vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+        const fetchMock = vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ message: "Connection OK." }),
+        }));
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(<AiModelSettingsModal isOpen onClose={vi.fn()} />);
+        });
+
+        const mimoProvider = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("Xiaomi MiMo"));
+        await act(async () => {
+            mimoProvider?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const highReasoningButton = container.querySelector<HTMLButtonElement>('button[data-mimo-reasoning="high"]');
+        await act(async () => {
+            highReasoningButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const thinkingToggle = container.querySelector<HTMLButtonElement>('button[aria-label="MiMo thinking"]');
+        await act(async () => {
+            thinkingToggle?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const testButton = Array.from(container.querySelectorAll("button"))
+            .find((button) => button.textContent?.includes("Test Connection"));
+        await act(async () => {
+            testButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const requestBody = JSON.parse(fetchMock.mock.calls.at(-1)?.[1]?.body as string);
+        expect(requestBody).toEqual(expect.objectContaining({
+            ai_provider: "mimo",
+            mimo_model: "mimo-v2.5-pro",
+            mimo_thinking_mode: "on",
+            mimo_reasoning_effort: "high",
         }));
 
         await act(async () => {

@@ -34,6 +34,7 @@ import {
     type AIGenerationRagSource,
     type LongformLengthTierMeta,
     type LongformLengthTierId,
+    type LongformTrack,
     type LongformStyleMeta,
     type LongformStyleId,
 } from "@/lib/ai-reading-generation";
@@ -47,6 +48,7 @@ export interface ArticleItem {
     image?: string;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     generationMode?: AIGenerationMode;
+    longformTrack?: LongformTrack;
     ragMode?: AIGenerationRagMode;
     ragSource?: AIGenerationRagSource;
     ragAppliedWords?: string[];
@@ -74,6 +76,7 @@ interface AIGenHistoryRecord {
     timestamp: number;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     generationMode?: AIGenerationMode;
+    longformTrack?: LongformTrack;
     ragMode?: AIGenerationRagMode;
     ragSource?: AIGenerationRagSource;
     ragAppliedWords?: string[];
@@ -107,6 +110,7 @@ interface GeneratedArticleData {
     image?: string | null;
     difficulty?: 'cet4' | 'cet6' | 'ielts';
     generationMode?: AIGenerationMode;
+    longformTrack?: LongformTrack;
     ragMode?: AIGenerationRagMode;
     ragSource?: AIGenerationRagSource;
     ragAppliedWords?: string[];
@@ -250,6 +254,14 @@ function getDifficultyBadgeMeta(difficulty?: ArticleItem["difficulty"]) {
     return null;
 }
 
+function getLongformTrackBadgeMeta(track?: LongformTrack) {
+    if (track !== "native") return null;
+    return {
+        label: "母语者",
+        className: "border-amber-200/80 bg-amber-100/80 text-amber-800",
+    };
+}
+
 function isArticleItem(value: unknown): value is ArticleItem {
     if (!value || typeof value !== "object") return false;
     const candidate = value as Partial<ArticleItem>;
@@ -294,6 +306,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const [aiHistoryDifficultyFilter, setAiHistoryDifficultyFilter] = useState<HistoryDifficultyFilter>('all');
     const [genTopic, setGenTopic] = useState("");
     const [genMode, setGenMode] = useState<AIGenerationMode>("standard");
+    const [longformTrack, setLongformTrack] = useState<LongformTrack>("exam");
     const [aiReadingRag, setAiReadingRag] = useState<AIGenerationRagSelection>(DEFAULT_AI_GENERATION_RAG_SELECTION);
     const [genDifficulty, setGenDifficulty] = useState<'cet4' | 'cet6' | 'ielts'>(() => {
         const routeExam = searchParams?.get('exam_track');
@@ -477,6 +490,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         cet4: ["Daily Life", "Campus Life", "Travel", "Technology Basics", "Health & Fitness"],
         cet6: ["Social Issues", "Economics", "Education Reform", "Environment", "Psychology"],
         ielts: ["Urbanization", "Globalization", "Scientific Ethics", "Cultural Heritage", "AI & Society"],
+        native: ["City Rhythms", "Work & Identity", "Technology in Everyday Life", "Culture & Memory", "Public Life"],
     };
     const syncVisibleArticles = useCallback((nextArticles: ArticleItem[]) => {
         setArticles(nextArticles);
@@ -596,6 +610,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 snippet: (row.textContent || row.content || "").slice(0, 180),
                 image: row.image ?? undefined,
                 difficulty: row.difficulty,
+                longformTrack: row.longformTrack,
                 ragMode: row.ragMode,
                 ragSource: row.ragSource,
                 ragAppliedWords: row.ragAppliedWords,
@@ -652,6 +667,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 snippet: (row.textContent || row.content || "").slice(0, 180),
                 image: row.image ?? undefined,
                 difficulty: row.difficulty,
+                longformTrack: row.longformTrack,
                 ragMode: row.ragMode,
                 ragSource: row.ragSource,
                 ragAppliedWords: row.ragAppliedWords,
@@ -795,9 +811,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         try {
             const normalizedTopic = genTopic.trim();
             const { pickAIGenerationTopicSeed } = await import('@/lib/content-topic-pool');
-            const { collectAIGenerationVocabulary } = await import('@/lib/ai-generation-rag');
+            const {
+                collectAIGenerationVocabulary,
+                collectRecentAIGenerationRagCooldownWords,
+            } = await import('@/lib/ai-generation-rag');
             const generationTopicSeed = pickAIGenerationTopicSeed({
-                difficulty: genDifficulty,
+                difficulty: longformTrack === "native" ? "ielts" : genDifficulty,
                 userTopic: normalizedTopic || "",
             });
             const queryTopic = generationTopicSeed.topicLine;
@@ -817,12 +836,15 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 await new Promise(r => setTimeout(r, 150));
 
                 try {
+                    const recentAIGenerationArticles = (await db.articles.toArray() as unknown as AIGenHistoryRecord[]);
+                    const recentlyUsedWords = collectRecentAIGenerationRagCooldownWords(recentAIGenerationArticles);
                     const ragResult = await collectAIGenerationVocabulary({
                         queryTopic,
-                        difficulty: genDifficulty,
+                        difficulty: longformTrack === "native" ? "ielts" : genDifficulty,
                         generationMode: genMode,
                         ragMode: activeRagConfig.mode,
                         ragSource: activeRagConfig.source,
+                        recentlyUsedWords,
                     });
                     resolvedRagMode = ragResult.mode;
                     resolvedRagSource = ragResult.source;
@@ -860,8 +882,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 body: JSON.stringify(buildAIGenerationRequestBody({
                     topic: normalizedTopic,
                     topicSeed: generationTopicSeed,
-                    difficulty: genDifficulty,
+                    difficulty: longformTrack === "native" ? undefined : genDifficulty,
                     generationMode: genMode,
+                    longformTrack,
                     ragMode: resolvedRagMode,
                     ragSource: resolvedRagSource,
                     longformStyleId,
@@ -876,10 +899,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 throw new Error(typeof errorPayload?.error === "string" ? errorPayload.error : "生成失败，请稍后重试。");
             }
             const data = await res.json();
-            const articleUrl = `ai-gen://${genDifficulty}/${Date.now()}`;
+            const articleTrackKey = longformTrack === "native" ? "native" : genDifficulty;
+            const articleUrl = `ai-gen://${articleTrackKey}/${Date.now()}`;
             data.url = articleUrl;
-            data.difficulty = genDifficulty;
+            data.difficulty = longformTrack === "native" ? undefined : genDifficulty;
             data.isAIGenerated = true;
+            data.longformTrack = genMode === "longform" ? longformTrack : undefined;
             const fallbackTopicTitle = typeof data?.topicSeed?.topicLine === "string"
                 ? data.topicSeed.topicLine
                 : (normalizedTopic || "随机主题");
@@ -897,8 +922,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     byline: data.byline,
                     blocks: data.blocks,
                     timestamp,
-                    difficulty: genDifficulty,
+                    difficulty: longformTrack === "native" ? undefined : genDifficulty,
                     isAIGenerated: true,
+                    longformTrack: data.longformTrack,
                     ragMode: data.ragMode,
                     ragSource: data.ragSource,
                     ragAppliedWords: data.ragAppliedWords,
@@ -917,7 +943,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     source: "AI Gen",
                     snippet: (data.textContent || data.content || "").slice(0, 180),
                     image: typeof data.image === "string" ? data.image : undefined,
-                    difficulty: genDifficulty,
+                    difficulty: longformTrack === "native" ? undefined : genDifficulty,
+                    longformTrack: data.longformTrack,
                     ragMode: data.ragMode,
                     ragSource: data.ragSource,
                     ragAppliedWords: data.ragAppliedWords,
@@ -962,7 +989,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    difficulty: genDifficulty,
+                    difficulty: longformTrack === "native" ? undefined : genDifficulty,
+                    longformTrack,
                     rawPrompt,
                 }),
             });
@@ -984,7 +1012,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         } finally {
             setIsOptimizingCustomStyle(false);
         }
-    }, [customStylePrompt, genDifficulty, isOptimizingCustomStyle]);
+    }, [customStylePrompt, genDifficulty, isOptimizingCustomStyle, longformTrack]);
 
     const handleRollTopic = useCallback(async () => {
         const { pickAIGenerationTopicSeed } = await import('@/lib/content-topic-pool');
@@ -1463,7 +1491,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             </div>
                         </div>
 
-                        <div className="mt-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+                        <div className={cn("mt-6 grid grid-cols-1 gap-3", genMode === "longform" ? "md:grid-cols-4" : "md:grid-cols-3")}>
                                 {([
                                     {
                                         id: 'cet4' as const,
@@ -1492,14 +1520,32 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         activeClass: 'border-violet-300/90 bg-violet-50/65 text-violet-900 shadow-[0_18px_35px_-22px_rgba(139,92,246,0.5)]',
                                         iconClass: 'bg-violet-100/90 text-violet-700',
                                     },
+                                    ...(genMode === "longform" ? [{
+                                        id: 'native' as const,
+                                        label: '母语者',
+                                        desc: `自然长文 · 目标 ${LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId)?.targetWordCount ?? 1200} 词`,
+                                        detail: '真实世界自然阅读',
+                                        icon: Compass,
+                                        activeClass: 'border-amber-300/90 bg-amber-50/70 text-amber-950 shadow-[0_18px_35px_-22px_rgba(245,158,11,0.42)]',
+                                        iconClass: 'bg-amber-100/90 text-amber-700',
+                                    }] : []),
                                 ]).map((diff) => {
                                     const Icon = diff.icon;
-                                    const isActive = genDifficulty === diff.id;
+                                    const isActive = diff.id === "native"
+                                        ? longformTrack === "native"
+                                        : longformTrack === "exam" && genDifficulty === diff.id;
                                     return (
                                         <motion.button
                                             key={diff.id}
                                             type="button"
-                                            onClick={() => setGenDifficulty(diff.id)}
+                                            onClick={() => {
+                                                if (diff.id === "native") {
+                                                    setLongformTrack("native");
+                                                    return;
+                                                }
+                                                setLongformTrack("exam");
+                                                setGenDifficulty(diff.id);
+                                            }}
                                             whileHover={{ y: -2 }}
                                             whileTap={getPressableTap(reducedMotion, 6, 0.985)}
                                             style={getPressableStyle("var(--theme-shadow)", 6)}
@@ -1530,7 +1576,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             <div className="mb-3 flex items-center justify-between gap-3">
                                 <h5 className="text-sm font-black text-theme-text">模式选择</h5>
                                 <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
-                                    {genMode === "standard" ? "标准考试逻辑" : "纯阅读长文"}
+                                    {genMode === "standard" ? "标准考试逻辑" : longformTrack === "native" ? "母语者长文" : "纯阅读长文"}
                                 </span>
                             </div>
 
@@ -1698,17 +1744,18 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                     {genTopic.trim() && (
                                         <span className={cn(
                                             "rounded-full border-2 px-2.5 py-1 text-[11px] font-black",
-                                            genDifficulty === 'cet4' && "border-emerald-200/80 bg-emerald-100/75 text-emerald-700",
-                                            genDifficulty === 'cet6' && "border-sky-200/80 bg-sky-100/75 text-sky-700",
-                                            genDifficulty === 'ielts' && "border-violet-200/80 bg-violet-100/75 text-violet-700"
+                                            longformTrack === "native" && "border-amber-200/80 bg-amber-100/75 text-amber-800",
+                                            longformTrack === "exam" && genDifficulty === 'cet4' && "border-emerald-200/80 bg-emerald-100/75 text-emerald-700",
+                                            longformTrack === "exam" && genDifficulty === 'cet6' && "border-sky-200/80 bg-sky-100/75 text-sky-700",
+                                            longformTrack === "exam" && genDifficulty === 'ielts' && "border-violet-200/80 bg-violet-100/75 text-violet-700"
                                         )}>
-                                            {genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}{genMode === "longform" ? ` · 长文 · ${LONGFORM_STYLE_OPTIONS.find((item) => item.id === longformStyleId)?.name ?? "科普"}` : ""} · {genTopic}
+                                            {longformTrack === "native" ? "母语者" : genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}{genMode === "longform" ? ` · 长文 · ${LONGFORM_STYLE_OPTIONS.find((item) => item.id === longformStyleId)?.name ?? "科普"}` : ""} · {genTopic}
                                         </span>
                                     )}
                                 </div>
 
                                 <div className="mb-3 flex flex-wrap gap-2">
-                                    {(PRESET_TOPICS[genDifficulty] || []).map(topic => (
+                                    {(PRESET_TOPICS[longformTrack === "native" ? "native" : genDifficulty] || []).map(topic => (
                                         <motion.button
                                             key={topic}
                                             type="button"
@@ -2281,7 +2328,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, onArchive, is
     const isPendingAssessment = isCatMode && item.quizCompleted && !item.catSelfAssessed;
     
     const isRead = isCatMode ? isCatFullyCompleted : status === 'read';
-    let difficultyMeta = getDifficultyBadgeMeta(item.difficulty);
+    let difficultyMeta = getLongformTrackBadgeMeta(item.longformTrack) ?? getDifficultyBadgeMeta(item.difficulty);
     
     if (typeof item.catScoreSnapshot === "number") {
         const tier = getCatRankTier(item.catScoreSnapshot);

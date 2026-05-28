@@ -57,4 +57,19 @@ describe("readAskSseStream", () => {
         expect(reasoning).toEqual(["先判断主语和谓语。"]);
         expect(answer).toEqual(["正式回答。"]);
     });
+
+    it("throws retryable errors from SSE error events", async () => {
+        const stream = streamFromChunks([
+            'data: {"errorCode":"AI_PROVIDER_RATE_LIMIT","error":"当前 AI 模型正在处理上一个请求，请稍等几秒再试。","retryable":true}\n\n',
+            "data: [DONE]\n\n",
+        ]);
+
+        await expect(readAskSseStream(stream.getReader(), { onContent: () => {} })).rejects.toMatchObject({
+            message: "当前 AI 模型正在处理上一个请求，请稍等几秒再试。",
+            responseData: {
+                errorCode: "AI_PROVIDER_RATE_LIMIT",
+                retryable: true,
+            },
+        });
+    });
 });

@@ -40,6 +40,55 @@ describe("ask-thread", () => {
         expect(decoded.messages[1].reasoningContent).toBe("thinking first");
     });
 
+    it("preserves ask context attachment metadata through encode and decode", () => {
+        const raw = encodeAskThreadPayload(
+            [{ role: "user", content: "Explain this.", createdAt: 1 }],
+            undefined,
+            {
+                id: "ask-context:1",
+                kind: "cross_paragraph",
+                label: "跨段选区",
+                rangeLabel: "第 2-4 段",
+                text: "Selected cross paragraph text.",
+                excerpt: "Selected cross paragraph text.",
+                paragraphRanges: [
+                    {
+                        paragraphOrder: 2,
+                        paragraphBlockIndex: 1,
+                        startOffset: 8,
+                        endOffset: 40,
+                        text: "Selected cross",
+                        paragraphText: "Paragraph two text.",
+                    },
+                    {
+                        paragraphOrder: 4,
+                        paragraphBlockIndex: 3,
+                        startOffset: 0,
+                        endOffset: 12,
+                        text: "paragraph text.",
+                        paragraphText: "Paragraph four text.",
+                    },
+                ],
+            },
+        );
+
+        const decoded = decodeAskThreadPayload(raw);
+
+        expect(decoded.contextAttachment).toMatchObject({
+            id: "ask-context:1",
+            kind: "cross_paragraph",
+            label: "跨段选区",
+            rangeLabel: "第 2-4 段",
+            text: "Selected cross paragraph text.",
+        });
+        expect(decoded.contextAttachment?.paragraphRanges).toHaveLength(2);
+        expect(decoded.contextAttachment?.paragraphRanges?.[0]).toMatchObject({
+            paragraphOrder: 2,
+            startOffset: 8,
+            endOffset: 40,
+        });
+    });
+
     it("builds qa pairs from threaded messages with streaming tail", () => {
         const pairs = buildAskQaPairs(
             [

@@ -11,11 +11,13 @@ import {
     normalizeAIGenerationRagSource,
     normalizeAIGenerationMode,
     normalizeLongformLengthTierId,
+    normalizeLongformTrack,
     normalizeLongformStyleId,
     type AIGenerationMode,
     type AIGenerationRagMode,
     type AIGenerationRagSource,
     type LongformLengthTierId,
+    type LongformTrack,
     type LongformStyleId,
 } from "@/lib/ai-reading-generation";
 
@@ -43,6 +45,14 @@ interface GenerationTheme {
 interface LongformPromptParams {
     difficulty: Difficulty;
     difficultyLabel: string;
+    topicSeed: TopicSelection;
+    longformStyleId: LongformStyleId;
+    lengthTierId: LongformLengthTierId;
+    customStylePrompt?: string;
+    injectedVocabSection: string;
+}
+
+interface NativeLongformPromptParams {
     topicSeed: TopicSelection;
     longformStyleId: LongformStyleId;
     lengthTierId: LongformLengthTierId;
@@ -365,6 +375,89 @@ OUTPUT RULES:
 `;
 }
 
+function buildNativeLongformPrompt(params: NativeLongformPromptParams) {
+    const style = LONGFORM_STYLE_OPTIONS.find((item) => item.id === params.longformStyleId);
+    const lengthTier = LONGFORM_LENGTH_TIERS.find((item) => item.id === params.lengthTierId);
+    if (!style || !lengthTier) {
+        throw new Error("Invalid native longform configuration");
+    }
+
+    const minWords = Math.round(lengthTier.targetWordCount * (1 - lengthTier.toleranceRatio));
+    const maxWords = Math.round(lengthTier.targetWordCount * (1 + lengthTier.toleranceRatio));
+    const customStyleSection = params.customStylePrompt?.trim()
+        ? `
+CUSTOM STYLE ADDENDUM:
+- User style addendum: ${params.customStylePrompt.trim()}
+- Apply this addendum as a secondary style layer for tone, pacing, explanation density, and rhetorical feel.
+- Preserve the native-reader objective first: natural, idiomatic, publication-like English that reads as real-world prose rather than exam material.
+- If the addendum conflicts with the native-reader objective, keep the prose natural and adapt the addendum conservatively.
+`
+        : "";
+
+    return `
+You are a senior English writer creating a native-reader longform passage for Chinese learners who want stronger real-world reading ability.
+
+NATIVE LONGFORM MODE:
+- Native reading objective: help the learner grow toward real-world English reading rather than exam performance.
+- Topic seed lock: ${params.topicSeed.topicLine}
+- Topic domain: ${params.topicSeed.domainLabel}
+- Topic subtopic: ${params.topicSeed.subtopicLabel}
+- Topic angle: ${params.topicSeed.angle}
+- Style name: ${style.name}
+- Style label: ${style.promptLabel}
+- Target word count: ${lengthTier.targetWordCount} words
+- Allowed tolerance band: ${minWords}-${maxWords} words (about +/-15%)
+
+NATIVE READER DIFFICULTY CONTROL:
+- Write in natural, idiomatic, publication-grade English, not in CET-4, CET-6, IELTS, or school-essay style.
+- Vocabulary may range across IELTS/TOEFL-level and beyond, but every advanced word choice must feel contextually natural, not showy or artificially difficult.
+- Use mature sentence variety, flexible rhythm, and rich clause structure when useful, but avoid dense difficulty for its own sake.
+- Prefer authentic collocations, realistic discourse flow, and concrete sentence-to-sentence cohesion over exam-training neatness.
+- Build paragraphs the way strong real-world prose does: each paragraph should genuinely develop an observation, mechanism, scene, tension, or argument before moving on.
+- Let the article feel more like a strong magazine feature, blog essay, narrative explainer, or longform commentary than a textbook or testing passage.
+
+NATIVE READER GUARDRAILS:
+- Do NOT write in CET-4, CET-6, or IELTS exam style.
+- Do NOT sound like a cram-school model answer, school composition, or teaching handout.
+- Do NOT use inflated abstract wording that sounds advanced but unnatural.
+- Do NOT overpack every sentence with rare vocabulary, nominalization, or academic hedging.
+- Do NOT flatten the prose into mechanical teaching-material clarity; keep it alive, human, and naturally readable.
+
+LONGFORM STRUCTURE REQUIREMENTS:
+- Write a continuous long article, not a short exam passage.
+- Expand ideas with natural paragraph development, transitions, examples, scenes, and sustained explanation.
+- Keep the article as flowing prose with a clear beginning, middle, and end.
+- Use natural paragraphing appropriate for a ${lengthTier.targetWordCount}-word reading piece.
+- Finish the entire article in one response. Do not stop early, trail off, summarize unfinished sections, or imply continuation later.
+- The style controls voice, pacing, and paragraph behavior only; topic scope still comes from the chosen theme and topic seed.
+
+STYLE LENS:
+- ${style.lens}
+- Constraint: ${style.constraint}
+${customStyleSection}
+
+STRICT ANTI-QUIZ RULES:
+- Do NOT generate any reading comprehension questions.
+- Do NOT generate answer options, answer keys, exercises, summaries for teachers, or vocabulary lists.
+- Do NOT use exam sections such as Questions 1-5, Passage 1, Task 1, or Reading Comprehension.
+- Do NOT switch into bullet-point worksheet format.
+- The output must be one continuous article only.
+
+FACTUAL AND PEDAGOGICAL RULES:
+- Keep the article plausible, concrete, and genuinely readable as real-world English.
+- Maintain a polished title and disciplined topic focus throughout.
+- The prose should feel substantial and immersive, not padded.
+- If the draft feels too short for the target range, continue developing the article until the body reaches the required scale naturally.
+${params.injectedVocabSection}
+OUTPUT RULES:
+- Return valid JSON only.
+- "title" should be concise and publication-ready.
+- "content" must contain the full article with paragraphs separated by double newlines.
+- "byline" must be "AI Generator · Native Reader".
+- "wordCount" must be an integer estimate.
+`;
+}
+
 function escapeRegExp(input: string) {
     return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -515,6 +608,26 @@ function shouldRetryLongformForLength(result: GeneratedArticlePayload, lengthTie
     return estimateGeneratedWordCount(result) < minWords;
 }
 
+function extractJsonObjectText(content: string) {
+    const trimmed = content.trim();
+    const fencedMatch = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    if (fencedMatch?.[1]) {
+        return fencedMatch[1].trim();
+    }
+
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+        return trimmed.slice(start, end + 1);
+    }
+
+    return trimmed;
+}
+
+function parseGeneratedArticlePayload(content: string) {
+    return JSON.parse(extractJsonObjectText(content)) as GeneratedArticlePayload;
+}
+
 async function generateArticlePayload(prompt: string, options?: {
     generationMode?: AIGenerationMode;
     lengthTierId?: LongformLengthTierId | null;
@@ -531,7 +644,7 @@ async function generateArticlePayload(prompt: string, options?: {
 
     const content = completion.choices[0].message.content;
     if (!content) throw new Error("No content received");
-    return JSON.parse(content) as GeneratedArticlePayload;
+    return parseGeneratedArticlePayload(content);
 }
 
 function normalizeTopicSeed(value: unknown): TopicSelection | null {
@@ -569,9 +682,10 @@ export async function POST(req: Request) {
         const {
             topic,
             topicSeed: rawTopicSeed,
-            difficulty = "ielts",
+            difficulty,
             injectedVocabulary = [],
             generationMode: rawGenerationMode,
+            longformTrack: rawLongformTrack,
             ragMode: rawRagMode,
             ragSource: rawRagSource,
             longformStyleId: rawLongformStyleId,
@@ -579,12 +693,15 @@ export async function POST(req: Request) {
             customStylePrompt: rawCustomStylePrompt,
         } = await req.json();
 
-        const diff = (difficulty as string).toLowerCase();
+        const diff = typeof difficulty === "string" ? difficulty.toLowerCase() : "";
         const config =
             DIFFICULTY_CONFIGS[diff as Difficulty] ?? DIFFICULTY_CONFIGS.ielts;
         const safeDifficulty: Difficulty =
             diff === "cet4" || diff === "cet6" || diff === "ielts" ? diff : "ielts";
         const generationMode: AIGenerationMode = normalizeAIGenerationMode(rawGenerationMode);
+        const longformTrack: LongformTrack = generationMode === "longform"
+            ? normalizeLongformTrack(rawLongformTrack)
+            : "exam";
         const ragMode: AIGenerationRagMode = normalizeAIGenerationRagMode(rawRagMode);
         const ragSource: AIGenerationRagSource = normalizeAIGenerationRagSource(rawRagSource);
         const longformStyleId = normalizeLongformStyleId(rawLongformStyleId);
@@ -639,16 +756,31 @@ export async function POST(req: Request) {
             );
         }
 
+        if (generationMode !== "longform" && !safeDifficulty) {
+            return NextResponse.json(
+                { error: "Standard mode requires difficulty" },
+                { status: 400 },
+            );
+        }
+
         const promptBody = generationMode === "longform"
-            ? buildLongformPrompt({
-                difficulty: safeDifficulty,
-                difficultyLabel: config.label,
-                topicSeed,
-                longformStyleId: longformStyleId!,
-                lengthTierId: lengthTierId!,
-                customStylePrompt,
-                injectedVocabSection,
-            })
+            ? longformTrack === "native"
+                ? buildNativeLongformPrompt({
+                    topicSeed,
+                    longformStyleId: longformStyleId!,
+                    lengthTierId: lengthTierId!,
+                    customStylePrompt,
+                    injectedVocabSection,
+                })
+                : buildLongformPrompt({
+                    difficulty: safeDifficulty,
+                    difficultyLabel: config.label,
+                    topicSeed,
+                    longformStyleId: longformStyleId!,
+                    lengthTierId: lengthTierId!,
+                    customStylePrompt,
+                    injectedVocabSection,
+                })
             : config.promptBuilder({
                 topicSeed,
                 generationTheme,
@@ -656,13 +788,17 @@ export async function POST(req: Request) {
                 diversitySeed,
             });
 
+        const responseBylineLabel = generationMode === "longform" && longformTrack === "native"
+            ? "Native Reader"
+            : config.label;
+
         const prompt = `${promptBody}
 
 Provide the response in JSON format:
 {
   "title": "A catchy, exam-appropriate title",
   "content": "Full article text with paragraphs separated by double newlines.",
-  "byline": "AI Generator · ${config.label}",
+  "byline": "AI Generator · ${responseBylineLabel}",
   "wordCount": <approximate word count as integer>
 }
 `;
@@ -715,7 +851,7 @@ STRICT REGENERATION NOTICE:
                     const revisionPrompt = buildStrictRevisionPrompt({
                         basePrompt: prompt,
                         draft: result,
-                        difficultyLabel: config.label,
+                        difficultyLabel: responseBylineLabel,
                         requiredWords: strictRagWords,
                         missingWords: retryCoverage.missingWords,
                     });
@@ -744,6 +880,9 @@ STRICT REGENERATION NOTICE:
         const longformStyle = generationMode === "longform" ? getLongformStyleMeta(longformStyleId) : null;
         const lengthTier = generationMode === "longform" ? getLongformLengthTierMeta(lengthTierId) : null;
         const quizEligible = generationMode !== "longform";
+        const responseDifficulty = generationMode === "longform" && longformTrack === "native"
+            ? undefined
+            : safeDifficulty;
 
         // Format for frontend
         const articleContent = result.content ?? "";
@@ -760,9 +899,10 @@ STRICT REGENERATION NOTICE:
             blocks,
             content: articleContent,
             textContent: articleContent,
-            difficulty: safeDifficulty,
+            difficulty: responseDifficulty,
             isAIGenerated: true,
             generationMode,
+            longformTrack: generationMode === "longform" ? longformTrack : undefined,
             ragMode,
             ragSource,
             ragAppliedWords,

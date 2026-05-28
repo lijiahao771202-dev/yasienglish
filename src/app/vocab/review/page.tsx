@@ -68,6 +68,8 @@ function normalizeGhostWord(input: string) {
     return input.replace(/\s+/g, "").trim().toLowerCase();
 }
 
+const AUDIO_REPLAY_SUPPRESSION_MS = 1200;
+
 function inferFallbackPos(word: string) {
     const lower = word.toLowerCase();
     if (/(ly)$/.test(lower)) return "adv.";
@@ -375,6 +377,7 @@ export default function ReviewPage() {
 
     const ghostMatchedPrevRef = useRef(false);
     const ghostCompletionAudioPlayedRef = useRef(false);
+    const lastAudioPlaybackRef = useRef<{ word: string; playedAt: number } | null>(null);
     const shortReviewTimersRef = useRef<Map<string, number>>(new Map());
     const shortReviewDueAtRef = useRef<Map<string, number>>(new Map());
     const pendingShortReviewsRef = useRef(0);
@@ -609,33 +612,53 @@ export default function ReviewPage() {
         moveToNextCard();
     }, [currentIndex, moveToNextCard, resetCardUiState]);
 
+    const wasWordPlayedRecently = useCallback((word: string) => {
+        const normalizedWord = normalizeGhostWord(word);
+        if (!normalizedWord) return false;
+
+        const lastPlayback = lastAudioPlaybackRef.current;
+        if (!lastPlayback || lastPlayback.word !== normalizedWord) {
+            return false;
+        }
+
+        return Date.now() - lastPlayback.playedAt < AUDIO_REPLAY_SUPPRESSION_MS;
+    }, []);
+
     const playAudio = useCallback((word: string) => {
-        const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${word}&type=2`);
+        const normalizedWord = word.trim();
+        if (!normalizedWord) return;
+
+        lastAudioPlaybackRef.current = {
+            word: normalizeGhostWord(normalizedWord),
+            playedAt: Date.now(),
+        };
+        const audio = new Audio(`https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(normalizedWord)}&type=2`);
         audio.play().catch(console.error);
     }, []);
     const autoPlayRef = useRef({ index: -1, revealed: false });
     const cardAnimationControls = useAnimation();
 
-    // Handle auto-playing audio strictly on card appear (index change) OR card flip (isRevealed toggle)
+    // Auto-play on new card, but suppress immediate same-word replays when the card is revealed right after another trigger.
     useEffect(() => {
         if (!currentCard) return;
 
-        let shouldPlay = false;
+        const isNewCard = autoPlayRef.current.index !== currentIndex;
+        const isNewReveal = isRevealed && !autoPlayRef.current.revealed;
 
-        if (autoPlayRef.current.index !== currentIndex) {
+        if (isNewCard) {
             autoPlayRef.current.index = currentIndex;
-            shouldPlay = true;
-        }
-
-        if (isRevealed && !autoPlayRef.current.revealed) {
-            shouldPlay = true;
         }
         autoPlayRef.current.revealed = isRevealed;
 
-        if (shouldPlay) {
+        if (isNewCard) {
+            playAudio(currentCard.word);
+            return;
+        }
+
+        if (isNewReveal && !wasWordPlayedRecently(currentCard.word)) {
             playAudio(currentCard.word);
         }
-    }, [currentIndex, isRevealed, currentCard, playAudio]);
+    }, [currentIndex, isRevealed, currentCard, playAudio, wasWordPlayedRecently]);
 
     const comboTimeoutRef = useRef<number | null>(null);
 
