@@ -117,7 +117,7 @@ export function ArticleDisplay({
 
         try {
             const parent = activeSpan.parentNode;
-            if (parent) {
+            if (parent && parent.contains(activeSpan)) {
                 while (activeSpan.firstChild) {
                     parent.insertBefore(activeSpan.firstChild, activeSpan);
                 }

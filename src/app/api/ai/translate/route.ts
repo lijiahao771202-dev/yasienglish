@@ -7,6 +7,7 @@ import {
     isReadEconomyContext,
     type ReadingEconomyContext,
 } from "@/lib/reading-economy-server";
+import { normalizePhraseTranslationItems } from "@/lib/translation-phrases";
 
 interface TranslateRequestPayload {
     text?: string;
@@ -41,22 +42,10 @@ function sanitizeSentenceTranslations(value: unknown) {
                 ? (item as { translation: string }).translation.trim()
                 : "";
             const phraseTranslations = Array.isArray((item as { phraseTranslations?: unknown }).phraseTranslations)
-                ? ((item as { phraseTranslations: unknown[] }).phraseTranslations)
-                    .map((phrase) => {
-                        if (!phrase || typeof phrase !== "object") return null;
-                        const source = typeof (phrase as { source?: unknown }).source === "string"
-                            ? (phrase as { source: string }).source.trim()
-                            : "";
-                        const phraseTranslation = typeof (phrase as { translation?: unknown }).translation === "string"
-                            ? (phrase as { translation: string }).translation.trim()
-                            : "";
-                        if (!source || !phraseTranslation) return null;
-                        return {
-                            source,
-                            translation: phraseTranslation,
-                        };
-                    })
-                    .filter((phrase): phrase is { source: string; translation: string } => Boolean(phrase))
+                ? normalizePhraseTranslationItems(
+                    (item as { phraseTranslations: unknown[] }).phraseTranslations,
+                    sentence,
+                )
                 : [];
             if (!sentence || !translation) return null;
             return {
@@ -87,6 +76,9 @@ function buildTranslatePrompt(text: string, context: string) {
         "Rules for phraseTranslations:",
         "- For each sentence, return 2 to 5 high-value phrases/collocations only.",
         "- Prioritize fixed collocations, phrasal verbs, idiomatic chunks, prepositional phrases, and hard-to-parse meaning units.",
+        "- If a single advanced content word is the real learning focus, prefer that word over a bloated clause fragment.",
+        "- Avoid clause fragments with subject plus tense verb unless they are a true fixed expression.",
+        "- Phrase spans should usually stay within 1 to 4 content-bearing words; only go longer for a stable expression.",
         "- Do not list trivial single function words.",
         "- Keep phrase translations contextual and concise in Chinese.",
         "- Do not duplicate the whole sentence as a phrase.",

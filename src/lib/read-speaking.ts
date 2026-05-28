@@ -23,12 +23,13 @@ export interface WordToken {
 
 const SENTENCE_END_CHARS = new Set([".", "!", "?", "。", "！", "？"]);
 const SENTENCE_CLOSERS = new Set(["\"", "'", ")", "]", "}", "）", "】", "》", "」", "』", "”", "’"]);
-const WORD_TOKEN_RE = /[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g;
+const WORD_TOKEN_RE = /[A-Za-z0-9]+(?:[-–—][A-Za-z0-9]+)*(?:['’][A-Za-z0-9]+)*/g;
 const SPEAKABLE_CONTENT_RE = /[A-Za-z0-9\u00C0-\u024F\u0370-\u03FF\u0400-\u04FF\u4E00-\u9FFF]/;
 
 export function normalizeWordForMatch(raw: string) {
     return raw
         .toLowerCase()
+        .replace(/[-–—]/g, "")
         .replace(/[^a-z0-9'’]+/g, "")
         .replace(/[’]/g, "'");
 }

@@ -96,4 +96,25 @@ describe("read-speaking mark alignment", () => {
         expect(aligned.get(4)).toBe(4);
         expect(aligned.get(5)).toBe(5);
     });
+
+    it("keeps hyphenated words aligned as a single spoken unit", () => {
+        const text = "Many organizations hold hour-long weekly status meetings.";
+        const tokens = extractWordTokens(text);
+        const marks: TtsWordMark[] = [
+            { time: 0, start: 0, end: 200, type: "word", value: "Many" },
+            { time: 210, start: 210, end: 520, type: "word", value: "organizations" },
+            { time: 530, start: 530, end: 700, type: "word", value: "hold" },
+            { time: 710, start: 710, end: 980, type: "word", value: "hour-long" },
+            { time: 990, start: 990, end: 1180, type: "word", value: "weekly" },
+            { time: 1190, start: 1190, end: 1450, type: "word", value: "status" },
+            { time: 1460, start: 1460, end: 1750, type: "word", value: "meetings" },
+        ];
+
+        expect(tokens.map((token) => token.text)).toContain("hour-long");
+
+        const aligned = alignTokensToMarks(tokens, marks);
+        const hyphenTokenIndex = tokens.findIndex((token) => token.text === "hour-long");
+        expect(hyphenTokenIndex).toBeGreaterThanOrEqual(0);
+        expect(aligned.get(hyphenTokenIndex)).toBe(3);
+    });
 });

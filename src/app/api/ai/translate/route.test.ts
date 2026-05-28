@@ -197,4 +197,58 @@ describe("translate route", () => {
         expect(data.translation).toBe("植物需要阳光和水才能生长。");
         expect(data.sentenceTranslations).toHaveLength(1);
     });
+
+    it("sanitizes low-value and over-broad phrase translations before returning them", async () => {
+        createCompletionMock.mockResolvedValueOnce({
+            choices: [
+                {
+                    message: {
+                        content: JSON.stringify({
+                            translation: "委员会试图整合分散的证据。",
+                            sentenceTranslations: [
+                                {
+                                    sentence: "The committee tried to consolidate scattered evidence.",
+                                    translation: "委员会试图整合分散的证据。",
+                                    phraseTranslations: [
+                                        {
+                                            source: "the committee tried to consolidate",
+                                            translation: "委员会试图去整合",
+                                        },
+                                        {
+                                            source: "consolidate",
+                                            translation: "整合；巩固",
+                                        },
+                                        {
+                                            source: "the",
+                                            translation: "这个",
+                                        },
+                                    ],
+                                },
+                            ],
+                        }),
+                    },
+                },
+            ],
+        });
+
+        const response = await POST(buildRequest({
+            text: "The committee tried to consolidate scattered evidence.",
+            context: "The committee tried to consolidate scattered evidence.",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(data.sentenceTranslations).toEqual([
+            {
+                sentence: "The committee tried to consolidate scattered evidence.",
+                translation: "委员会试图整合分散的证据。",
+                phraseTranslations: [
+                    {
+                        source: "consolidate",
+                        translation: "整合；巩固",
+                    },
+                ],
+            },
+        ]);
+    });
 });

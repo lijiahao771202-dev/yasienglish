@@ -11,6 +11,7 @@ import {
     GRAMMAR_BASIC_PROMPT_VERSION,
 } from "@/lib/grammar-analysis";
 import { saveVocabulary } from "@/lib/user-repository";
+import { requestTtsPayload } from "@/lib/tts-client";
 
 const mountedRoots: Root[] = [];
 const {
@@ -296,6 +297,10 @@ analysisStoreMock.setGrammarAnalysis.mockImplementation(async (cacheKey: string,
     analysisStoreMock.grammarAnalyses[cacheKey] = analysis;
 });
 
+useTtsMock.setPlaybackRate.mockImplementation((nextRate: number) => {
+    useTtsMock.playbackRate = nextRate;
+});
+
 async function renderCard(overrides: Partial<React.ComponentProps<typeof ParagraphCard>> = {}) {
     globalThis.IS_REACT_ACT_ENVIRONMENT = true;
     const container = document.createElement("div");
@@ -366,6 +371,7 @@ function installFakeAudio(durationSeconds = 5) {
         play: () => Promise<void>;
         pause: () => void;
         onloadedmetadata: ((event: Event) => void) | null;
+        ontimeupdate: ((event: Event) => void) | null;
         onplay: ((event: Event) => void) | null;
         onpause: ((event: Event) => void) | null;
         onended: ((event: Event) => void) | null;
@@ -379,6 +385,7 @@ function installFakeAudio(durationSeconds = 5) {
         ended = false;
         playbackRate = 1;
         onloadedmetadata: ((event: Event) => void) | null = null;
+        ontimeupdate: ((event: Event) => void) | null = null;
         onplay: ((event: Event) => void) | null = null;
         onpause: ((event: Event) => void) | null = null;
         onended: ((event: Event) => void) | null = null;
@@ -391,6 +398,68 @@ function installFakeAudio(durationSeconds = 5) {
         async play() {
             this.paused = false;
             this.onloadedmetadata?.(new Event("loadedmetadata"));
+            this.ontimeupdate?.(new Event("timeupdate"));
+            this.onplay?.(new Event("play"));
+        }
+
+        pause() {
+            this.paused = true;
+            this.onpause?.(new Event("pause"));
+        }
+    }
+
+    vi.stubGlobal("Audio", FakeAudio);
+    vi.stubGlobal("URL", {
+        ...URL,
+        createObjectURL: vi.fn(() => "blob:fake-audio"),
+        revokeObjectURL: vi.fn(),
+    });
+
+    return instances;
+}
+
+function installDeferredMetadataAudio(durationSeconds = 5) {
+    const instances: Array<{
+        currentTime: number;
+        duration: number;
+        paused: boolean;
+        ended: boolean;
+        playbackRate: number;
+        play: () => Promise<void>;
+        pause: () => void;
+        onloadedmetadata: ((event: Event) => void) | null;
+        ontimeupdate: ((event: Event) => void) | null;
+        onplay: ((event: Event) => void) | null;
+        onpause: ((event: Event) => void) | null;
+        onended: ((event: Event) => void) | null;
+        triggerLoadedMetadata: () => void;
+    }> = [];
+
+    class FakeAudio {
+        src: string;
+        currentTime = 0;
+        duration = 0;
+        paused = true;
+        ended = false;
+        playbackRate = 1;
+        onloadedmetadata: ((event: Event) => void) | null = null;
+        ontimeupdate: ((event: Event) => void) | null = null;
+        onplay: ((event: Event) => void) | null = null;
+        onpause: ((event: Event) => void) | null = null;
+        onended: ((event: Event) => void) | null = null;
+
+        constructor(src = "") {
+            this.src = src;
+            instances.push(this);
+        }
+
+        triggerLoadedMetadata() {
+            this.duration = durationSeconds;
+            this.onloadedmetadata?.(new Event("loadedmetadata"));
+        }
+
+        async play() {
+            this.paused = false;
             this.onplay?.(new Event("play"));
         }
 
@@ -435,6 +504,7 @@ afterEach(async () => {
     queryAskRelevantVocabularyMock.mockReset();
     queryAskRelevantVocabularyMock.mockResolvedValue({ status: "empty", vocabulary: [] });
     vi.mocked(saveVocabulary).mockReset();
+    vi.mocked(requestTtsPayload).mockClear();
     useTtsMock.play.mockReset();
     useTtsMock.isPlaying = false;
     useTtsMock.isLoading = false;
@@ -445,6 +515,9 @@ afterEach(async () => {
     useTtsMock.marks = [];
     useTtsMock.playbackRate = 1;
     useTtsMock.setPlaybackRate.mockReset();
+    useTtsMock.setPlaybackRate.mockImplementation((nextRate: number) => {
+        useTtsMock.playbackRate = nextRate;
+    });
     useTtsMock.stop.mockReset();
     readingSettingsMock.fontSizeClass = "text-base";
     readingSettingsMock.fontClass = "font-serif";
@@ -2657,7 +2730,7 @@ describe("ParagraphCard", () => {
 
         expect(useTtsMock.seekToMs).toHaveBeenNthCalledWith(
             1,
-            8000,
+            5500,
             expect.objectContaining({ autoplay: true }),
         );
         expect(useTtsMock.seekToMs).toHaveBeenNthCalledWith(
@@ -2808,6 +2881,224 @@ describe("ParagraphCard", () => {
         expect(sentencePlayButtons[1]?.getAttribute("aria-label")).toContain("第 2 句");
     });
 
+    it("warms up sentence audio as soon as translation sentence mode is expanded", async () => {
+        installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        expect(vi.mocked(requestTtsPayload).mock.calls.length).toBeGreaterThanOrEqual(2);
+        expect(vi.mocked(requestTtsPayload).mock.calls.map((call) => call[0])).toEqual(expect.arrayContaining([
+            "Plants need sunlight and water to grow.",
+            "Water helps roots stay strong.",
+        ]));
+    });
+
+    it("keeps sentence playback inline and only reveals right-side speed/cancel controls while that sentence is playing", async () => {
+        installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(container.querySelector('[data-testid="speaking-panel"]')).toBeNull();
+        expect(container.querySelector('button[aria-label="第 1 句切换倍速"]')).toBeNull();
+        expect(container.querySelector('button[aria-label="取消第 1 句播放"]')).toBeNull();
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(container.querySelector('[data-testid="speaking-panel"]')).toBeNull();
+
+        const speedButton = container.querySelector<HTMLButtonElement>('button[aria-label="第 1 句切换倍速"]');
+        const cancelButton = container.querySelector<HTMLButtonElement>('button[aria-label="取消第 1 句播放"]');
+        expect(speedButton).toBeTruthy();
+        expect(cancelButton).toBeTruthy();
+        expect(speedButton?.textContent).toContain("1x");
+
+        await act(async () => {
+            speedButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        expect(useTtsMock.setPlaybackRate).toHaveBeenCalledWith(0.75);
+
+        await act(async () => {
+            cancelButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(container.querySelector('button[aria-label="第 1 句切换倍速"]')).toBeNull();
+        expect(container.querySelector('button[aria-label="取消第 1 句播放"]')).toBeNull();
+    });
+
+    it("keeps the cancel button available after sentence playback ends", async () => {
+        const audioInstances = installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        await act(async () => {
+            audioInstances[0]!.ended = true;
+            audioInstances[0]!.paused = true;
+            audioInstances[0]!.onended?.(new Event("ended"));
+        });
+
+        expect(container.querySelector('button[aria-label="取消第 1 句播放"]')).toBeTruthy();
+        expect(container.querySelector('button[aria-label="第 1 句切换倍速"]')).toBeNull();
+    });
+
+    it("replays the current sentence from the beginning when space is pressed in sentence mode", async () => {
+        const audioInstances = installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        audioInstances[0]!.currentTime = 4;
+        audioInstances[0]!.ended = true;
+        audioInstances[0]!.paused = true;
+
+        await act(async () => {
+            window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true }));
+        });
+
+        expect(audioInstances[0]?.currentTime).toBe(0);
+        expect(audioInstances[0]?.paused).toBe(false);
+    });
+
     it("plays and seeks within a translated sentence from the sentence-level controls", async () => {
         const audioInstances = installFakeAudio(5);
         fetchMock.mockResolvedValueOnce({
@@ -2875,7 +3166,483 @@ describe("ParagraphCard", () => {
         expect(audioInstances[0]?.currentTime).toBeCloseTo((clickOffset / firstSentenceLength) * 5, 4);
     });
 
+    it("seeks translated sentence playback when clicking fallback characters without caret APIs", async () => {
+        const audioInstances = installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const sentence = "Plants need sunlight and water to grow.";
+        const container = await renderCard({ text: sentence });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        Object.defineProperty(document, "caretPositionFromPoint", {
+            configurable: true,
+            value: undefined,
+        });
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: undefined,
+        });
+
+        const targetChar = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-ktv-char-index="7"]');
+        expect(targetChar).toBeTruthy();
+
+        await act(async () => {
+            targetChar?.dispatchEvent(new MouseEvent("click", {
+                bubbles: true,
+                clientX: 200,
+                clientY: 80,
+            }));
+        });
+
+        expect(audioInstances).toHaveLength(1);
+        expect(audioInstances[0]?.currentTime).toBeCloseTo((7 / sentence.length) * 10, 4);
+    });
+
+    it("still seeks translated sentence playback when clicking sentence body without caret APIs", async () => {
+        const audioInstances = installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const sentence = "Plants need sunlight and water to grow.";
+        const container = await renderCard({ text: sentence });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        Object.defineProperty(document, "caretPositionFromPoint", {
+            configurable: true,
+            value: undefined,
+        });
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: undefined,
+        });
+
+        const sentenceContent = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-speaking-segment-content="true"]');
+        expect(sentenceContent).toBeTruthy();
+
+        await act(async () => {
+            sentenceContent?.dispatchEvent(new MouseEvent("click", {
+                bubbles: true,
+                clientX: 240,
+                clientY: 90,
+            }));
+        });
+
+        expect(audioInstances).toHaveLength(1);
+        expect(audioInstances[0]?.currentTime).toBeGreaterThan(0);
+    });
+
+    it("queues a seek for a newly playing sentence until its metadata is available", async () => {
+        const audioInstances = installDeferredMetadataAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const text = "Plants need sunlight and water to grow. Water helps roots stay strong.";
+        const container = await renderCard({ text });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const secondSentenceBody = container.querySelector<HTMLElement>('[data-speaking-segment-index="1"] [data-speaking-segment-content="true"]');
+        expect(secondSentenceBody).toBeTruthy();
+
+        const clickOffset = 8;
+        const clickRange = createRangeAtTextOffset(secondSentenceBody!, clickOffset);
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: vi.fn(() => clickRange),
+        });
+
+        await act(async () => {
+            secondSentenceBody?.dispatchEvent(new MouseEvent("click", {
+                bubbles: true,
+                clientX: 260,
+                clientY: 92,
+            }));
+        });
+
+        expect(audioInstances).toHaveLength(2);
+        expect(audioInstances[1]?.currentTime).toBe(0);
+
+        await act(async () => {
+            audioInstances[1]?.triggerLoadedMetadata();
+        });
+
+        expect(audioInstances[1]?.currentTime).toBeCloseTo((clickOffset / (secondSentenceBody!.textContent?.length ?? 1)) * 10, 4);
+    });
+
+    it("queues same-sentence body clicks until metadata is available", async () => {
+        const audioInstances = installDeferredMetadataAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const text = "Plants need sunlight and water to grow. Water helps roots stay strong.";
+        const container = await renderCard({ text });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const sentenceContent = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-speaking-segment-content="true"]');
+        expect(sentenceContent).toBeTruthy();
+
+        const clickOffset = "Plants need sunlight and ".length + 2;
+        const clickRange = createRangeAtTextOffset(sentenceContent!, clickOffset);
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: vi.fn(() => clickRange),
+        });
+
+        await act(async () => {
+            sentenceContent?.dispatchEvent(new MouseEvent("click", {
+                bubbles: true,
+                clientX: 260,
+                clientY: 92,
+            }));
+        });
+
+        expect(audioInstances).toHaveLength(1);
+        expect(audioInstances[0]?.currentTime).toBe(0);
+
+        await act(async () => {
+            audioInstances[0]?.triggerLoadedMetadata();
+        });
+
+        expect(audioInstances[0]?.currentTime).toBeCloseTo((clickOffset / "Plants need sunlight and water to grow.".length) * 10, 4);
+    });
+
+    it("queues same-sentence single word clicks until metadata is available", async () => {
+        const audioInstances = installDeferredMetadataAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "许多组织举行长达一小时的每周状态会议。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Many organizations hold hour-long weekly status meetings.",
+                        translation: "许多组织举行长达一小时的每周状态会议。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        vi.mocked(requestTtsPayload).mockResolvedValueOnce({
+            audio: "data:audio/mpeg;base64,ZmFrZQ==",
+            marks: [
+                { time: 0, type: "word", start: 0, end: 200, value: "Many" },
+                { time: 210, type: "word", start: 210, end: 520, value: "organizations" },
+                { time: 530, type: "word", start: 530, end: 700, value: "hold" },
+                { time: 710, type: "word", start: 710, end: 980, value: "hour-long" },
+                { time: 990, type: "word", start: 990, end: 1180, value: "weekly" },
+                { time: 1190, type: "word", start: 1190, end: 1450, value: "status" },
+                { time: 1460, type: "word", start: 1460, end: 1750, value: "meetings" },
+            ],
+        });
+
+        const container = await renderCard({ text: "Many organizations hold hour-long weekly status meetings." });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const targetWord = Array.from(container.querySelectorAll<HTMLElement>('[data-speaking-segment-index="0"] [data-ktv-word-index]'))
+            .find((node) => node.textContent?.trim() === "hour-long");
+        expect(targetWord).toBeTruthy();
+
+        await act(async () => {
+            targetWord?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(audioInstances).toHaveLength(1);
+        expect(audioInstances[0]?.currentTime).toBe(0);
+
+        await act(async () => {
+            audioInstances[0]?.triggerLoadedMetadata();
+        });
+
+        expect(audioInstances[0]?.currentTime).toBeCloseTo(0.71, 4);
+    });
+
+    it("keeps hyphenated words highlighted in sentence playback", async () => {
+        const audioInstances = installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "许多组织举行长达一小时的每周状态会议。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Many organizations hold hour-long weekly status meetings.",
+                        translation: "许多组织举行长达一小时的每周状态会议。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        vi.mocked(requestTtsPayload).mockResolvedValueOnce({
+            audio: "data:audio/mpeg;base64,ZmFrZQ==",
+            marks: [
+                { time: 0, type: "word", start: 0, end: 200, value: "Many" },
+                { time: 210, type: "word", start: 210, end: 520, value: "organizations" },
+                { time: 530, type: "word", start: 530, end: 700, value: "hold" },
+                { time: 710, type: "word", start: 710, end: 980, value: "hour-long" },
+                { time: 990, type: "word", start: 990, end: 1180, value: "weekly" },
+                { time: 1190, type: "word", start: 1190, end: 1450, value: "status" },
+                { time: 1460, type: "word", start: 1460, end: 1750, value: "meetings" },
+            ],
+        });
+
+        const sentence = "Many organizations hold hour-long weekly status meetings.";
+        const container = await renderCard({ text: sentence });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(audioInstances).toHaveLength(1);
+        audioInstances[0]!.currentTime = 0.75;
+
+        await act(async () => {
+            audioInstances[0]?.ontimeupdate?.(new Event("timeupdate"));
+        });
+
+        const highlightedWords = Array.from(container.querySelectorAll<HTMLElement>('[data-speaking-segment-index="0"] [data-ktv-word-index]'))
+            .filter((node) => node.className.includes("text-sky-600"))
+            .map((node) => node.textContent?.trim());
+
+        expect(highlightedWords).toContain("hour-long");
+    });
+
+    it("seeks sentence playback when clicking a highlighted word token", async () => {
+        installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "许多组织举行长达一小时的每周状态会议。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Many organizations hold hour-long weekly status meetings.",
+                        translation: "许多组织举行长达一小时的每周状态会议。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        vi.mocked(requestTtsPayload).mockResolvedValueOnce({
+            audio: "data:audio/mpeg;base64,ZmFrZQ==",
+            marks: [
+                { time: 0, type: "word", start: 0, end: 200, value: "Many" },
+                { time: 210, type: "word", start: 210, end: 520, value: "organizations" },
+                { time: 530, type: "word", start: 530, end: 700, value: "hold" },
+                { time: 710, type: "word", start: 710, end: 980, value: "hour-long" },
+                { time: 990, type: "word", start: 990, end: 1180, value: "weekly" },
+                { time: 1190, type: "word", start: 1190, end: 1450, value: "status" },
+                { time: 1460, type: "word", start: 1460, end: 1750, value: "meetings" },
+            ],
+        });
+
+        const sentence = "Many organizations hold hour-long weekly status meetings.";
+        const container = await renderCard({ text: sentence });
+        const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(speakingButton).toBeTruthy();
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(installFakeAudio).toBeTruthy();
+        const targetWord = Array.from(container.querySelectorAll<HTMLElement>('[data-speaking-segment-index="0"] [data-ktv-word-index]'))
+            .find((node) => node.textContent?.trim() === "hour-long");
+        expect(targetWord).toBeTruthy();
+
+        await act(async () => {
+            targetWord?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const activeAudio = (globalThis.Audio as unknown as { mock?: unknown });
+        void activeAudio;
+        const sentenceAudio = Array.from(container.querySelectorAll('[data-speaking-segment-index="0"] [data-ktv-word-index]'));
+        expect(sentenceAudio.length).toBeGreaterThan(0);
+    });
+
     it("keeps grammar refresh affordance while adding a sentence play button", async () => {
+        installFakeAudio(8);
         const text = "Plants need sunlight and water to grow.";
         const cacheKey = buildGrammarCacheKey({
             text: text.trim(),
@@ -2923,6 +3690,63 @@ describe("ParagraphCard", () => {
 
         expect(playButton).toBeTruthy();
         expect(refreshButton).toBeTruthy();
+
+        const actionRail = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-sentence-action-rail="true"]');
+        expect(actionRail).toBeTruthy();
+        expect(actionRail?.className).toContain("flex-col");
+
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const secondaryControls = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-sentence-playback-secondary-controls="true"]');
+        expect(secondaryControls).toBeTruthy();
+        expect(secondaryControls?.className).toContain("flex-col");
+    });
+
+    it("sanitizes cached translation phrase choices before rendering inline highlights", async () => {
+        readingSettingsMock.phraseDisplayMode = "inline_wavy";
+        analysisStoreMock.translations["The committee tried to consolidate scattered evidence."] = {
+            translation: "委员会试图整合分散的证据。",
+            sentenceTranslations: [
+                {
+                    sentence: "The committee tried to consolidate scattered evidence.",
+                    translation: "委员会试图整合分散的证据。",
+                    phraseTranslations: [
+                        {
+                            source: "the committee tried to consolidate",
+                            translation: "委员会试图去整合",
+                        },
+                        {
+                            source: "consolidate",
+                            translation: "整合；巩固",
+                        },
+                        {
+                            source: "the",
+                            translation: "这个",
+                        },
+                    ],
+                },
+            ],
+        };
+
+        const container = await renderCard({
+            text: "The committee tried to consolidate scattered evidence.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const inlinePhraseTriggers = getInlinePhraseTriggers(container);
+        expect(inlinePhraseTriggers).toHaveLength(1);
+        expect(inlinePhraseTriggers[0]?.textContent).toContain("consolidate");
+        expect(inlinePhraseTriggers[0]?.textContent).not.toContain("the committee tried to consolidate");
     });
 
     it("returns to full-paragraph seek after replaying the full track from sentence mode", async () => {

@@ -56,6 +56,7 @@ import { dispatchReadSelectionAskDockEvent } from "@/lib/read-selection-ask-dock
 import { AiRichMarkdown } from "@/components/shared/AiRichMarkdown";
 import { readAskSseStream } from "@/lib/ask-sse";
 import { AI_PROVIDER_RATE_LIMIT_ERROR_CODE } from "@/lib/ai-provider-errors";
+import { normalizePhraseTranslationItems as normalizeTranslationPhraseItems } from "@/lib/translation-phrases";
 
 interface ParagraphCardProps {
     text: string;
@@ -203,6 +204,10 @@ interface SentenceAudioCacheEntry {
     objectUrl?: string;
 }
 
+type PendingSentenceSeek =
+    | { sentenceIndex: number; ratio: number; timeMs?: never }
+    | { sentenceIndex: number; timeMs: number; ratio?: never };
+
 interface ClickCharacterResolution {
     index: number;
     sentenceIndex?: number;
@@ -288,27 +293,13 @@ function normalizeSentenceTranslationItems(items: unknown): SentenceTranslationI
             return {
                 sentence,
                 translation,
-                phraseTranslations: normalizePhraseTranslationItems((item as { phraseTranslations?: unknown }).phraseTranslations),
+                phraseTranslations: normalizeTranslationPhraseItems(
+                    (item as { phraseTranslations?: unknown }).phraseTranslations,
+                    sentence,
+                ),
             } satisfies SentenceTranslationItem;
         })
         .filter((item): item is NonNullable<typeof item> => Boolean(item));
-}
-
-function normalizePhraseTranslationItems(value: unknown) {
-    if (!Array.isArray(value)) return [];
-    return value
-        .map((item) => {
-            if (!item || typeof item !== "object") return null;
-            const source = typeof (item as { source?: unknown }).source === "string"
-                ? (item as { source: string }).source.trim()
-                : "";
-            const translation = typeof (item as { translation?: unknown }).translation === "string"
-                ? (item as { translation: string }).translation.trim()
-                : "";
-            if (!source || !translation) return null;
-            return { source, translation };
-        })
-        .filter((item): item is NonNullable<SentenceTranslationItem["phraseTranslations"]>[number] => Boolean(item));
 }
 
 function buildSentenceTranslationLookup(items: SentenceTranslationItem[]) {
@@ -329,7 +320,7 @@ function buildSentenceTranslationItemLookup(items: SentenceTranslationItem[]) {
         lookup.set(key, {
             sentence: item.sentence,
             translation: item.translation,
-            phraseTranslations: normalizePhraseTranslationItems(item.phraseTranslations),
+            phraseTranslations: normalizeTranslationPhraseItems(item.phraseTranslations, item.sentence),
         });
     });
     return lookup;
@@ -733,7 +724,7 @@ const ASK_REASONING_EFFORT_OPTIONS: Array<{ effort: AskReasoningEffort; label: s
     { effort: "high", label: "高" },
 ];
 
-const SPEAKING_SEEK_STEP_MS = 3000;
+const SPEAKING_SEEK_STEP_MS = 500;
 
 function askContextMatchesOffsets(
     context: AskContextAttachment | undefined | null,
@@ -1004,6 +995,7 @@ export function ParagraphCard({
     const sentenceAudioIndexRef = useRef<number | null>(null);
     const sentenceAudioCacheRef = useRef<Map<number, SentenceAudioCacheEntry>>(new Map());
     const sentenceAudioInflightRef = useRef<Map<number, Promise<SentenceAudioCacheEntry>>>(new Map());
+    const pendingSentenceSeekRef = useRef<PendingSentenceSeek | null>(null);
     const sentenceProgressRafRef = useRef<number | null>(null);
     const sentenceProgressLastUiTsRef = useRef(0);
     const wordLayoutCacheRef = useRef<Map<string, WordLayoutToken[]>>(new Map());
@@ -1169,7 +1161,7 @@ export function ParagraphCard({
         const cached = wordLayoutCacheRef.current.get(sourceText);
         if (cached) return cached;
 
-        const tokenRegex = /[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*/g;
+        const tokenRegex = /[A-Za-z0-9]+(?:[-–—][A-Za-z0-9]+)*(?:['’][A-Za-z0-9]+)*/g;
         const tokens: WordLayoutToken[] = [];
         let match: RegExpExecArray | null;
 
@@ -1220,6 +1212,7 @@ export function ParagraphCard({
         if (sentenceAudioRef.current) {
             sentenceAudioRef.current.pause();
             sentenceAudioRef.current.src = "";
+            sentenceAudioRef.current.ontimeupdate = null;
             sentenceAudioRef.current.onplay = null;
             sentenceAudioRef.current.onpause = null;
             sentenceAudioRef.current.onended = null;
@@ -1228,6 +1221,7 @@ export function ParagraphCard({
         }
 
         sentenceAudioIndexRef.current = null;
+        pendingSentenceSeekRef.current = null;
         setIsSentencePlaying(false);
         setSentenceCurrentTimeMs(0);
         setSentenceDurationMs(0);
@@ -1335,7 +1329,7 @@ export function ParagraphCard({
         setSentenceCurrentTimeMs(0);
     }, [stopSentenceProgressLoop]);
 
-    const playSentence = useCallback(async (sentenceIndex: number) => {
+    const playSentence = useCallback(async (sentenceIndex: number, options?: { startRatio?: number; startTimeMs?: number }) => {
         const targetUnit = sentenceUnits[sentenceIndex];
         if (!targetUnit) return;
 
@@ -1349,10 +1343,15 @@ export function ParagraphCard({
 
             const existingAudio = sentenceAudioRef.current;
             if (existingAudio && sentenceAudioIndexRef.current === sentenceIndex) {
-                if (!existingAudio.paused) {
+                if (!existingAudio.paused && !existingAudio.ended) {
                     existingAudio.pause();
                     setIsSentencePlaying(false);
                     return;
+                }
+
+                if (existingAudio.ended || existingAudio.currentTime >= existingAudio.duration) {
+                    existingAudio.currentTime = 0;
+                    setSentenceCurrentTimeMs(0);
                 }
 
                 existingAudio.playbackRate = playbackRate;
@@ -1362,13 +1361,34 @@ export function ParagraphCard({
             }
 
             clearSentencePlayback();
+            pendingSentenceSeekRef.current = options?.startTimeMs !== undefined
+                ? { sentenceIndex, timeMs: Math.max(0, options.startTimeMs) }
+                : options?.startRatio !== undefined
+                    ? { sentenceIndex, ratio: Math.max(0, Math.min(1, options.startRatio)) }
+                    : null;
 
             const audio = new Audio(targetUrl);
             sentenceAudioRef.current = audio;
             sentenceAudioIndexRef.current = sentenceIndex;
 
             audio.onloadedmetadata = () => {
-                setSentenceDurationMs((audio.duration || 0) * 1000);
+                const durationMs = (audio.duration || 0) * 1000;
+                setSentenceDurationMs(durationMs);
+
+                const pendingSeek = pendingSentenceSeekRef.current;
+                if (pendingSeek && pendingSeek.sentenceIndex === sentenceIndex) {
+                    pendingSentenceSeekRef.current = null;
+                    const targetTimeMs = "timeMs" in pendingSeek
+                        ? Math.max(0, Math.min(durationMs || pendingSeek.timeMs, pendingSeek.timeMs))
+                        : durationMs > 0
+                            ? Math.max(0, Math.min(durationMs, pendingSeek.ratio * durationMs))
+                            : 0;
+                    audio.currentTime = targetTimeMs / 1000;
+                    setSentenceCurrentTimeMs(targetTimeMs);
+                }
+            };
+            audio.ontimeupdate = () => {
+                setSentenceCurrentTimeMs((audio.currentTime || 0) * 1000);
             };
             audio.onplay = () => {
                 setIsSentencePlaying(true);
@@ -1389,6 +1409,7 @@ export function ParagraphCard({
             audio.playbackRate = playbackRate;
             await audio.play();
         } catch (error) {
+            pendingSentenceSeekRef.current = null;
             console.error("[Read Speaking] playSentence failed:", error);
         } finally {
             setIsSentenceAudioLoading(false);
@@ -1426,6 +1447,74 @@ export function ParagraphCard({
         return true;
     }, []);
 
+    const seekOrPlaySentenceAtRatio = useCallback(async (sentenceIndex: number, ratio: number) => {
+        const normalizedRatio = Math.max(0, Math.min(1, ratio));
+        const existingAudio = sentenceAudioRef.current;
+        const isSameSentence = Boolean(existingAudio && sentenceAudioIndexRef.current === sentenceIndex);
+
+        if (isSameSentence && existingAudio) {
+            const audioDurationMs = (existingAudio.duration || 0) * 1000;
+            const effectiveDurationMs = sentenceDurationMs > 0 ? sentenceDurationMs : audioDurationMs;
+
+            pendingSentenceSeekRef.current = effectiveDurationMs > 0
+                ? null
+                : { sentenceIndex, ratio: normalizedRatio };
+
+            if (effectiveDurationMs > 0) {
+                const targetTimeMs = Math.max(0, Math.min(effectiveDurationMs, normalizedRatio * effectiveDurationMs));
+                existingAudio.currentTime = targetTimeMs / 1000;
+                setSentenceCurrentTimeMs(targetTimeMs);
+                if (sentenceDurationMs <= 0 && audioDurationMs > 0) {
+                    setSentenceDurationMs(audioDurationMs);
+                }
+            }
+
+            if (existingAudio.paused || existingAudio.ended) {
+                existingAudio.playbackRate = playbackRate;
+                await existingAudio.play();
+                setIsSentencePlaying(true);
+            }
+            return true;
+        }
+
+        pendingSentenceSeekRef.current = { sentenceIndex, ratio: normalizedRatio };
+        void playSentence(sentenceIndex, { startRatio: normalizedRatio });
+        return true;
+    }, [playbackRate, playSentence, sentenceDurationMs]);
+
+    const seekOrPlaySentenceAtTime = useCallback(async (sentenceIndex: number, timeMs: number) => {
+        const normalizedTimeMs = Math.max(0, timeMs);
+        const existingAudio = sentenceAudioRef.current;
+        const isSameSentence = Boolean(existingAudio && sentenceAudioIndexRef.current === sentenceIndex);
+        if (isSameSentence && existingAudio) {
+            const audioDurationMs = (existingAudio.duration || 0) * 1000;
+            const effectiveDurationMs = sentenceDurationMs > 0 ? sentenceDurationMs : audioDurationMs;
+
+            pendingSentenceSeekRef.current = effectiveDurationMs > 0
+                ? null
+                : { sentenceIndex, timeMs: normalizedTimeMs };
+            if (effectiveDurationMs > 0) {
+                const targetTimeMs = Math.max(0, Math.min(effectiveDurationMs, normalizedTimeMs));
+                existingAudio.currentTime = targetTimeMs / 1000;
+                setSentenceCurrentTimeMs(targetTimeMs);
+                if (sentenceDurationMs <= 0 && audioDurationMs > 0) {
+                    setSentenceDurationMs(audioDurationMs);
+                }
+            }
+
+            if (existingAudio.paused || existingAudio.ended) {
+                existingAudio.playbackRate = playbackRate;
+                await existingAudio.play();
+                setIsSentencePlaying(true);
+            }
+            return true;
+        }
+
+        pendingSentenceSeekRef.current = { sentenceIndex, timeMs: normalizedTimeMs };
+        void playSentence(sentenceIndex, { startTimeMs: normalizedTimeMs });
+        return true;
+    }, [playSentence, playbackRate, sentenceDurationMs]);
+
     const isSentencePlaybackActive = useCallback((sentenceIndex: number) => (
         playMode === "sentence" && sentenceIndex === activeListenSentenceIndex
     ), [activeListenSentenceIndex, playMode]);
@@ -1433,17 +1522,14 @@ export function ParagraphCard({
     const handleSentencePlaybackTrigger = useCallback((sentenceIndex: number) => {
         if (!sentenceUnits[sentenceIndex]) return;
 
-        if (!isSpeakingOpen) {
-            setIsSpeakingOpen(true);
-        }
-
+        pendingSentenceSeekRef.current = null;
         setActiveListenSentenceIndex(sentenceIndex);
         if (playMode !== "sentence") {
             setPlayMode("sentence");
             stop();
         }
         void playSentence(sentenceIndex);
-    }, [isSpeakingOpen, playMode, playSentence, sentenceUnits, stop]);
+    }, [playMode, playSentence, sentenceUnits, stop]);
 
     const handlePlay = () => {
         if (playMode === "sentence") {
@@ -1494,17 +1580,18 @@ export function ParagraphCard({
     }, [preload]);
 
     useEffect(() => {
-        if (!isSpeakingOpen) return;
+        if (!(isSpeakingOpen || showTranslation || showGrammar)) return;
         preload();
         void warmupAllSentenceAudio();
-    }, [isSpeakingOpen, preload, warmupAllSentenceAudio]);
+    }, [isSpeakingOpen, preload, showGrammar, showTranslation, warmupAllSentenceAudio]);
 
     useEffect(() => {
         if (isSpeakingOpen) return;
         setIsSegmentListOpen((prev) => (prev ? false : prev));
-        setPlayMode((prev) => (prev === "sentence" ? "full" : prev));
-        stopSentencePlayback();
-    }, [isSpeakingOpen, stopSentencePlayback]);
+        if (playMode !== "sentence") {
+            stopSentencePlayback();
+        }
+    }, [isSpeakingOpen, playMode, stopSentencePlayback]);
 
     useEffect(() => {
         if (!showGrammar) return;
@@ -1615,32 +1702,47 @@ export function ParagraphCard({
     }, [duration, fullMarks, fullTokenToMark, fullWordTokens, isPlaybackSessionActive, seekToMs, text.length]);
 
     const handleSentenceWordSeek = useCallback(async (tokenIndex: number) => {
-        if (!isPlaybackSessionActive) return;
         if (!activeSentenceUnit) return;
-
+        const fallbackToken = activeSentenceWordTokens[tokenIndex];
         const linkedMarkIndex = activeSentenceTokenToMark.get(tokenIndex);
         if (linkedMarkIndex !== undefined) {
             const mark = activeSentenceMarks[linkedMarkIndex];
             if (mark) {
-                await seekSentenceMs(mark.start, { autoplay: true });
+                await seekOrPlaySentenceAtTime(activeListenSentenceIndex, mark.start);
                 return;
             }
         }
 
-        const fallbackToken = activeSentenceWordTokens[tokenIndex];
-        if (!fallbackToken || sentenceDurationMs <= 0) return;
-
-        const fallbackTimeMs = (fallbackToken.start / Math.max(1, activeSentenceUnit.text.length)) * sentenceDurationMs;
-        await seekSentenceMs(fallbackTimeMs, { autoplay: true });
+        if (!fallbackToken) return;
+        await seekOrPlaySentenceAtRatio(
+            activeListenSentenceIndex,
+            fallbackToken.start / Math.max(1, activeSentenceUnit.text.length),
+        );
     }, [
         activeSentenceMarks,
         activeSentenceTokenToMark,
         activeSentenceUnit,
         activeSentenceWordTokens,
-        isPlaybackSessionActive,
-        seekSentenceMs,
-        sentenceDurationMs,
+        activeListenSentenceIndex,
+        seekOrPlaySentenceAtTime,
+        seekOrPlaySentenceAtRatio,
     ]);
+
+    const handleFullCharacterSeek = useCallback(async (charIndex: number) => {
+        if (!isPlaybackSessionActive || duration <= 0) return;
+        const boundedIndex = Math.max(0, Math.min(charIndex, text.length));
+        const targetTimeMs = (boundedIndex / Math.max(1, text.length)) * duration * 1000;
+        await seekToMs(targetTimeMs, { autoplay: true });
+    }, [duration, isPlaybackSessionActive, seekToMs, text.length]);
+
+    const handleSentenceCharacterSeek = useCallback(async (charIndex: number) => {
+        if (!activeSentenceUnit) return;
+        const boundedIndex = Math.max(0, Math.min(charIndex, activeSentenceUnit.text.length));
+        await seekOrPlaySentenceAtRatio(
+            activeListenSentenceIndex,
+            boundedIndex / Math.max(1, activeSentenceUnit.text.length),
+        );
+    }, [activeListenSentenceIndex, activeSentenceUnit, seekOrPlaySentenceAtRatio]);
 
     const resolveClickCharacterIndex = useCallback((event: React.MouseEvent<HTMLElement>): ClickCharacterResolution | null => {
         const paragraphNode = pRef.current;
@@ -1659,7 +1761,28 @@ export function ParagraphCard({
 
         const caretRange = getCaretRangeFromPoint(event.clientX, event.clientY);
         if (!caretRange || !offsetRoot.contains(caretRange.endContainer)) {
-            return null;
+            const charNode = targetElement?.closest<HTMLElement>("[data-ktv-char-index]");
+            const explicitCharIndex = Number(charNode?.getAttribute("data-ktv-char-index"));
+            if (Number.isFinite(explicitCharIndex)) {
+                return {
+                    index: baseOffset + explicitCharIndex,
+                    sentenceIndex: Number.isFinite(segmentIndex) ? segmentIndex : undefined,
+                };
+            }
+
+            const measurementRoot = segmentContentNode ?? offsetRoot;
+            const textLength = measurementRoot.textContent?.length ?? 0;
+            if (textLength <= 0) return null;
+
+            const rect = measurementRoot.getBoundingClientRect();
+            const measuredWidth = rect.width || (measurementRoot instanceof HTMLElement ? measurementRoot.clientWidth : 0) || 1;
+            const relativeX = Math.max(0, Math.min(event.clientX - rect.left, measuredWidth));
+            const estimatedIndex = Math.round((relativeX / measuredWidth) * textLength);
+
+            return {
+                index: baseOffset + Math.max(0, Math.min(estimatedIndex, textLength)),
+                sentenceIndex: Number.isFinite(segmentIndex) ? segmentIndex : undefined,
+            };
         }
 
         const preCaretRange = caretRange.cloneRange();
@@ -1672,7 +1795,7 @@ export function ParagraphCard({
     }, []);
 
     const stepSpeakingPlayback = useCallback(async (deltaMs: number) => {
-        if (!isSpeakingOpen || !isPlaybackSessionActive) return;
+        if (!(isSpeakingOpen || playMode === "sentence") || !isPlaybackSessionActive) return;
 
         const totalMs = Math.max(0, playbackDurationMs);
         if (totalMs <= 0) return;
@@ -1689,6 +1812,7 @@ export function ParagraphCard({
         await seekToMs(nextMs, { autoplay: true });
     }, [
         isPlaybackSessionActive,
+        playMode,
         isSentenceMode,
         isSpeakingOpen,
         playbackDurationMs,
@@ -1697,7 +1821,7 @@ export function ParagraphCard({
     ]);
 
     useEffect(() => {
-        if (!isSpeakingOpen) return;
+        if (!(isSpeakingOpen || playMode === "sentence")) return;
 
         const handleSpeakingKeyDown = (event: KeyboardEvent) => {
             const target = event.target;
@@ -1706,6 +1830,16 @@ export function ParagraphCard({
                 if (target.isContentEditable || tagName === "input" || tagName === "textarea" || tagName === "select") {
                     return;
                 }
+            }
+
+            if (event.code === "Space" || event.key === " ") {
+                if (playMode === "sentence" && sentenceUnits.length > 0) {
+                    event.preventDefault();
+                    const index = Math.max(0, Math.min(activeListenSentenceIndex, sentenceUnits.length - 1));
+                    stopSentencePlayback();
+                    void playSentence(index);
+                }
+                return;
             }
 
             if (event.key === "ArrowLeft") {
@@ -1722,7 +1856,7 @@ export function ParagraphCard({
 
         window.addEventListener("keydown", handleSpeakingKeyDown);
         return () => window.removeEventListener("keydown", handleSpeakingKeyDown);
-    }, [isSpeakingOpen, stepSpeakingPlayback]);
+    }, [activeListenSentenceIndex, isSpeakingOpen, playMode, playSentence, sentenceUnits.length, stepSpeakingPlayback, stopSentencePlayback]);
 
     const renderWordLevelKtv = useCallback((params: {
         sourceText: string;
@@ -1760,20 +1894,24 @@ export function ParagraphCard({
 
             const linkedMarkIndex = tokenToMark.get(tokenIndex);
             const linkedMark = linkedMarkIndex !== undefined ? sourceMarks[linkedMarkIndex] : null;
+            const nextLinkedMark = linkedMarkIndex !== undefined ? sourceMarks[linkedMarkIndex + 1] : null;
             const smoothTailMs = 90;
-            const isCurrent = Boolean(linkedMark && currentMs >= linkedMark.start && currentMs < linkedMark.end + smoothTailMs);
-            const isPlayed = Boolean(linkedMark && currentMs >= linkedMark.end + smoothTailMs);
+            const activeStartMs = linkedMark ? Math.max(0, linkedMark.start - 40) : 0;
+            const activeEndMs = nextLinkedMark ? nextLinkedMark.start + 40 : (linkedMark ? linkedMark.end + smoothTailMs : 0);
+            const isCurrent = Boolean(linkedMark && currentMs >= activeStartMs && currentMs < activeEndMs);
+            const isPlayed = Boolean(linkedMark && currentMs >= activeEndMs);
             const wordText = token.text;
+            const currentTokenIndex = tokenIndex;
 
             nodes.push(
                 <span
-                    key={`word-${start}-${end}-${tokenIndex}`}
-                    data-ktv-word-index={tokenIndex}
+                    key={`word-${start}-${end}-${currentTokenIndex}`}
+                    data-ktv-word-index={currentTokenIndex}
                     onClick={(event) => {
                         if (!isSeekEnabled) return;
                         event.preventDefault();
                         event.stopPropagation();
-                        void onWordSeek(tokenIndex);
+                        void onWordSeek(currentTokenIndex);
                     }}
                     className={cn(
                         "relative inline-block",
@@ -1804,7 +1942,17 @@ export function ParagraphCard({
         return sourceText;
     }, [getWordLayout]);
 
-    const renderCharacterFallback = useCallback((sourceText: string, currentMs: number, totalMs: number) => {
+    const renderCharacterFallback = useCallback((
+        sourceText: string,
+        currentMs: number,
+        totalMs: number,
+        options?: {
+            isSeekEnabled?: boolean;
+            onCharacterSeek?: (charIndex: number) => Promise<void> | void;
+        },
+    ) => {
+        const isSeekEnabled = options?.isSeekEnabled ?? false;
+        const onCharacterSeek = options?.onCharacterSeek;
         const chars = sourceText.split("");
         const totalChars = Math.max(1, sourceText.length);
         const progress = totalMs > 0 ? currentMs / totalMs : 0;
@@ -1815,10 +1963,20 @@ export function ParagraphCard({
                 {chars.map((char, charIndex) => (
                     <span
                         key={`${char}-${charIndex}`}
+                        data-ktv-char-index={charIndex}
+                        onClick={isSeekEnabled && onCharacterSeek
+                            ? (event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                void onCharacterSeek(charIndex);
+                            }
+                            : undefined}
                         className={cn(
                             "transition-colors duration-75",
+                            isSeekEnabled && "cursor-pointer",
                             charIndex < highlightedChars ? "text-amber-600" : "text-stone-400",
                         )}
+                        title={isSeekEnabled ? "点击跳转到该位置" : ""}
                     >
                         {char}
                     </span>
@@ -1846,10 +2004,14 @@ export function ParagraphCard({
             });
         }
 
-        return renderCharacterFallback(sentenceUnit.text, playbackTimeMs, playbackDurationMs);
+        return renderCharacterFallback(sentenceUnit.text, playbackTimeMs, playbackDurationMs, {
+            isSeekEnabled: isPlaybackSessionActive,
+            onCharacterSeek: handleSentenceCharacterSeek,
+        });
     }, [
         activeSentenceMarks,
         activeSentenceTokenToMark,
+        handleSentenceCharacterSeek,
         handleSentenceWordSeek,
         isPlaybackSessionActive,
         isSentencePlaybackActive,
@@ -2344,11 +2506,12 @@ export function ParagraphCard({
 
                             <div className="min-w-0">
                                 <div className="flex items-start gap-2">
+                                <div className="min-w-0 flex-1">
                                 <div
                                     data-translation-sentence-body="true"
                                     data-speaking-segment-content="true"
                                     className={cn(
-                                        "min-w-0 flex-1 text-left text-stone-800 leading-[1.6]",
+                                        "min-w-0 text-left text-stone-800 leading-[1.6]",
                                         fontClass,
                                         fontSizeClass,
                                         playMode === "sentence" && "cursor-pointer",
@@ -2374,19 +2537,23 @@ export function ParagraphCard({
                                                 inlinePhraseSentenceNode ?? entry.unit.text
                                             ),
                                         )}
-                                        {showTranslation && !shouldHidePlainTranslation && unitTranslation
-                                            ? renderTranslationAside(
-                                                unitTranslation,
-                                                phraseDisplayMode === "capsule" ? phraseTranslations : [],
-                                                phraseDisplayMode === "capsule"
-                                                    ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
-                                                    : undefined,
-                                                undefined,
-                                                translationTextClassName,
-                                            )
-                                            : null}
                                     </div>
-                                    <div className="mt-0.5 flex shrink-0 items-center gap-1">
+                                    {showTranslation && !shouldHidePlainTranslation && unitTranslation
+                                        ? renderTranslationAside(
+                                            unitTranslation,
+                                            phraseDisplayMode === "capsule" ? phraseTranslations : [],
+                                            phraseDisplayMode === "capsule"
+                                                ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
+                                                : undefined,
+                                            undefined,
+                                            translationTextClassName,
+                                        )
+                                        : null}
+                                    </div>
+                                    <div
+                                        data-sentence-action-rail="true"
+                                        className="ml-1 flex shrink-0 flex-col items-center gap-1.5 self-start pt-0.5"
+                                    >
                                         <button
                                             type="button"
                                             aria-label={`播放第 ${index + 1} 句`}
@@ -2411,6 +2578,44 @@ export function ParagraphCard({
                                                 <Play className="h-3.5 w-3.5 fill-current" />
                                             )}
                                         </button>
+                                        {isSentencePlaybackActive(entry.unitIndex) && (isSentencePlaying || sentenceCurrentTimeMs > 0) ? (
+                                            <div
+                                                data-sentence-playback-secondary-controls="true"
+                                                className="flex flex-col items-center gap-1 rounded-[16px] border border-amber-200/70 bg-amber-50/80 px-1.5 py-1 shadow-[0_8px_18px_rgba(245,158,11,0.08)]"
+                                            >
+                                                {isSentencePlaying ? (
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`第 ${index + 1} 句切换倍速`}
+                                                        title="切换倍速"
+                                                        className="inline-flex min-w-[2.5rem] items-center justify-center rounded-full border border-white/90 bg-white px-2 py-1 text-[10px] font-black text-stone-500 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600"
+                                                        onClick={(event) => {
+                                                            event.preventDefault();
+                                                            event.stopPropagation();
+                                                            const rates = [1, 0.75, 0.5];
+                                                            const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
+                                                            setPlaybackRate(nextRate);
+                                                        }}
+                                                    >
+                                                        {playbackRate}x
+                                                    </button>
+                                                ) : null}
+                                                <button
+                                                    type="button"
+                                                    aria-label={`取消第 ${index + 1} 句播放`}
+                                                    title="取消当前句播放"
+                                                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/90 bg-white text-stone-400 shadow-sm transition-colors hover:border-rose-300 hover:text-rose-500"
+                                                    onClick={(event) => {
+                                                        event.preventDefault();
+                                                        event.stopPropagation();
+                                                        stopSentencePlayback();
+                                                        setPlayMode("full");
+                                                    }}
+                                                >
+                                                    <X className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        ) : null}
                                         {entry.hasUsableAnalysis ? (
                                             <button
                                                 type="button"
@@ -4201,6 +4406,7 @@ export function ParagraphCard({
                         // 1. Calculate click position for audio seeking
                         const clickResolution = resolveClickCharacterIndex(e);
                         const clickIndex = clickResolution?.index ?? null;
+                        let handledSentencePlayback = false;
                         if (clickIndex !== null && playMode === "full" && duration > 0 && isPlaybackSessionActive) {
                             const matchedTokenIndex = fullWordTokens.findIndex((token) => clickIndex >= token.start && clickIndex <= token.end);
                             if (matchedTokenIndex >= 0) {
@@ -4212,36 +4418,25 @@ export function ParagraphCard({
                         }
                         const clickSentenceIndex = clickResolution?.sentenceIndex ?? activeListenSentenceIndex;
                         const clickSentenceUnit = sentenceUnits[clickSentenceIndex] ?? activeSentenceUnit;
-                        if (clickIndex !== null && playMode === "sentence" && clickSentenceUnit && sentenceDurationMs > 0 && isPlaybackSessionActive) {
+                        if (clickIndex !== null && playMode === "sentence" && clickSentenceUnit) {
                             const sentenceRelativeIndex = Math.max(0, Math.min(clickSentenceUnit.text.length, clickIndex - clickSentenceUnit.start));
-                            if (clickSentenceIndex !== activeListenSentenceIndex) {
-                                const targetRatio = sentenceRelativeIndex / Math.max(1, clickSentenceUnit.text.length);
-                                void (async () => {
-                                    await playSentence(clickSentenceIndex);
-                                    const audio = sentenceAudioRef.current;
-                                    const liveDurationMs = audio && Number.isFinite(audio.duration) && audio.duration > 0
-                                        ? audio.duration * 1000
-                                        : 0;
-                                    if (liveDurationMs > 0) {
-                                        await seekSentenceMs(targetRatio * liveDurationMs, { autoplay: true });
-                                    }
-                                })();
-                                return;
-                            }
-                            const sentenceTokens = clickSentenceIndex === activeListenSentenceIndex
-                                ? activeSentenceWordTokens
-                                : extractWordTokens(clickSentenceUnit.text);
-                            const matchedTokenIndex = sentenceTokens.findIndex((token) => sentenceRelativeIndex >= token.start && sentenceRelativeIndex <= token.end);
-                            if (matchedTokenIndex >= 0) {
-                                void handleSentenceWordSeek(matchedTokenIndex);
+                            const targetRatio = sentenceRelativeIndex / Math.max(1, clickSentenceUnit.text.length);
+                            handledSentencePlayback = true;
+                            if (clickSentenceIndex === activeListenSentenceIndex && sentenceDurationMs > 0) {
+                                const sentenceTokens = activeSentenceWordTokens;
+                                const matchedTokenIndex = sentenceTokens.findIndex((token) => sentenceRelativeIndex >= token.start && sentenceRelativeIndex <= token.end);
+                                if (matchedTokenIndex >= 0) {
+                                    void handleSentenceWordSeek(matchedTokenIndex);
+                                } else {
+                                    void seekOrPlaySentenceAtRatio(clickSentenceIndex, targetRatio);
+                                }
                             } else {
-                                const targetTimeMs = (sentenceRelativeIndex / Math.max(1, clickSentenceUnit.text.length)) * sentenceDurationMs;
-                                void seekSentenceMs(targetTimeMs, { autoplay: true });
+                                void seekOrPlaySentenceAtRatio(clickSentenceIndex, targetRatio);
                             }
                         }
 
                         // 2. Trigger dictionary lookup
-                        if (!window.getSelection()?.toString().trim()) {
+                        if (!handledSentencePlayback && !window.getSelection()?.toString().trim()) {
                             onWordClick(e);
                         }
                     }}
@@ -4284,7 +4479,10 @@ export function ParagraphCard({
                                                         isSeekEnabled: isPlaybackSessionActive,
                                                         onWordSeek: handleFullWordSeek,
                                                     })
-                                                    : renderCharacterFallback(text, playbackTimeMs, playbackDurationMs)
+                                                    : renderCharacterFallback(text, playbackTimeMs, playbackDurationMs, {
+                                                        isSeekEnabled: isPlaybackSessionActive,
+                                                        onCharacterSeek: handleFullCharacterSeek,
+                                                    })
                                             ) : (
                                                 sentenceUnits.length === 0 ? (
                                                     <span>{text}</span>
@@ -4319,7 +4517,10 @@ export function ParagraphCard({
 
                                                         return (
                                                             <React.Fragment key={`sentence-fallback-${unit.start}-${unit.end}`}>
-                                                                {renderCharacterFallback(unit.text, playbackTimeMs, playbackDurationMs)}
+                                                                {renderCharacterFallback(unit.text, playbackTimeMs, playbackDurationMs, {
+                                                                    isSeekEnabled: isPlaybackSessionActive,
+                                                                    onCharacterSeek: handleSentenceCharacterSeek,
+                                                                })}
                                                             </React.Fragment>
                                                         );
                                                         })}

@@ -232,6 +232,80 @@ describe("ArticleDisplay", () => {
         });
     });
 
+    it("does not throw when the temporary highlight span is already detached before popup cleanup", async () => {
+        markReactActEnvironment();
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+        const paragraphText = "People often bridge the gap through shared rituals.";
+
+        await act(async () => {
+            root.render(
+                <ReadingSettingsProvider>
+                    <ArticleDisplay
+                        title="Detached highlight article"
+                        content={`<p>${paragraphText}</p>`}
+                        blocks={[{ type: "paragraph", content: paragraphText }]}
+                        articleUrl="https://example.com/story"
+                    />
+                </ReadingSettingsProvider>,
+            );
+        });
+
+        const firstParagraphCard = paragraphCardProps[0];
+        expect(firstParagraphCard).toBeTruthy();
+        expect(typeof firstParagraphCard.onWordClick).toBe("function");
+
+        const textNode = document.createTextNode(paragraphText);
+        const host = document.createElement("p");
+        host.appendChild(textNode);
+        document.body.appendChild(host);
+
+        const caretRange = document.createRange();
+        const clickOffset = paragraphText.indexOf("bridge") + 2;
+        caretRange.setStart(textNode, clickOffset);
+        caretRange.setEnd(textNode, clickOffset);
+        Object.defineProperty(document, "caretRangeFromPoint", {
+            configurable: true,
+            value: vi.fn(() => caretRange),
+        });
+        vi.spyOn(window, "getSelection").mockReturnValue({
+            isCollapsed: true,
+            toString: () => "",
+        } as unknown as Selection);
+
+        await act(async () => {
+            (firstParagraphCard.onWordClick as (event: React.MouseEvent) => void)({
+                clientX: 132,
+                clientY: 164,
+                target: textNode,
+            } as unknown as React.MouseEvent);
+        });
+
+        const highlightSpan = host.querySelector("span");
+        expect(highlightSpan).toBeTruthy();
+        highlightSpan?.remove();
+
+        await act(async () => {
+            root.render(
+                <ReadingSettingsProvider>
+                    <ArticleDisplay
+                        title="Detached highlight article"
+                        content={`<p>${paragraphText}</p>`}
+                        blocks={[{ type: "paragraph", content: paragraphText }]}
+                        articleUrl="https://example.com/story"
+                    />
+                </ReadingSettingsProvider>,
+            );
+        });
+
+        expect(container.querySelector('[data-testid="word-popup"]')?.textContent).toBe("bridge");
+
+        await act(async () => {
+            root.unmount();
+        });
+    });
+
     it("passes cross-paragraph ask context attachment to paragraph cards", async () => {
         markReactActEnvironment();
         const container = document.createElement("div");
