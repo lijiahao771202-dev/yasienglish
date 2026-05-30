@@ -630,7 +630,7 @@ describe("ParagraphCard", () => {
         expect(container.querySelector('[data-paragraph-translation-block="true"]')).toBeNull();
         expect(getTranslationAsides(container)[0]?.className).toContain("block");
         expect(getTranslationAsides(container)[0]?.className).toContain("w-full");
-        expect(getTranslationAsides(container)[0]?.className).toContain("reading-apple-inset");
+        expect(getTranslationAsides(container)[0]?.className).toContain("reading-translation-inset");
     });
 
     it("applies reading appearance font and size to translation-mode english sentence lines", async () => {

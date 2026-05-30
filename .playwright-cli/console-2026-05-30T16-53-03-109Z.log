@@ -3,3 +3,333 @@
 [    1328ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4000/api/ai/cat/history?limit=48:0
 [    1361ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
 [    1548ms] [LOG] [Fast Refresh] done in 290ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  202482ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  203193ms] [ERROR] ./src/app/globals.css
+Error evaluating Node.js code
+CssSyntaxError: /Users/lijiahao/yasi/src/app/globals.css:293:1: Unexpected }
+    [at Input.error (turbopack:///[project]/node_modules/postcss/lib/input.js:135:16)]
+    [at Parser.unexpectedClose (turbopack:///[project]/node_modules/postcss/lib/parser.js:587:22)]
+    [at Parser.end (turbopack:///[project]/node_modules/postcss/lib/parser.js:330:12)]
+    [at Parser.parse (turbopack:///[project]/node_modules/postcss/lib/parser.js:456:16)]
+    [at parse (turbopack:///[project]/node_modules/postcss/lib/parse.js:11:12)]
+    [at new LazyResult (turbopack:///[project]/node_modules/postcss/lib/lazy-result.js:165:16)]
+    [at Processor.process (turbopack:///[project]/node_modules/postcss/lib/processor.js:53:14)]
+    [at transform (turbopack:///[turbopack-node]/transforms/postcss.ts:70:51)]
+    [at run (turbopack:///[turbopack-node]/ipc/evaluate.ts:92:29)]
+    [at run (turbopack:///[turbopack-node]/ipc/evaluate.ts:115:11)]
+
+Import trace:
+  Client Component Browser:
+    ./src/app/globals.css [Client Component Browser]
+    ./src/app/layout.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[  220996ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  222741ms] [LOG] [Fast Refresh] done in 1763ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  351580ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  353108ms] [LOG] [Fast Refresh] done in 1601ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  364793ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  364949ms] [LOG] [Fast Refresh] done in 258ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  390358ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  391369ms] [LOG] [Fast Refresh] done in 1055ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  475719ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  476876ms] [LOG] [Fast Refresh] done in 1234ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  477160ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  477175ms] [LOG] [Fast Refresh] done in 116ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  487346ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  487583ms] [LOG] [Fast Refresh] done in 307ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  531002ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  531299ms] [LOG] [Fast Refresh] done in 362ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  531463ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  531464ms] [LOG] [Fast Refresh] done in 101ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  686700ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  687025ms] [LOG] [Fast Refresh] done in 392ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  687175ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  687175ms] [LOG] [Fast Refresh] done in 102ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  690815ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  691423ms] [LOG] [Fast Refresh] done in 709ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  714682ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  715573ms] [LOG] [Fast Refresh] done in 955ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  800932ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  803312ms] [LOG] [Fast Refresh] done in 2471ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  803478ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  803487ms] [LOG] [Fast Refresh] done in 109ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1018046ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1020115ms] [LOG] [Fast Refresh] done in 2147ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1026323ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1026980ms] [LOG] [Fast Refresh] done in 713ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1035738ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1036191ms] [LOG] [Fast Refresh] done in 526ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1040803ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1040885ms] [LOG] [Fast Refresh] done in 183ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1108255ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1109325ms] [LOG] [Fast Refresh] done in 1160ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1224061ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1224460ms] [LOG] [Fast Refresh] done in 500ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1225504ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1225985ms] [LOG] [Fast Refresh] done in 533ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1274540ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1275689ms] [LOG] [Fast Refresh] done in 1228ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1425159ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1426481ms] [LOG] [Fast Refresh] done in 1383ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1443663ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1444057ms] [LOG] [Fast Refresh] done in 466ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1468387ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1468627ms] [LOG] [Fast Refresh] done in 315ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1513568ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1513595ms] [LOG] [Fast Refresh] done in 129ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1514218ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1514367ms] [LOG] [Fast Refresh] done in 251ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1519847ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1520066ms] [LOG] [Fast Refresh] done in 321ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1520405ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1520513ms] [LOG] [Fast Refresh] done in 210ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1522847ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1522922ms] [LOG] [Fast Refresh] done in 176ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1608833ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1611949ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2633:46
+Parsing ecmascript source code failed
+  2631 |                                         {entry.hasUsableAnalysis ? (
+  2632 |                                                 <RefreshCw className="h-3 w-3" strokeWidth={1.6} />
+> 2633 |                                             </button>
+       |                                              ^^^^^^^^
+  2634 |                                         ) : null}
+  2635 |                                     </div>
+  2636 |                                 </div>
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1670938ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2633:46
+Parsing ecmascript source code failed
+  2631 |                                         {entry.hasUsableAnalysis ? (
+  2632 |                                                 <RefreshCw className="h-3 w-3" strokeWidth={1.6} />
+> 2633 |                                             </button>
+       |                                              ^^^^^^^^
+  2634 |                                         ) : null}
+  2635 |                                     </div>
+  2636 |                                 </div>
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1670957ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1677857ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1678792ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2633:46
+Parsing ecmascript source code failed
+  2631 |                                         {entry.hasUsableAnalysis ? (
+  2632 |                                                 <RefreshCw className="h-3 w-3" strokeWidth={1.6} />
+> 2633 |                                             </button>
+       |                                              ^^^^^^^^
+  2634 |                                         ) : null}
+  2635 |                                     </div>
+  2636 |                                 </div>
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1678895ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1681008ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2633:46
+Parsing ecmascript source code failed
+  2631 |                                         {entry.hasUsableAnalysis ? (
+  2632 |                                                 <RefreshCw className="h-3 w-3" strokeWidth={1.6} />
+> 2633 |                                             </button>
+       |                                              ^^^^^^^^
+  2634 |                                         ) : null}
+  2635 |                                     </div>
+  2636 |                                 </div>
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1681109ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1682989ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2633:46
+Parsing ecmascript source code failed
+  2631 |                                         {entry.hasUsableAnalysis ? (
+  2632 |                                                 <RefreshCw className="h-3 w-3" strokeWidth={1.6} />
+> 2633 |                                             </button>
+       |                                              ^^^^^^^^
+  2634 |                                         ) : null}
+  2635 |                                     </div>
+  2636 |                                 </div>
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1683093ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1687864ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2633:46
+Parsing ecmascript source code failed
+  2631 |                                         {entry.hasUsableAnalysis ? (
+  2632 |                                                 <RefreshCw className="h-3 w-3" strokeWidth={1.6} />
+> 2633 |                                             </button>
+       |                                              ^^^^^^^^
+  2634 |                                         ) : null}
+  2635 |                                     </div>
+  2636 |                                 </div>
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1687972ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1688035ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2633:46
+Parsing ecmascript source code failed
+  2631 |                                         {entry.hasUsableAnalysis ? (
+  2632 |                                                 <RefreshCw className="h-3 w-3" strokeWidth={1.6} />
+> 2633 |                                             </button>
+       |                                              ^^^^^^^^
+  2634 |                                         ) : null}
+  2635 |                                     </div>
+  2636 |                                 </div>
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1690689ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1690852ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2633:46
+Parsing ecmascript source code failed
+  2631 |                                         {entry.hasUsableAnalysis ? (
+  2632 |                                                 <RefreshCw className="h-3 w-3" strokeWidth={1.6} />
+> 2633 |                                             </button>
+       |                                              ^^^^^^^^
+  2634 |                                         ) : null}
+  2635 |                                     </div>
+  2636 |                                 </div>
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1702198ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1702460ms] [LOG] [Fast Refresh] done in 282ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1756170ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1759222ms] [ERROR] ./src/components/reading/ParagraphCard.tsx:2559:1
+Parsing ecmascript source code failed
+  2557 |                                                 ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
+  2558 |                                                 : undefined,
+> 2559 | }}
+       | ^
+  2560 |                                             undefined,
+  2561 |                                             translationTextClassName,
+  2562 |                                         )
+
+Expected '</', got '}'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/ParagraphCard.tsx [Client Component Browser]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/ParagraphCard.tsx [Client Component SSR]
+    ./src/components/reading/ArticleDisplay.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 1766839ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1771695ms] [LOG] [Fast Refresh] done in 4885ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1771839ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1772109ms] [LOG] [Fast Refresh] done in 372ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1805646ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1805923ms] [LOG] [Fast Refresh] done in 325ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1806081ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1806099ms] [LOG] [Fast Refresh] done in 119ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1881372ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1881485ms] [LOG] [Fast Refresh] done in 213ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1889071ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1889325ms] [LOG] [Fast Refresh] done in 356ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1909314ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1916420ms] [LOG] [Fast Refresh] done in 7157ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1932496ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 1932711ms] [LOG] [Fast Refresh] done in 289ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2033986ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2034254ms] [LOG] [Fast Refresh] done in 339ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2034356ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2034387ms] [LOG] [Fast Refresh] done in 133ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2157916ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 2160662ms] [LOG] [Fast Refresh] done in 2840ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297

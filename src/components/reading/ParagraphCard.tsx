@@ -394,11 +394,11 @@ function renderTranslationAside(
     return (
         <div
             data-translation-aside="true"
-            className="reading-apple-inset mt-3 block w-full max-w-[min(100%,46rem)] px-4 py-3.5"
+            className="reading-translation-inset mt-2.5 block w-full max-w-[min(100%,46rem)] px-3 py-2 text-left"
         >
             <div
                 data-translation-line="true"
-                className={cn("block w-full text-[13.5px] leading-[1.9] text-stone-500/95", textClassName)}
+                className={cn("block w-full leading-[1.8] opacity-90", textClassName)}
             >
                 {translation}
             </div>
@@ -563,31 +563,31 @@ function renderInlinePhraseText(
                 <div
                     data-translation-inline-hover-card={isOpen ? "open" : "closed"}
                     className={cn(
-                        "reading-apple-inset absolute left-0 top-full z-30 mt-2 min-w-[18rem] max-w-[min(22rem,calc(100vw-2rem))] p-3 text-left transition",
+                        "reading-apple-inset absolute left-0 top-full z-30 mt-2 min-w-[15rem] max-w-[min(22rem,calc(100vw-2rem))] p-2.5 text-left transition",
                         isOpen ? "pointer-events-auto opacity-100 translate-y-0" : "pointer-events-none opacity-0 -translate-y-1",
                     )}
                     onMouseEnter={() => options.onHoverPhrase(hoverKey)}
                     onMouseLeave={() => options.onLeavePhrase(hoverKey)}
                 >
-                    <div className="text-[12px] font-semibold leading-5 tracking-[0.01em] text-stone-800 break-words">{range.item.source}</div>
-                    <div className="mt-1 text-[11.5px] leading-5 text-stone-500 break-words">{range.item.translation}</div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="text-[11px] font-semibold leading-5 tracking-[0.01em] text-stone-800 break-words">{range.item.source}</div>
+                    <div className="mt-0.5 text-[10px] leading-4 text-stone-500 break-words">{range.item.translation}</div>
+                    <div className="mt-2.5 grid grid-cols-2 gap-1.5">
                         <button
                             type="button"
-                            className="reading-apple-capsule inline-flex h-9 items-center justify-center gap-1.5 px-3 text-[11px] font-semibold text-stone-700 transition"
+                            className="reading-apple-capsule inline-flex h-7.5 items-center justify-center gap-1 px-2 text-[10px] font-semibold text-stone-700 transition"
                             onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 options.onInspectPhrase(range.item, event, sentence);
                             }}
                         >
-                            <Globe className="h-3.5 w-3.5 text-stone-400" />
+                            <Globe className="h-3 w-3 text-stone-400" />
                             查看短语
                         </button>
                         <button
                             type="button"
                             className={cn(
-                                "reading-apple-capsule inline-flex h-9 items-center justify-center gap-1.5 px-3 text-[11px] font-semibold transition",
+                                "reading-apple-capsule inline-flex h-7.5 items-center justify-center gap-1 px-2 text-[10px] font-semibold transition",
                                 saveState === "saved" || saveState === "exists"
                                     ? "border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_10px_22px_rgba(16,185,129,0.10)]"
                                     : saveState === "error"
@@ -601,11 +601,11 @@ function renderInlinePhraseText(
                                 void options.onSavePhrase(range.item.source, range.item.translation, sentence);
                             }}
                         >
-                            {saveState === "saving" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookPlus className="h-3.5 w-3.5" />}
+                            {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> : <BookPlus className="h-3 w-3" />}
                             {saveState === "saved" ? "已加入" : saveState === "exists" ? "已存在" : saveState === "error" ? "重试保存" : "加入生词本"}
                         </button>
                     </div>
-                    <div className="mt-2 text-[10px] leading-4 text-stone-400">单词点击仍走原文查询</div>
+                    <div className="mt-1.5 text-[8.5px] leading-4 text-stone-400 opacity-75">单词点击仍走原文查询</div>
                 </div>
             </span>,
         );
@@ -2499,7 +2499,7 @@ export function ParagraphCard({
                                     )}
                                     title={entry.hasUsableAnalysis ? "展开或收起该句解析" : "点击分析该句"}
                                 >
-                                    {entry.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : (index + 1)}
+                                    {entry.loading ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.6} /> : (index + 1)}
                                 </button>
                                 {showTranslation ? (
                                     <button
@@ -2509,7 +2509,7 @@ export function ParagraphCard({
                                         onClick={() => handleInjectSentenceAskContext(entry.unitIndex)}
                                         className="reading-apple-capsule inline-flex h-5 w-5 items-center justify-center border-indigo-100 bg-white text-indigo-400 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
                                     >
-                                        <MessageCircleQuestion className="h-3 w-3" />
+                                        <MessageCircleQuestion className="h-3 w-3" strokeWidth={1.6} />
                                     </button>
                                 ) : null}
                             </div>
@@ -2564,8 +2564,9 @@ export function ParagraphCard({
                                     <div
                                         data-sentence-action-rail="true"
                                         className={cn(
-                                            "ml-1 flex shrink-0 flex-col items-center gap-1.5 self-start pt-0.5",
-                                            showTranslation && "reading-apple-inset ml-0 px-2 py-2",
+                                            "ml-1 flex shrink-0 flex-col items-center gap-1.5 self-start pt-0.5 transition-all duration-200",
+                                            showTranslation && "ml-0 p-1.5 rounded-2xl",
+                                            showTranslation && isSentencePlaybackActive(entry.unitIndex) && "reading-apple-inset shadow-[0_6px_20px_rgba(28,25,23,0.04)]",
                                         )}
                                     >
                                         <button
@@ -2573,10 +2574,10 @@ export function ParagraphCard({
                                             aria-label={`播放第 ${index + 1} 句`}
                                             title={`播放第 ${index + 1} 句`}
                                             className={cn(
-                                                "reading-apple-capsule inline-flex h-7 w-7 items-center justify-center bg-white transition-colors",
+                                                "reading-apple-capsule reading-play-button inline-flex h-7 w-7 items-center justify-center bg-white dark:bg-stone-900 transition-colors shadow-sm",
                                                 isSentencePlaybackActive(entry.unitIndex)
-                                                    ? "border-amber-300 text-amber-600"
-                                                    : "border-stone-200 text-stone-400 hover:border-amber-300 hover:text-amber-600",
+                                                    ? "border-amber-300/80 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800/80 text-amber-600 dark:text-amber-400 font-medium"
+                                                    : "border-stone-200 dark:border-stone-800 text-stone-400 dark:text-stone-500 hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50",
                                             )}
                                             onClick={(event) => {
                                                 event.preventDefault();
@@ -2585,64 +2586,70 @@ export function ParagraphCard({
                                             }}
                                         >
                                             {isSentenceAudioLoading && isSentencePlaybackActive(entry.unitIndex) ? (
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
                                             ) : isSentencePlaying && isSentencePlaybackActive(entry.unitIndex) ? (
-                                                <Pause className="h-3.5 w-3.5 fill-current" />
+                                                <Pause className="h-3.5 w-3.5" strokeWidth={1.8} />
                                             ) : (
-                                                <Play className="h-3.5 w-3.5 fill-current" />
+                                                <Play className="h-3.5 w-3.5" strokeWidth={1.8} />
                                             )}
                                         </button>
                                         {isSentencePlaybackActive(entry.unitIndex) && (isSentencePlaying || sentenceCurrentTimeMs > 0) ? (
-                                            <div
-                                                data-sentence-playback-secondary-controls="true"
-                                                className="reading-apple-inset flex flex-col items-center gap-1 px-1.5 py-1.5 shadow-[0_8px_18px_rgba(245,158,11,0.08)]"
-                                            >
-                                                {isSentencePlaying ? (
+                                            <>
+                                                <div className="w-3.5 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
+                                                <div
+                                                    data-sentence-playback-secondary-controls="true"
+                                                    className="flex flex-col gap-1.5"
+                                                >
+                                                    {isSentencePlaying ? (
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`第 ${index + 1} 句切换倍速`}
+                                                            title="切换倍速"
+                                                            className="reading-apple-capsule reading-play-button inline-flex h-7 w-7 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-[9px] font-semibold tracking-tighter text-stone-500 dark:text-stone-400 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
+                                                            onClick={(event) => {
+                                                                event.preventDefault();
+                                                                event.stopPropagation();
+                                                                const rates = [1, 0.75, 0.5];
+                                                                const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
+                                                                setPlaybackRate(nextRate);
+                                                            }}
+                                                        >
+                                                            {playbackRate}x
+                                                        </button>
+                                                    ) : null}
                                                     <button
                                                         type="button"
-                                                        aria-label={`第 ${index + 1} 句切换倍速`}
-                                                        title="切换倍速"
-                                                        className="reading-apple-capsule inline-flex min-w-[2.6rem] items-center justify-center border-white/90 bg-white px-2 py-1 text-[10px] font-black text-stone-500 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600"
+                                                        aria-label={`取消第 ${index + 1} 句播放`}
+                                                        title="取消当前句播放"
+                                                        className="reading-apple-capsule reading-play-button inline-flex h-7 w-7 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-400 dark:text-stone-500 shadow-sm transition-colors hover:border-rose-300 hover:text-rose-500 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
                                                         onClick={(event) => {
                                                             event.preventDefault();
                                                             event.stopPropagation();
-                                                            const rates = [1, 0.75, 0.5];
-                                                            const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
-                                                            setPlaybackRate(nextRate);
+                                                            stopSentencePlayback();
+                                                            setPlayMode("full");
                                                         }}
                                                     >
-                                                        {playbackRate}x
+                                                        <X className="h-3.5 w-3.5" strokeWidth={1.8} />
                                                     </button>
-                                                ) : null}
-                                                <button
-                                                    type="button"
-                                                    aria-label={`取消第 ${index + 1} 句播放`}
-                                                    title="取消当前句播放"
-                                                    className="reading-apple-capsule inline-flex h-7 w-7 items-center justify-center border-white/90 bg-white text-stone-400 shadow-sm transition-colors hover:border-rose-300 hover:text-rose-500"
-                                                    onClick={(event) => {
-                                                        event.preventDefault();
-                                                        event.stopPropagation();
-                                                        stopSentencePlayback();
-                                                        setPlayMode("full");
-                                                    }}
-                                                >
-                                                    <X className="h-3.5 w-3.5" />
-                                                </button>
-                                            </div>
+                                                </div>
+                                            </>
                                         ) : null}
+                                        {isSentencePlaybackActive(entry.unitIndex) && entry.hasUsableAnalysis && (
+                                            <div className="w-3.5 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
+                                        )}
                                         {entry.hasUsableAnalysis ? (
                                             <button
                                                 type="button"
                                                 aria-label={`重新生成第 ${index + 1} 句解析`}
                                                 title="重新生成这一句的解析"
-                                                className="reading-apple-capsule inline-flex h-7 w-7 items-center justify-center border-stone-200 bg-white text-stone-400 transition-colors hover:border-amber-300 hover:text-amber-600"
+                                                className="reading-apple-capsule reading-play-button inline-flex h-7 w-7 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-400 dark:text-stone-500 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
                                                 onClick={(event) => {
                                                     event.preventDefault();
                                                     event.stopPropagation();
                                                     queueGrammarSentence(entry.unitIndex, { forceRegenerate: true });
                                                 }}
                                             >
-                                                <RefreshCw className="h-3.5 w-3.5" />
+                                                <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.8} />
                                             </button>
                                         ) : null}
                                     </div>
@@ -4585,7 +4592,7 @@ export function ParagraphCard({
                     className={cn(
                         "mt-2 flex w-full items-center justify-between transition-opacity",
                         showTranslation
-                            ? "reading-apple-shell min-h-12 gap-2 px-3 py-2 opacity-100 sm:px-4"
+                            ? "reading-apple-shell reading-toolbar-shell min-h-12 gap-2 px-3 py-2 opacity-100 sm:px-4"
                             : "h-8 opacity-0 group-hover:opacity-100 [.read-tour-active_&]:opacity-100",
                         isLiquidFocus
                             ? "reading-focus-liquid-toolbar h-12 px-4 opacity-100"
@@ -4597,40 +4604,40 @@ export function ParagraphCard({
                         onClick={() => setIsSpeakingOpen(!isSpeakingOpen)}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
-                            showTranslation && "reading-apple-capsule px-3 py-2",
+                            showTranslation && "reading-apple-capsule reading-toolbar-button px-3 py-2",
                             isSpeakingOpen ? "text-rose-500" : "text-stone-400/80 hover:text-stone-600"
                         )}
                     >
-                        <Mic className="w-3.5 h-3.5" /> 朗读
+                        <Mic className="w-3.5 h-3.5" strokeWidth={1.6} /> 朗读
                     </button>
-
+ 
                     <button
                         data-tour-target={index === 0 ? "paragraph-translate" : undefined}
                         onClick={() => handleTranslate(false)}
                         data-translation-toolbar-active={showTranslation ? "true" : undefined}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
-                            showTranslation && "reading-apple-capsule px-3 py-2",
+                            showTranslation && "reading-apple-capsule reading-toolbar-button px-3 py-2",
                             showTranslation ? "text-indigo-500" : "text-stone-400/80 hover:text-stone-600"
                         )}
                     >
-                        {isTranslating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Languages className="w-3.5 h-3.5" />}
+                        {isTranslating ? <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.6} /> : <Languages className="w-3.5 h-3.5" strokeWidth={1.6} />}
                         {showTranslation ? "折叠翻译" : "翻译"}
                     </button>
-
+ 
                     <button
                         data-tour-target={index === 0 ? "paragraph-grammar" : undefined}
                         onClick={() => void handleGrammarAnalysis()}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
-                            showTranslation && "reading-apple-capsule px-3 py-2",
+                            showTranslation && "reading-apple-capsule reading-toolbar-button px-3 py-2",
                             showGrammar ? "text-teal-600" : "text-stone-400/80 hover:text-stone-600"
                         )}
                     >
-                        {isAnalyzingGrammar ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5" />}
+                        {isAnalyzingGrammar ? <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={1.6} /> : <BookOpen className="w-3.5 h-3.5" strokeWidth={1.6} />}
                         {showGrammar ? "折叠语法" : "语法"}
                     </button>
-
+ 
                     <button
                         data-tour-target={index === 0 ? "paragraph-ask" : undefined}
                         onMouseDown={(event) => event.preventDefault()}
@@ -4638,7 +4645,7 @@ export function ParagraphCard({
                         title={hasActiveAskDock && !askContextAttachment ? "把本段上下文植入右侧 Ask AI" : "打开 Ask AI"}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
-                            showTranslation && "reading-apple-capsule px-3 py-2",
+                            showTranslation && "reading-apple-capsule reading-toolbar-button px-3 py-2",
                             selectionPopupMode === "ask" && selectionAskContextAttachment?.kind === "paragraph"
                                 ? "text-sky-500"
                                 : hasActiveAskDock && !askContextAttachment
@@ -4646,16 +4653,16 @@ export function ParagraphCard({
                                     : "text-stone-400/80 hover:text-stone-600"
                         )}
                     >
-                        <MessageCircleQuestion className="w-3.5 h-3.5" />
+                        <MessageCircleQuestion className="w-3.5 h-3.5" strokeWidth={1.6} />
                         {hasActiveAskDock && !askContextAttachment ? "植入上下文" : "Ask AI"}
                     </button>
-
+ 
                     <button
                         onClick={() => setIsReadingLayoutMode((prev) => !prev)}
                         disabled={isSpeakingOpen || showGrammar}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
-                            showTranslation && "reading-apple-capsule px-3 py-2",
+                            showTranslation && "reading-apple-capsule reading-toolbar-button px-3 py-2",
                             isReadingLayoutMode ? "text-theme-text" : "text-theme-text-muted hover:text-theme-text",
                             (isSpeakingOpen || showGrammar) && "opacity-30 cursor-not-allowed hover:text-theme-text-muted"
                         )}
