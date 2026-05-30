@@ -1,0 +1,169 @@
+[ 8223507ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[ 8223595ms] [LOG] [Fast Refresh] done in 189ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10619883ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10620887ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10621562ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/favicon.ico?_probe=1779979980884:0
+[10621891ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10622896ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10623900ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10628917ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10633939ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10638969ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10641588ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/favicon.ico?_probe=1779980000912:0
+[10644023ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=iAcE0_82avOyoAF2PrEy9' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[10649094ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10651832ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10651969ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10652080ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10652087ms] [LOG] [Fast Refresh] done in 108ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10653125ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10653277ms] [LOG] [Fast Refresh] done in 255ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10653888ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10653891ms] [LOG] [Fast Refresh] done in 106ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10655694ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10655796ms] [LOG] [Fast Refresh] done in 203ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10690043ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10690059ms] [LOG] [Fast Refresh] done in 119ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10732817ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[10732895ms] [LOG] [Fast Refresh] done in 178ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[15056024ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[15056028ms] [LOG] [Fast Refresh] done in 106ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[63374347ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[63409628ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[73659312ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[74661509ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[84979944ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[85031381ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[89516287ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[89516708ms] [LOG] [Fast Refresh] done in 523ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[89565165ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[89565319ms] [LOG] [Fast Refresh] done in 256ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[101270117ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[106640846ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110390894ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110422707ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110454525ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110486361ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110518192ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110550010ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110581843ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110613684ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110645513ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110677349ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110709144ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110740981ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110772812ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110804615ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110836415ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110868219ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110900026ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110931837ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110963631ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[110995440ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111027249ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111059055ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111090894ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111122699ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111154494ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111186328ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111218129ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111249962ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111281766ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111313576ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111345413ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111377210ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111409045ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111440858ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111472679ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111504482ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111536281ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111568107ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111599915ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111631719ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111663528ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111695338ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111727159ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111758967ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111790763ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111822574ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111854388ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111886224ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111918058ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111949878ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[111981701ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112013513ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112045343ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112077179ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112108988ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112140818ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112172625ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112204432ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112236242ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112268058ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112299891ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112331725ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112363492ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112395327ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112427131ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112458967ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112490809ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112522734ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112554574ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112586378ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112618211ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112650045ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112681847ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112713656ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112745479ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112777282ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112809108ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112840939ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112872766ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112904577ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112936379ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[112968196ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113000003ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113031811ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113063634ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113095454ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113127268ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113159092ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113190900ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113222724ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113254538ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113286367ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113318192ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113350005ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113381844ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113413675ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113445484ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113477331ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113509164ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113541000ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113572801ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113604634ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113636445ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113668251ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113700062ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113731870ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113763702ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113795529ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113827334ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113859141ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113890940ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113922749ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113954562ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113986360ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[114021692ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[143265092ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[157255080ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[164994971ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[165499777ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[165720750ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[165776669ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[174078275ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[174083157ms] [LOG] [Fast Refresh] done in 4341ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[174197258ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[174198056ms] [LOG] [Fast Refresh] done in 899ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[174313827ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[174314440ms] [LOG] [Fast Refresh] done in 714ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297

@@ -1378,8 +1378,8 @@ export function ParagraphCard({
                 const pendingSeek = pendingSentenceSeekRef.current;
                 if (pendingSeek && pendingSeek.sentenceIndex === sentenceIndex) {
                     pendingSentenceSeekRef.current = null;
-                    const targetTimeMs = "timeMs" in pendingSeek
-                        ? Math.max(0, Math.min(durationMs || pendingSeek.timeMs, pendingSeek.timeMs))
+                    const targetTimeMs = pendingSeek.timeMs !== undefined
+                        ? Math.max(0, Math.min(durationMs > 0 ? durationMs : pendingSeek.timeMs, pendingSeek.timeMs))
                         : durationMs > 0
                             ? Math.max(0, Math.min(durationMs, pendingSeek.ratio * durationMs))
                             : 0;

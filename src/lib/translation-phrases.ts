@@ -152,12 +152,14 @@ export function normalizePhraseTranslationItems(
 
         const tokens = tokenizeEnglish(normalizedSource);
         if (tokens.length === 0) continue;
+        const firstToken = tokens[0];
+        if (!firstToken) continue;
 
         const sourceKey = normalizedSource.toLowerCase();
         if (seen.has(sourceKey)) continue;
         seen.add(sourceKey);
 
-        if (tokens.length === 1 && FUNCTION_WORDS.has(tokens[0])) continue;
+        if (tokens.length === 1 && FUNCTION_WORDS.has(firstToken)) continue;
 
         const sentenceMatch = sentenceText ? resolveSentenceMatch(sentenceText, normalizedSource) : null;
         if (sentenceText && !sentenceMatch) continue;
@@ -167,7 +169,7 @@ export function normalizePhraseTranslationItems(
         const contentCount = tokenCount - stopwordCount;
         if (contentCount <= 0) continue;
 
-        const startsWithWeakLead = WEAK_LEADING_WORDS.has(tokens[0]);
+        const startsWithWeakLead = WEAK_LEADING_WORDS.has(firstToken);
         const containsFiniteVerb = tokens.some((token) => COMMON_FINITE_VERBS.has(token));
         const sentenceCoverage = sentenceText
             ? normalizedSource.length / Math.max(1, sentenceText.length)

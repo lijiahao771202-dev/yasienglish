@@ -333,6 +333,8 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
         }
     }, [glmModel, glmThinkingMode]);
 
+    const learningPreferences = profile?.learning_preferences;
+
     const activePayload = useMemo(() => ({
         ai_provider: aiProvider,
         deepseek_model: deepSeekModel,
@@ -374,15 +376,15 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
                 await saveProfilePatch({
                     ...activePayload,
                     learning_preferences: {
-                        target_mode: profile.learning_preferences?.target_mode ?? "read",
-                        english_level: profile.learning_preferences?.english_level ?? "B1",
-                        daily_goal_minutes: profile.learning_preferences?.daily_goal_minutes ?? 20,
-                        ui_theme_preference: profile.learning_preferences?.ui_theme_preference ?? "bubblegum_pop",
-                        tts_voice: profile.learning_preferences?.tts_voice ?? "en-US-JennyNeural",
-                        rebuild_auto_open_shadowing_prompt: profile.learning_preferences?.rebuild_auto_open_shadowing_prompt ?? true,
-                        ai_reading_rag: profile.learning_preferences?.ai_reading_rag,
+                        target_mode: learningPreferences?.target_mode ?? "read",
+                        english_level: learningPreferences?.english_level ?? "B1",
+                        daily_goal_minutes: learningPreferences?.daily_goal_minutes ?? 20,
+                        ui_theme_preference: learningPreferences?.ui_theme_preference ?? "bubblegum_pop",
+                        tts_voice: learningPreferences?.tts_voice ?? "en-US-JennyNeural",
+                        rebuild_auto_open_shadowing_prompt: learningPreferences?.rebuild_auto_open_shadowing_prompt ?? true,
+                        ai_reading_rag: learningPreferences?.ai_reading_rag,
                         ai_provider_params: {
-                            ...(profile.learning_preferences?.ai_provider_params ?? {}),
+                            ...(learningPreferences?.ai_provider_params ?? {}),
                             mimo: mimoParams,
                         },
                     },
@@ -395,7 +397,7 @@ export function AiModelSettingsModal({ isOpen, onClose }: AiModelSettingsModalPr
         }, 500);
 
         return () => window.clearTimeout(timer);
-    }, [payloadSignature, activePayload, isOpen, profileLoaded, profile?.learning_preferences, mimoParams]);
+    }, [payloadSignature, activePayload, isOpen, profileLoaded, learningPreferences, mimoParams]);
 
     const handleTestConnection = async () => {
         setConnectionBusy(true);
