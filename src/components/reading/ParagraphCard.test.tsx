@@ -613,6 +613,8 @@ describe("ParagraphCard", () => {
             await Promise.resolve();
         });
 
+        expect(container.querySelector('[data-translation-mode-shell="true"]')).toBeTruthy();
+        expect(container.querySelector('[data-translation-toolbar="true"]')).toBeTruthy();
         expect(getTranslationAsides(container)).toHaveLength(2);
         const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
         expect(translationLines).toHaveLength(2);
@@ -628,6 +630,7 @@ describe("ParagraphCard", () => {
         expect(container.querySelector('[data-paragraph-translation-block="true"]')).toBeNull();
         expect(getTranslationAsides(container)[0]?.className).toContain("block");
         expect(getTranslationAsides(container)[0]?.className).toContain("w-full");
+        expect(getTranslationAsides(container)[0]?.className).toContain("reading-apple-inset");
     });
 
     it("applies reading appearance font and size to translation-mode english sentence lines", async () => {
@@ -976,6 +979,44 @@ describe("ParagraphCard", () => {
         const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
         expect(translationLines).toHaveLength(2);
         expect(container.textContent).toContain("折叠语法");
+    });
+
+    it("does not wrap pure grammar mode in the translation shell or translation toolbar", async () => {
+        const text = "Plants need sunlight and water to grow.";
+        const cacheKey = buildGrammarCacheKey({
+            text: text.trim(),
+            mode: "basic",
+            promptVersion: GRAMMAR_BASIC_PROMPT_VERSION,
+            model: buildReadingGrammarExecutionSignature({
+                ai_provider: "deepseek",
+                deepseek_model: "deepseek-v4-flash",
+                deepseek_thinking_mode: "off",
+                deepseek_reasoning_effort: "high",
+            }),
+        });
+
+        analysisStoreMock.grammarAnalyses = {
+            [cacheKey]: {
+                difficult_sentences: [
+                    {
+                        sentence: text,
+                        translation: "植物需要阳光和水才能生长。",
+                        highlights: [],
+                    },
+                ],
+            },
+        };
+
+        const container = await renderCard({ text });
+        const grammarButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("语法"));
+        expect(grammarButton).toBeTruthy();
+
+        await act(async () => {
+            grammarButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(container.querySelector('[data-translation-mode-shell="true"]')).toBeNull();
+        expect(container.querySelector('[data-translation-toolbar="true"]')).toBeNull();
     });
 
     it("reuses existing translation-mode sentence translation as the visible grammar translation when expanded", async () => {

@@ -394,7 +394,7 @@ function renderTranslationAside(
     return (
         <div
             data-translation-aside="true"
-            className="mt-2.5 block w-full max-w-[min(100%,44rem)] border-l border-stone-200/90 pl-3.5 pr-0.5"
+            className="reading-apple-inset mt-3 block w-full max-w-[min(100%,46rem)] px-4 py-3.5"
         >
             <div
                 data-translation-line="true"
@@ -403,7 +403,7 @@ function renderTranslationAside(
                 {translation}
             </div>
             {inlinePhraseNode ? (
-                <div data-translation-phrases="true" className="mt-2">
+                <div data-translation-phrases="true" className="mt-2.5">
                     {inlinePhraseNode}
                 </div>
             ) : renderPhraseTranslationList(phraseItems, onPhraseClick)}
@@ -418,7 +418,7 @@ function renderPhraseTranslationList(
     if (items.length === 0) return null;
 
     return (
-        <div data-translation-phrases="true" className="mt-2 flex flex-wrap gap-2">
+        <div data-translation-phrases="true" className="mt-2.5 flex flex-wrap gap-2">
             {items.map((item) => (
                 <button
                     key={`${item.source}-${item.translation}`}
@@ -434,10 +434,10 @@ function renderPhraseTranslationList(
                         onPhraseClick(item, event);
                     } : undefined}
                     className={cn(
-                        "group/phrase inline-flex max-w-full items-center gap-2 rounded-full border px-2.5 py-1.5 text-left text-[11.5px] leading-5 transition",
+                        "reading-apple-capsule group/phrase inline-flex max-w-full items-center gap-2 px-3 py-1.5 text-left text-[11.5px] leading-5 transition",
                         onPhraseClick
-                            ? "cursor-pointer border-stone-200/80 bg-white/70 text-stone-600 shadow-[0_1px_0_rgba(255,255,255,0.75)_inset] hover:border-stone-300 hover:bg-white hover:text-stone-800 hover:shadow-[0_6px_18px_rgba(28,25,23,0.06)] focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300/70 focus-visible:ring-offset-1 active:scale-[0.985]"
-                            : "border-stone-200/70 bg-white/60 text-stone-600",
+                            ? "cursor-pointer text-stone-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-300/70 focus-visible:ring-offset-1 active:scale-[0.985]"
+                            : "text-stone-600",
                     )}
                     aria-label={`${item.source}，${item.translation}。点击查看并加入生词本`}
                     title={onPhraseClick ? "查看短语并加入生词本" : undefined}
@@ -563,7 +563,7 @@ function renderInlinePhraseText(
                 <div
                     data-translation-inline-hover-card={isOpen ? "open" : "closed"}
                     className={cn(
-                        "absolute left-0 top-full z-30 mt-2 min-w-[18rem] max-w-[min(22rem,calc(100vw-2rem))] rounded-[18px] border border-stone-200/90 bg-white/96 p-3 text-left shadow-[0_16px_28px_rgba(28,25,23,0.10)] backdrop-blur-sm transition",
+                        "reading-apple-inset absolute left-0 top-full z-30 mt-2 min-w-[18rem] max-w-[min(22rem,calc(100vw-2rem))] p-3 text-left transition",
                         isOpen ? "pointer-events-auto opacity-100 translate-y-0" : "pointer-events-none opacity-0 -translate-y-1",
                     )}
                     onMouseEnter={() => options.onHoverPhrase(hoverKey)}
@@ -574,7 +574,7 @@ function renderInlinePhraseText(
                     <div className="mt-3 grid grid-cols-2 gap-2">
                         <button
                             type="button"
-                            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-full border border-stone-200 bg-white px-3 text-[11px] font-semibold text-stone-700 transition hover:border-stone-300 hover:bg-stone-50 hover:text-stone-900"
+                            className="reading-apple-capsule inline-flex h-9 items-center justify-center gap-1.5 px-3 text-[11px] font-semibold text-stone-700 transition"
                             onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
@@ -587,12 +587,12 @@ function renderInlinePhraseText(
                         <button
                             type="button"
                             className={cn(
-                                "inline-flex h-9 items-center justify-center gap-1.5 rounded-full border px-3 text-[11px] font-semibold transition",
+                                "reading-apple-capsule inline-flex h-9 items-center justify-center gap-1.5 px-3 text-[11px] font-semibold transition",
                                 saveState === "saved" || saveState === "exists"
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_10px_22px_rgba(16,185,129,0.10)]"
                                     : saveState === "error"
-                                        ? "border-rose-200 bg-rose-50 text-rose-600"
-                                        : "border-stone-200 bg-white text-stone-600 hover:border-stone-300 hover:text-stone-800",
+                                        ? "border-rose-200 bg-rose-50 text-rose-600 shadow-[0_10px_22px_rgba(244,63,94,0.08)]"
+                                        : "text-stone-600",
                             )}
                             disabled={saveState === "saving"}
                             onClick={(event) => {
@@ -2415,7 +2415,7 @@ export function ParagraphCard({
         }
 
         return (
-            <ul className="list-none space-y-3 pl-0">
+            <ul className={cn("list-none pl-0", showTranslation ? "space-y-2.5" : "space-y-3")}>
                 {grammarSentenceEntries.map((entry, index) => {
                     const analysisSentence = entry.assessment.data.difficult_sentences[0] ?? {
                         sentence: entry.sentence,
@@ -2440,17 +2440,27 @@ export function ParagraphCard({
                         })
                         : null;
 
+                    const isSentenceActive = isSentencePlaybackActive(entry.unitIndex)
+                        || (showTranslation && playMode === "sentence" && activeListenSentenceIndex === entry.unitIndex);
+
                     return (
                         <li
                             key={`grammar-sentence-${entry.cacheKey}`}
                             data-speaking-segment="true"
                             data-speaking-segment-index={entry.unitIndex}
                             data-segment-start={entry.unit.start}
+                            data-translation-row={showTranslation ? "true" : undefined}
+                            data-translation-row-active={showTranslation ? String(isSentenceActive) : undefined}
                             className={cn(
-                                "grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3 rounded-lg px-1.5 py-1 transition-colors",
-                                isSentencePlaybackActive(entry.unitIndex)
-                                    ? "bg-amber-50/70"
-                                    : "hover:bg-stone-50/70",
+                                "grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3 px-1.5 py-1 transition-colors",
+                                showTranslation
+                                    ? "reading-apple-row px-3.5 py-3"
+                                    : cn(
+                                        "rounded-lg",
+                                        isSentencePlaybackActive(entry.unitIndex)
+                                            ? "bg-amber-50/70"
+                                            : "hover:bg-stone-50/70",
+                                    ),
                             )}
                             onClick={() => {
                                 if (playMode !== "sentence") return;
@@ -2497,7 +2507,7 @@ export function ParagraphCard({
                                         aria-label={`把第 ${index + 1} 句植入 Ask AI 上下文`}
                                         title="植入上下文"
                                         onClick={() => handleInjectSentenceAskContext(entry.unitIndex)}
-                                        className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-indigo-100 bg-white text-indigo-400 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+                                        className="reading-apple-capsule inline-flex h-5 w-5 items-center justify-center border-indigo-100 bg-white text-indigo-400 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
                                     >
                                         <MessageCircleQuestion className="h-3 w-3" />
                                     </button>
@@ -2505,13 +2515,14 @@ export function ParagraphCard({
                             </div>
 
                             <div className="min-w-0">
-                                <div className="flex items-start gap-2">
+                                <div className={cn("flex items-start", showTranslation ? "gap-3" : "gap-2")}>
                                 <div className="min-w-0 flex-1">
                                 <div
                                     data-translation-sentence-body="true"
                                     data-speaking-segment-content="true"
                                     className={cn(
                                         "min-w-0 text-left text-stone-800 leading-[1.6]",
+                                        showTranslation && "px-0.5",
                                         fontClass,
                                         fontSizeClass,
                                         playMode === "sentence" && "cursor-pointer",
@@ -2552,14 +2563,17 @@ export function ParagraphCard({
                                     </div>
                                     <div
                                         data-sentence-action-rail="true"
-                                        className="ml-1 flex shrink-0 flex-col items-center gap-1.5 self-start pt-0.5"
+                                        className={cn(
+                                            "ml-1 flex shrink-0 flex-col items-center gap-1.5 self-start pt-0.5",
+                                            showTranslation && "reading-apple-inset ml-0 px-2 py-2",
+                                        )}
                                     >
                                         <button
                                             type="button"
                                             aria-label={`播放第 ${index + 1} 句`}
                                             title={`播放第 ${index + 1} 句`}
                                             className={cn(
-                                                "inline-flex h-6 w-6 items-center justify-center rounded-full border bg-white transition-colors",
+                                                "reading-apple-capsule inline-flex h-7 w-7 items-center justify-center bg-white transition-colors",
                                                 isSentencePlaybackActive(entry.unitIndex)
                                                     ? "border-amber-300 text-amber-600"
                                                     : "border-stone-200 text-stone-400 hover:border-amber-300 hover:text-amber-600",
@@ -2581,14 +2595,14 @@ export function ParagraphCard({
                                         {isSentencePlaybackActive(entry.unitIndex) && (isSentencePlaying || sentenceCurrentTimeMs > 0) ? (
                                             <div
                                                 data-sentence-playback-secondary-controls="true"
-                                                className="flex flex-col items-center gap-1 rounded-[16px] border border-amber-200/70 bg-amber-50/80 px-1.5 py-1 shadow-[0_8px_18px_rgba(245,158,11,0.08)]"
+                                                className="reading-apple-inset flex flex-col items-center gap-1 px-1.5 py-1.5 shadow-[0_8px_18px_rgba(245,158,11,0.08)]"
                                             >
                                                 {isSentencePlaying ? (
                                                     <button
                                                         type="button"
                                                         aria-label={`第 ${index + 1} 句切换倍速`}
                                                         title="切换倍速"
-                                                        className="inline-flex min-w-[2.5rem] items-center justify-center rounded-full border border-white/90 bg-white px-2 py-1 text-[10px] font-black text-stone-500 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600"
+                                                        className="reading-apple-capsule inline-flex min-w-[2.6rem] items-center justify-center border-white/90 bg-white px-2 py-1 text-[10px] font-black text-stone-500 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600"
                                                         onClick={(event) => {
                                                             event.preventDefault();
                                                             event.stopPropagation();
@@ -2604,7 +2618,7 @@ export function ParagraphCard({
                                                     type="button"
                                                     aria-label={`取消第 ${index + 1} 句播放`}
                                                     title="取消当前句播放"
-                                                    className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/90 bg-white text-stone-400 shadow-sm transition-colors hover:border-rose-300 hover:text-rose-500"
+                                                    className="reading-apple-capsule inline-flex h-7 w-7 items-center justify-center border-white/90 bg-white text-stone-400 shadow-sm transition-colors hover:border-rose-300 hover:text-rose-500"
                                                     onClick={(event) => {
                                                         event.preventDefault();
                                                         event.stopPropagation();
@@ -2621,7 +2635,7 @@ export function ParagraphCard({
                                                 type="button"
                                                 aria-label={`重新生成第 ${index + 1} 句解析`}
                                                 title="重新生成这一句的解析"
-                                                className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-400 transition-colors hover:border-amber-300 hover:text-amber-600"
+                                                className="reading-apple-capsule inline-flex h-7 w-7 items-center justify-center border-stone-200 bg-white text-stone-400 transition-colors hover:border-amber-300 hover:text-amber-600"
                                                 onClick={(event) => {
                                                     event.preventDefault();
                                                     event.stopPropagation();
@@ -3838,14 +3852,20 @@ export function ParagraphCard({
         translationError ? (
             <div
                 data-translation-error="true"
-                className="my-2 rounded-[14px] border border-rose-200/80 bg-rose-50/80 px-3 py-2.5 text-sm leading-6 text-rose-700"
+                className={cn(
+                    "my-2 px-4 py-3 text-sm leading-6 text-rose-700",
+                    showTranslation ? "reading-apple-inset border-rose-200/80 bg-rose-50/80" : "rounded-[14px] border border-rose-200/80 bg-rose-50/80",
+                )}
             >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <span>{translationError}</span>
                     <button
                         type="button"
                         onClick={() => void handleTranslate(true)}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-white/85 px-2.5 py-1 text-[11px] font-bold text-rose-600 transition-colors hover:bg-white hover:text-rose-700"
+                        className={cn(
+                            "inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-rose-600 transition-colors hover:bg-white hover:text-rose-700",
+                            showTranslation ? "reading-apple-capsule border-rose-200 bg-white/85" : "rounded-full border border-rose-200 bg-white/85",
+                        )}
                     >
                         <RefreshCw className="h-3 w-3" />
                         重试翻译
@@ -4447,8 +4467,20 @@ export function ParagraphCard({
                         <AnimatePresence mode="wait">
                             {shouldRenderGrammarLayer ? (
                                 <motion.div key="grammar-layer" initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
-                                    {renderTranslationError()}
-                                    {renderGrammarLayoutList()}
+                                    {showTranslation && sentenceUnits.length > 0 ? (
+                                        <div
+                                            data-translation-mode-shell="true"
+                                            className="reading-apple-shell mt-1 px-3 py-3 sm:px-4 sm:py-4"
+                                        >
+                                            {renderTranslationError()}
+                                            {renderGrammarLayoutList()}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {renderTranslationError()}
+                                            {renderGrammarLayoutList()}
+                                        </>
+                                    )}
                                 </motion.div>
                             ) : (
                                 isSpeakingOpen && isSegmentListOpen ? (
@@ -4549,11 +4581,15 @@ export function ParagraphCard({
                 </div>
 
                 <div
+                    data-translation-toolbar={showTranslation ? "true" : undefined}
                     className={cn(
                         "mt-2 flex w-full items-center justify-between transition-opacity",
+                        showTranslation
+                            ? "reading-apple-shell min-h-12 gap-2 px-3 py-2 opacity-100 sm:px-4"
+                            : "h-8 opacity-0 group-hover:opacity-100 [.read-tour-active_&]:opacity-100",
                         isLiquidFocus
                             ? "reading-focus-liquid-toolbar h-12 px-4 opacity-100"
-                            : "h-8 opacity-0 group-hover:opacity-100 [.read-tour-active_&]:opacity-100"
+                            : undefined,
                     )}
                 >
                     <button
@@ -4561,6 +4597,7 @@ export function ParagraphCard({
                         onClick={() => setIsSpeakingOpen(!isSpeakingOpen)}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            showTranslation && "reading-apple-capsule px-3 py-2",
                             isSpeakingOpen ? "text-rose-500" : "text-stone-400/80 hover:text-stone-600"
                         )}
                     >
@@ -4570,8 +4607,10 @@ export function ParagraphCard({
                     <button
                         data-tour-target={index === 0 ? "paragraph-translate" : undefined}
                         onClick={() => handleTranslate(false)}
+                        data-translation-toolbar-active={showTranslation ? "true" : undefined}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            showTranslation && "reading-apple-capsule px-3 py-2",
                             showTranslation ? "text-indigo-500" : "text-stone-400/80 hover:text-stone-600"
                         )}
                     >
@@ -4584,6 +4623,7 @@ export function ParagraphCard({
                         onClick={() => void handleGrammarAnalysis()}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            showTranslation && "reading-apple-capsule px-3 py-2",
                             showGrammar ? "text-teal-600" : "text-stone-400/80 hover:text-stone-600"
                         )}
                     >
@@ -4598,6 +4638,7 @@ export function ParagraphCard({
                         title={hasActiveAskDock && !askContextAttachment ? "把本段上下文植入右侧 Ask AI" : "打开 Ask AI"}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            showTranslation && "reading-apple-capsule px-3 py-2",
                             selectionPopupMode === "ask" && selectionAskContextAttachment?.kind === "paragraph"
                                 ? "text-sky-500"
                                 : hasActiveAskDock && !askContextAttachment
@@ -4614,6 +4655,7 @@ export function ParagraphCard({
                         disabled={isSpeakingOpen || showGrammar}
                         className={cn(
                             "flex items-center gap-1.5 text-xs font-semibold transition-colors",
+                            showTranslation && "reading-apple-capsule px-3 py-2",
                             isReadingLayoutMode ? "text-theme-text" : "text-theme-text-muted hover:text-theme-text",
                             (isSpeakingOpen || showGrammar) && "opacity-30 cursor-not-allowed hover:text-theme-text-muted"
                         )}

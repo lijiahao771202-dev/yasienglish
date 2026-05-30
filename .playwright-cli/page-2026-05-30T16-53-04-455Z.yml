@@ -1,0 +1,84 @@
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - navigation [ref=e4]:
+        - generic [ref=e5]:
+          - button "Back to Welcome" [ref=e6]:
+            - img [ref=e7]
+          - paragraph [ref=e11]: DeepSeek IELTS
+          - button "Appearance" [ref=e13]:
+            - img [ref=e14]
+      - generic [ref=e23]:
+        - generic [ref=e25]:
+          - generic [ref=e27]:
+            - paragraph [ref=e28]:
+              - img [ref=e29]
+              - text: Reading Flow
+            - heading "阅读流" [level=3] [ref=e32]
+            - paragraph [ref=e33]: 按新鲜度优先，保持阅读上下文连续。把训练、生成和资讯入口收进一个更可爱的阅读工作台里。
+          - generic [ref=e34]:
+            - generic [ref=e35]:
+              - button "CAT 成长" [ref=e36]: CAT 成长
+              - button "AI 生成" [ref=e38]
+            - generic [ref=e39]:
+              - button "心理学" [ref=e40]
+              - button "AI 资讯" [ref=e41]
+        - generic [ref=e42]:
+          - generic [ref=e43]:
+            - generic [ref=e44]:
+              - generic [ref=e45]:
+                - generic [ref=e46]:
+                  - paragraph [ref=e47]: Training Console
+                  - heading "CAT 自适应训练" [level=4] [ref=e48]
+                  - paragraph [ref=e49]: 一局一篇，按表现自动调节难度，把入口做成更像首页的可爱训练工作台。
+                - generic [ref=e50]:
+                  - generic [ref=e51]: 🥈
+                  - generic [ref=e52]: B2- 稳定
+                  - generic [ref=e53]: "1000"
+              - generic [ref=e54]:
+                - button "🥈 四级通过 CET-4 下一段 还差 200 分" [ref=e55]:
+                  - generic [ref=e56]:
+                    - generic [ref=e57]: 🥈
+                    - generic [ref=e58]:
+                      - paragraph [ref=e59]: 四级通过
+                      - paragraph [ref=e60]: CET-4
+                    - generic [ref=e61]:
+                      - paragraph [ref=e62]: 下一段
+                      - paragraph [ref=e63]: 还差 200 分
+                    - img [ref=e65]
+                - generic [ref=e67]:
+                  - paragraph [ref=e68]: 训练主题（可选）
+                  - generic [ref=e69]:
+                    - textbox "例如：睡眠与记忆、AI 与教育" [ref=e70]
+                    - button "开始训练" [ref=e71]:
+                      - img [ref=e72]
+                      - text: 开始训练
+            - generic [ref=e81]:
+              - generic [ref=e83]:
+                - generic [ref=e84]:
+                  - paragraph [ref=e85]: 成长趋势
+                  - generic [ref=e86]:
+                    - generic [ref=e87]: "1000"
+                    - generic [ref=e88]:
+                      - generic [ref=e89]: 🥈
+                      - text: B2- 稳定
+                - generic [ref=e90]:
+                  - generic [ref=e91]:
+                    - img [ref=e92]
+                    - text: 峰值 1000
+                  - generic [ref=e94]: 近 5 局持平
+              - generic [ref=e96]: 曲线加载中...
+          - generic [ref=e97]:
+            - generic [ref=e98]:
+              - heading "训练历史" [level=4] [ref=e99]
+              - generic [ref=e100]:
+                - button "历史 0" [ref=e101]
+                - button "归档 0" [ref=e102]:
+                  - img [ref=e103]
+                  - text: 归档 0
+            - generic [ref=e106]: 暂无 CAT 历史文章，先开始一局训练
+        - button "开启阅读入口指南" [ref=e107]:
+          - img [ref=e108]
+  - button "Open Next.js Dev Tools" [ref=e116] [cursor=pointer]:
+    - img [ref=e117]
+  - alert [ref=e120]

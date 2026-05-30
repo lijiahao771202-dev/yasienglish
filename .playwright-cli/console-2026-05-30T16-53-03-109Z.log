@@ -1,0 +1,5 @@
+[    1035ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1253ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1328ms] [ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:4000/api/ai/cat/history?limit=48:0
+[    1361ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    1548ms] [LOG] [Fast Refresh] done in 290ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
