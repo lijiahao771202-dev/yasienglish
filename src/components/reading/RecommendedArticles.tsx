@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, RotateCcw, Trash2, Check, Settings2, LayoutGrid, ChevronDown, Compass, Dices } from "lucide-react";
+import { Archive, Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, RotateCcw, Trash2, Check, Settings2, LayoutGrid, ChevronDown, ChevronLeft, ChevronRight, Compass, Dices } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -98,6 +98,7 @@ interface AIGenHistoryRecord {
 type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen' | 'cat_mode';
 type ArticleView = 'all' | 'new' | 'unread' | 'read';
 type ArticleStatus = 'new' | 'unread' | 'read';
+type AIGenerationWizardStep = "mode" | "difficulty" | "longform" | "rag" | "topic";
 interface GeneratedArticleData {
     title: string;
     content: string;
@@ -331,6 +332,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const [isCatRankOverviewOpen, setIsCatRankOverviewOpen] = useState(false);
     const [showHubTour, setShowHubTour] = useState(false);
     const [showCatSlotMachine, setShowCatSlotMachine] = useState(false);
+    const [aiWizardStep, setAiWizardStep] = useState<AIGenerationWizardStep>("mode");
     const [genProgress, setGenProgress] = useState<GenerationProgressState>({
         step: 'idle',
         topic: '',
@@ -339,6 +341,23 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     });
 
     const activeRagConfig = aiReadingRag[genMode] ?? DEFAULT_AI_GENERATION_RAG_SELECTION[genMode];
+    const aiWizardSteps = useMemo<AIGenerationWizardStep[]>(
+        () => genMode === "longform"
+            ? ["mode", "difficulty", "longform", "rag", "topic"]
+            : ["mode", "difficulty", "rag", "topic"],
+        [genMode],
+    );
+    const aiWizardStepIndex = aiWizardSteps.indexOf(aiWizardStep);
+    const normalizedAiWizardStepIndex = aiWizardStepIndex === -1 ? 0 : aiWizardStepIndex;
+    const activeAiWizardStep = aiWizardSteps[normalizedAiWizardStepIndex] ?? "mode";
+    const canGoToPreviousAiStep = normalizedAiWizardStepIndex > 0;
+    const canGoToNextAiStep = normalizedAiWizardStepIndex < aiWizardSteps.length - 1;
+
+    useEffect(() => {
+        if (!aiWizardSteps.includes(aiWizardStep)) {
+            setAiWizardStep(aiWizardSteps[aiWizardSteps.length - 1] ?? "mode");
+        }
+    }, [aiWizardStep, aiWizardSteps]);
 
     useEffect(() => {
         if (category === "cat_mode") {
@@ -370,9 +389,15 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             placement: "bottom"
         },
         {
-            targetId: "hub-ai-topic",
-            title: "突破界限的题材库",
-            content: "觉得预设不够玩？直接输入您感兴趣的偏门词条，哪怕是“元宇宙修仙”，系统都能强行给您抽取出严肃的四六级雅思考试长文！这就是生成式AI的魅力所在！",
+            targetId: "hub-ai-progress",
+            title: "一步一步定制",
+            content: "现在不用一屏看完所有设置了。跟着进度条往下点，模式、难度、RAG 和记忆注入都会按步骤排开。",
+            placement: "top"
+        },
+        {
+            targetId: "hub-ai-step",
+            title: "当前步骤工作区",
+            content: "当前只显示这一组决策。选完就进下一步，最后再输入主题并生成，整个流更接近听力舱的点击节奏。",
             placement: "top"
         }
     ] : [
@@ -1242,6 +1267,94 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 220, damping: 24, mass: 1 } },
         exit: { opacity: 0, y: -15, scale: 0.98, transition: { duration: 0.2 } }
     };
+    const aiWizardStepMeta: Record<AIGenerationWizardStep, { label: string; eyebrow: string; description: string }> = {
+        mode: {
+            label: "模式选择",
+            eyebrow: "Step 1",
+            description: "先决定这是标准考试阅读，还是更自由的长文生成。",
+        },
+        difficulty: {
+            label: "难度与轨道",
+            eyebrow: "Step 2",
+            description: "根据当前模式，选择考试梯度或母语者长文轨道。",
+        },
+        longform: {
+            label: "长文参数",
+            eyebrow: "Step 3",
+            description: "先把篇幅档位定下来，最后一步再把风格和主题一起收口。",
+        },
+        rag: {
+            label: "RAG 注入",
+            eyebrow: genMode === "longform" ? "Step 4" : "Step 3",
+            description: "决定是否把生词本或词典记忆注入到当前生成链路里。",
+        },
+        topic: {
+            label: "主题与生成",
+            eyebrow: genMode === "longform" ? "Step 5" : "Step 4",
+            description: genMode === "longform"
+                ? "把长文风格、补充要求和主题放在一起确认，最后直接生成。"
+                : "最后确认题材，摇一个灵感或直接输入，然后生成文章。",
+        },
+    };
+    const currentAiWizardMeta = aiWizardStepMeta[activeAiWizardStep];
+    const currentPresetTopics = PRESET_TOPICS[longformTrack === "native" ? "native" : genDifficulty] || [];
+    const activeLengthTier = LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId) ?? LONGFORM_LENGTH_TIERS[0];
+    const activeLongformStyle = LONGFORM_STYLE_OPTIONS.find((item) => item.id === longformStyleId) ?? LONGFORM_STYLE_OPTIONS[0];
+    const aiDifficultyCards = [
+        {
+            id: 'cet4' as const,
+            label: 'CET-4 四级',
+            desc: genMode === "longform" ? `长文模式 · 目标 ${activeLengthTier?.targetWordCount ?? 1200} 词` : '4000 词汇 · 300-400 词',
+            detail: '简单句为主，日常话题',
+            icon: BookOpen,
+            activeClass: 'border-emerald-300/90 bg-emerald-50/65 text-emerald-900 shadow-[0_18px_35px_-22px_rgba(16,185,129,0.5)]',
+            iconClass: 'bg-emerald-100/90 text-emerald-700',
+        },
+        {
+            id: 'cet6' as const,
+            label: 'CET-6 六级',
+            desc: genMode === "longform" ? `长文模式 · 目标 ${activeLengthTier?.targetWordCount ?? 1200} 词` : '6000 词汇 · 400-500 词',
+            detail: '复合句+被动语态',
+            icon: Cpu,
+            activeClass: 'border-sky-300/90 bg-sky-50/65 text-sky-900 shadow-[0_18px_35px_-22px_rgba(14,165,233,0.5)]',
+            iconClass: 'bg-sky-100/90 text-sky-700',
+        },
+        {
+            id: 'ielts' as const,
+            label: 'IELTS 雅思',
+            desc: genMode === "longform" ? `长文模式 · 目标 ${activeLengthTier?.targetWordCount ?? 1200} 词` : '8000+ 词汇 · 500-700 词',
+            detail: '学术词汇+复杂句式',
+            icon: Brain,
+            activeClass: 'border-violet-300/90 bg-violet-50/65 text-violet-900 shadow-[0_18px_35px_-22px_rgba(139,92,246,0.5)]',
+            iconClass: 'bg-violet-100/90 text-violet-700',
+        },
+        ...(genMode === "longform" ? [{
+            id: 'native' as const,
+            label: '母语者',
+            desc: `自然长文 · 目标 ${activeLengthTier?.targetWordCount ?? 1200} 词`,
+            detail: '真实世界自然阅读',
+            icon: Compass,
+            activeClass: 'border-amber-300/90 bg-amber-50/70 text-amber-950 shadow-[0_18px_35px_-22px_rgba(245,158,11,0.42)]',
+            iconClass: 'bg-amber-100/90 text-amber-700',
+        }] : []),
+    ];
+    const goToAiWizardStep = useCallback((step: AIGenerationWizardStep) => {
+        if (aiWizardSteps.includes(step)) {
+            setAiWizardStep(step);
+        }
+    }, [aiWizardSteps]);
+    const goToPreviousAiStep = useCallback(() => {
+        if (!canGoToPreviousAiStep) return;
+        setAiWizardStep(aiWizardSteps[normalizedAiWizardStepIndex - 1] ?? aiWizardSteps[0] ?? "mode");
+    }, [aiWizardSteps, canGoToPreviousAiStep, normalizedAiWizardStepIndex]);
+    const goToNextAiStep = useCallback(() => {
+        if (!canGoToNextAiStep) return;
+        setAiWizardStep(aiWizardSteps[normalizedAiWizardStepIndex + 1] ?? aiWizardSteps[aiWizardSteps.length - 1] ?? "topic");
+    }, [aiWizardSteps, canGoToNextAiStep, normalizedAiWizardStepIndex]);
+    const handleAiModeSelect = useCallback((nextMode: AIGenerationMode) => {
+        setGenMode(nextMode);
+        setAiWizardStep("difficulty");
+    }, []);
 
     return (
         <motion.div
@@ -1491,381 +1604,530 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             </div>
                         </div>
 
-                        <div className={cn("mt-6 grid grid-cols-1 gap-3", genMode === "longform" ? "md:grid-cols-4" : "md:grid-cols-3")}>
-                                {([
-                                    {
-                                        id: 'cet4' as const,
-                                        label: 'CET-4 四级',
-                                        desc: genMode === "longform" ? `长文模式 · 目标 ${LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId)?.targetWordCount ?? 1200} 词` : '4000 词汇 · 300-400 词',
-                                        detail: '简单句为主，日常话题',
-                                        icon: BookOpen,
-                                        activeClass: 'border-emerald-300/90 bg-emerald-50/65 text-emerald-900 shadow-[0_18px_35px_-22px_rgba(16,185,129,0.5)]',
-                                        iconClass: 'bg-emerald-100/90 text-emerald-700',
-                                    },
-                                    {
-                                        id: 'cet6' as const,
-                                        label: 'CET-6 六级',
-                                        desc: genMode === "longform" ? `长文模式 · 目标 ${LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId)?.targetWordCount ?? 1200} 词` : '6000 词汇 · 400-500 词',
-                                        detail: '复合句+被动语态',
-                                        icon: Cpu,
-                                        activeClass: 'border-sky-300/90 bg-sky-50/65 text-sky-900 shadow-[0_18px_35px_-22px_rgba(14,165,233,0.5)]',
-                                        iconClass: 'bg-sky-100/90 text-sky-700',
-                                    },
-                                    {
-                                        id: 'ielts' as const,
-                                        label: 'IELTS 雅思',
-                                        desc: genMode === "longform" ? `长文模式 · 目标 ${LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId)?.targetWordCount ?? 1200} 词` : '8000+ 词汇 · 500-700 词',
-                                        detail: '学术词汇+复杂句式',
-                                        icon: Brain,
-                                        activeClass: 'border-violet-300/90 bg-violet-50/65 text-violet-900 shadow-[0_18px_35px_-22px_rgba(139,92,246,0.5)]',
-                                        iconClass: 'bg-violet-100/90 text-violet-700',
-                                    },
-                                    ...(genMode === "longform" ? [{
-                                        id: 'native' as const,
-                                        label: '母语者',
-                                        desc: `自然长文 · 目标 ${LONGFORM_LENGTH_TIERS.find((item) => item.id === lengthTierId)?.targetWordCount ?? 1200} 词`,
-                                        detail: '真实世界自然阅读',
-                                        icon: Compass,
-                                        activeClass: 'border-amber-300/90 bg-amber-50/70 text-amber-950 shadow-[0_18px_35px_-22px_rgba(245,158,11,0.42)]',
-                                        iconClass: 'bg-amber-100/90 text-amber-700',
-                                    }] : []),
-                                ]).map((diff) => {
-                                    const Icon = diff.icon;
-                                    const isActive = diff.id === "native"
-                                        ? longformTrack === "native"
-                                        : longformTrack === "exam" && genDifficulty === diff.id;
-                                    return (
-                                        <motion.button
-                                            key={diff.id}
-                                            type="button"
-                                            onClick={() => {
-                                                if (diff.id === "native") {
-                                                    setLongformTrack("native");
-                                                    return;
-                                                }
-                                                setLongformTrack("exam");
-                                                setGenDifficulty(diff.id);
-                                            }}
-                                            whileHover={{ y: -2 }}
-                                            whileTap={getPressableTap(reducedMotion, 6, 0.985)}
-                                            style={getPressableStyle("var(--theme-shadow)", 6)}
-                                            className={cn(
-                                                "ui-pressable group relative overflow-hidden rounded-[24px] border-4 p-4 text-left transition-all duration-350",
-                                                isActive
-                                                    ? cn(diff.activeClass, "border-theme-border")
-                                                    : "border-theme-border bg-theme-card-bg text-theme-text"
-                                            )}
-                                        >
-                                            <div className="relative">
-                                                <div className={cn(
-                                                    "mb-3 inline-flex rounded-[18px] border-2 border-theme-border p-2.5 transition-transform duration-300 group-hover:scale-105",
-                                                    isActive ? diff.iconClass : "bg-theme-base-bg text-theme-text-muted"
-                                                )}>
-                                                    <Icon className="h-4 w-4" />
-                                                </div>
-                                                <p className="text-base font-bold leading-tight text-theme-text">{diff.label}</p>
-                                                <p className="mt-1 text-xs font-medium text-theme-text-muted">{diff.desc}</p>
-                                                <p className="mt-0.5 text-[11px] text-theme-text-muted opacity-80">{diff.detail}</p>
-                                            </div>
-                                        </motion.button>
-                                    );
-                                })}
-                        </div>
-
-                        <div className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
-                            <div className="mb-3 flex items-center justify-between gap-3">
-                                <h5 className="text-sm font-black text-theme-text">模式选择</h5>
-                                <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
-                                    {genMode === "standard" ? "标准考试逻辑" : longformTrack === "native" ? "母语者长文" : "纯阅读长文"}
-                                </span>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-1.5">
-                                {AI_GENERATION_MODE_OPTIONS.map((option) => {
-                                    const isActive = genMode === option.id;
-                                    return (
-                                        <button
-                                            key={option.id}
-                                            type="button"
-                                            onClick={() => setGenMode(option.id)}
-                                            className={cn(
-                                                "ui-pressable rounded-[16px] border-2 px-3 py-2 text-sm font-black transition-all",
-                                                isActive
-                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
-                                            )}
-                                            style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
-                                        >
-                                            {option.label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-
-                            {genMode === "longform" ? (
-                                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                                    <div>
-                                        <div className="mb-2 flex items-center justify-between gap-2">
-                                            <h6 className="text-xs font-black tracking-wide text-theme-text">长度档位</h6>
-                                            <span className="text-[11px] font-bold text-theme-text-muted">±15%</span>
-                                        </div>
-                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                            {LONGFORM_LENGTH_TIERS.map((tier) => {
-                                                const isActive = lengthTierId === tier.id;
-                                                return (
-                                                    <button
-                                                        key={tier.id}
-                                                        type="button"
-                                                        onClick={() => setLengthTierId(tier.id)}
-                                                        className={cn(
-                                                            "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
-                                                            isActive
-                                                                ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                                : "border-theme-border bg-theme-card-bg text-theme-text hover:text-theme-text",
-                                                        )}
-                                                        style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
-                                                    >
-                                                        <p className="text-sm font-black">{tier.label}</p>
-                                                        <p className="mt-1 text-[11px] font-semibold opacity-80">目标 {tier.targetWordCount} 词</p>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <div className="mb-2 flex items-center justify-between gap-2">
-                                            <h6 className="text-xs font-black tracking-wide text-theme-text">风格选择</h6>
-                                            <span className="text-[11px] font-bold text-theme-text-muted">长文专属</span>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {LONGFORM_STYLE_OPTIONS.map((style) => {
-                                                const isActive = longformStyleId === style.id;
-                                                return (
-                                                    <button
-                                                        key={style.id}
-                                                        type="button"
-                                                        onClick={() => setLongformStyleId(style.id)}
-                                                        className={cn(
-                                                            "ui-pressable rounded-[18px] border-3 px-3 py-2.5 text-left text-sm font-black transition-all",
-                                                            isActive
-                                                                ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                                : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
-                                                        )}
-                                                        style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
-                                                    >
-                                                        {style.name}
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
+                        <div
+                            data-ai-gen-wizard="true"
+                            className="mt-6 space-y-5"
+                        >
+                            <div
+                                data-ai-gen-progress="true"
+                                data-tour-target="hub-ai-progress"
+                                className="flex flex-col gap-4 rounded-[24px] border-4 border-theme-border bg-theme-card-bg p-4 md:flex-row md:items-center md:justify-between"
+                            >
+                                <div className="space-y-1">
+                                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">
+                                        Wizard Progress
+                                    </p>
+                                    <p className="text-sm font-black text-theme-text">
+                                        第 {normalizedAiWizardStepIndex + 1} 步 / 共 {aiWizardSteps.length} 步
+                                    </p>
                                 </div>
-                            ) : null}
-                        </div>
-
-                        <div className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
-                            <div className="mb-3 flex items-center justify-between gap-3">
-                                <h5 className="text-sm font-black text-theme-text">RAG 注入</h5>
-                                <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
-                                    {genMode === "standard" ? "标准模式记忆" : "长文模式记忆"}
-                                </span>
-                            </div>
-
-                            <div className="grid gap-4 lg:grid-cols-2">
-                                <div>
-                                    <div className="mb-2 flex items-center justify-between gap-2">
-                                        <h6 className="text-xs font-black tracking-wide text-theme-text">RAG 模式</h6>
-                                        <span className="text-[11px] font-bold text-theme-text-muted">
-                                            {activeRagConfig.mode === "off" ? "完全关闭" : activeRagConfig.mode === "strict" ? "强制命中" : "软参考"}
-                                        </span>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {AI_GENERATION_RAG_MODE_OPTIONS.map((option) => {
-                                            const isActive = activeRagConfig.mode === option.id;
-                                            return (
-                                                <button
-                                                    key={option.id}
-                                                    type="button"
-                                                    onClick={() => updateAiReadingRagConfig({ mode: option.id })}
-                                                    className={cn(
-                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
-                                                        isActive
-                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                            : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
-                                                    )}
-                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
-                                                >
-                                                    <p className="text-sm font-black">{option.label}</p>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-
-                                <div>
-                                    <div className="mb-2 flex items-center justify-between gap-2">
-                                        <h6 className="text-xs font-black tracking-wide text-theme-text">RAG 来源</h6>
-                                        <span className="text-[11px] font-bold text-theme-text-muted">
-                                            {activeRagConfig.source === "vocab" ? "生词本" : activeRagConfig.source === "dictionary" ? "词典" : "混合"}
-                                        </span>
-                                    </div>
-                                    <div className="grid grid-cols-1 gap-2">
-                                        {AI_GENERATION_RAG_SOURCE_OPTIONS.map((option) => {
-                                            const isActive = activeRagConfig.source === option.id;
-                                            return (
-                                                <button
-                                                    key={option.id}
-                                                    type="button"
-                                                    onClick={() => updateAiReadingRagConfig({ source: option.id })}
-                                                    disabled={activeRagConfig.mode === "off"}
-                                                    className={cn(
-                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
-                                                        activeRagConfig.mode === "off"
-                                                            ? "cursor-not-allowed border-theme-border bg-theme-base-bg text-theme-text-muted opacity-55"
-                                                            : isActive
-                                                                ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                                : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
-                                                    )}
-                                                    style={getPressableStyle(activeRagConfig.mode === "off" ? "rgba(0,0,0,0.04)" : isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
-                                                >
-                                                    <p className="text-sm font-black">{option.label}</p>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div data-tour-target="hub-ai-topic" className={cn(insetCardClass, "mt-5 p-4 md:p-5")}>
-                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                    <h5 className="text-sm font-black text-theme-text">主题选择</h5>
-                                    {genTopic.trim() && (
-                                        <span className={cn(
-                                            "rounded-full border-2 px-2.5 py-1 text-[11px] font-black",
-                                            longformTrack === "native" && "border-amber-200/80 bg-amber-100/75 text-amber-800",
-                                            longformTrack === "exam" && genDifficulty === 'cet4' && "border-emerald-200/80 bg-emerald-100/75 text-emerald-700",
-                                            longformTrack === "exam" && genDifficulty === 'cet6' && "border-sky-200/80 bg-sky-100/75 text-sky-700",
-                                            longformTrack === "exam" && genDifficulty === 'ielts' && "border-violet-200/80 bg-violet-100/75 text-violet-700"
-                                        )}>
-                                            {longformTrack === "native" ? "母语者" : genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}{genMode === "longform" ? ` · 长文 · ${LONGFORM_STYLE_OPTIONS.find((item) => item.id === longformStyleId)?.name ?? "科普"}` : ""} · {genTopic}
-                                        </span>
-                                    )}
-                                </div>
-
-                                <div className="mb-3 flex flex-wrap gap-2">
-                                    {(PRESET_TOPICS[longformTrack === "native" ? "native" : genDifficulty] || []).map(topic => (
-                                        <motion.button
-                                            key={topic}
-                                            type="button"
-                                            onClick={() => setGenTopic(topic)}
-                                            whileHover={{ y: -1, scale: 1.02 }}
-                                            whileTap={getPressableTap(reducedMotion, 4, 0.98)}
-                                            style={getPressableStyle(genTopic === topic ? "#374151" : "#d8d3cb", 4)}
-                                            className={cn(
-                                                "ui-pressable rounded-full border-2 px-3.5 py-1.5 text-xs font-black transition-all duration-250",
-                                                genTopic === topic
-                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text"
-                                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
-                                            )}
-                                        >
-                                            {topic}
-                                        </motion.button>
-                                    ))}
-                                </div>
-
-                                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-[1fr_auto_auto]">
-                                    <input
-                                        type="text"
-                                        value={genTopic}
-                                        onChange={(e) => setGenTopic(e.target.value)}
-                                        onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
-                                        placeholder="输入主题（留空则随机），例如：Quantum Computing"
-                                        className="w-full rounded-full border-4 border-theme-border bg-theme-base-bg px-5 py-3 text-sm font-medium text-theme-text transition-all placeholder:text-theme-text-muted/60 focus:border-theme-border focus:ring-4 focus:ring-theme-primary-bg focus:outline-none"
-                                    />
-                                    <motion.button
-                                        type="button"
-                                        onClick={handleRollTopic}
-                                        disabled={isGenerating}
-                                        whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
-                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
-                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.1)" : "var(--theme-shadow)", 6)}
-                                        className={cn(
-                                            "ui-pressable group relative overflow-hidden rounded-full px-4 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
-                                            isGenerating
-                                                ? "cursor-not-allowed border-4 border-theme-border bg-theme-card-bg text-theme-text-muted"
-                                                : "border-4 border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg"
-                                        )}
-                                        aria-label="摇一个主题"
-                                        title="摇一个主题"
-                                    >
-                                        <span className="relative flex items-center gap-2">
-                                            <Dices className="h-4 w-4" />
-                                            摇主题
-                                        </span>
-                                    </motion.button>
-                                    <motion.button
-                                        type="button"
-                                        onClick={handleGenerate}
-                                        disabled={isGenerating}
-                                        whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
-                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
-                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.1)" : "var(--theme-shadow)", 6)}
-                                        className={cn(
-                                            "ui-pressable group relative overflow-hidden rounded-full px-5 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
-                                            isGenerating
-                                                ? "cursor-not-allowed border-4 border-theme-border bg-theme-card-bg text-theme-text-muted"
-                                                : "border-4 border-theme-border bg-theme-active-bg text-theme-active-text"
-                                        )}
-                                    >
-                                        <span className="relative flex items-center gap-2">
-                                            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                                            {isGenerating ? "正在生成..." : "生成文章"}
-                                        </span>
-                                    </motion.button>
-                                </div>
-
-                                {genMode === "longform" && longformStyleId === "custom" ? (
-                                    <div className="mt-4 rounded-[24px] border-3 border-theme-border bg-theme-card-bg p-4">
-                                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                                            <div>
-                                                <p className="text-sm font-black text-theme-text">自定义风格补充</p>
-                                                <p className="mt-1 text-xs font-medium text-theme-text-muted">
-                                                    这里只补充文风、解释方式和表达感觉。四级 / 六级 / 雅思的难度约束仍然会保留。
-                                                </p>
-                                            </div>
-                                            <motion.button
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {aiWizardSteps.map((step, index) => {
+                                        const isActive = step === activeAiWizardStep;
+                                        const isCompleted = index < normalizedAiWizardStepIndex;
+                                        return (
+                                            <button
+                                                key={step}
                                                 type="button"
-                                                onClick={() => void handleOptimizeCustomStyle()}
-                                                disabled={isOptimizingCustomStyle || !customStylePrompt.trim()}
-                                                whileHover={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : { y: -1, scale: 1.01 }}
-                                                whileTap={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : getPressableTap(reducedMotion, 4, 0.985)}
-                                                style={getPressableStyle(isOptimizingCustomStyle || !customStylePrompt.trim() ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", 4)}
+                                                onClick={() => goToAiWizardStep(step)}
                                                 className={cn(
-                                                    "ui-pressable rounded-full border-3 px-4 py-2 text-xs font-black transition-all",
-                                                    isOptimizingCustomStyle || !customStylePrompt.trim()
-                                                        ? "cursor-not-allowed border-theme-border bg-theme-base-bg text-theme-text-muted opacity-60"
-                                                        : "border-theme-border bg-theme-primary-bg text-theme-primary-text"
+                                                    "ui-pressable inline-flex min-h-[44px] items-center gap-2 rounded-full border-[3px] px-3.5 py-2 text-xs font-black transition-all",
+                                                    isActive
+                                                        ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                        : isCompleted
+                                                            ? "border-theme-border bg-theme-active-bg text-theme-active-text"
+                                                            : "border-theme-border bg-theme-base-bg text-theme-text-muted hover:text-theme-text",
                                                 )}
+                                                style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                aria-label={`切换到${aiWizardStepMeta[step].label}`}
                                             >
-                                                <span className="flex items-center gap-2">
-                                                    {isOptimizingCustomStyle ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                                                    {isOptimizingCustomStyle ? "优化中..." : "AI优化"}
+                                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-current text-[10px]">
+                                                    {index + 1}
                                                 </span>
-                                            </motion.button>
-                                        </div>
-
-                                        <textarea
-                                            value={customStylePrompt}
-                                            onChange={(e) => setCustomStylePrompt(e.target.value)}
-                                            placeholder="例如：把这个主题的理论写得详细清楚，通俗易懂，层次分明，像老师耐心讲解一样。"
-                                            rows={4}
-                                            className="min-h-[120px] w-full resize-y rounded-[18px] border-3 border-theme-border bg-theme-base-bg px-4 py-3 text-sm font-medium leading-6 text-theme-text outline-none transition placeholder:text-theme-text-muted/65 focus:ring-4 focus:ring-theme-primary-bg"
-                                        />
-                                    </div>
-                                ) : null}
+                                                {aiWizardStepMeta[step].label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
+
+                            <div
+                                data-ai-gen-step={activeAiWizardStep}
+                                data-tour-target="hub-ai-step"
+                                className={cn(insetCardClass, "p-4 md:p-5")}
+                            >
+                                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">
+                                            {currentAiWizardMeta.eyebrow}
+                                        </p>
+                                        <h5 className="mt-1 text-lg font-black text-theme-text">
+                                            {currentAiWizardMeta.label}
+                                        </h5>
+                                        <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-theme-text-muted">
+                                            {currentAiWizardMeta.description}
+                                        </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
+                                            {genMode === "standard" ? "标准考试逻辑" : longformTrack === "native" ? "母语者长文" : "纯阅读长文"}
+                                        </span>
+                                        {activeAiWizardStep !== "mode" ? (
+                                            <span className="rounded-full border-2 border-theme-border bg-theme-card-bg px-2.5 py-1 text-[11px] font-black text-theme-text">
+                                                {longformTrack === "native" ? "母语者" : genDifficulty === "cet4" ? "四级" : genDifficulty === "cet6" ? "六级" : "雅思"}
+                                            </span>
+                                        ) : null}
+                                    </div>
+                                </div>
+
+                                <AnimatePresence mode="wait" initial={false}>
+                                    <motion.div
+                                        key={activeAiWizardStep}
+                                        initial={panelEnter}
+                                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                                        exit={panelExit}
+                                        transition={panelTransition}
+                                        className="space-y-4"
+                                    >
+                                        {activeAiWizardStep === "mode" ? (
+                                            <div className="grid gap-3 md:grid-cols-2">
+                                                {AI_GENERATION_MODE_OPTIONS.map((option) => {
+                                                    const isActive = genMode === option.id;
+                                                    return (
+                                                        <motion.button
+                                                            key={option.id}
+                                                            type="button"
+                                                            onClick={() => handleAiModeSelect(option.id)}
+                                                            whileHover={{ y: -2 }}
+                                                            whileTap={getPressableTap(reducedMotion, 6, 0.985)}
+                                                            style={getPressableStyle("var(--theme-shadow)", 6)}
+                                                            className={cn(
+                                                                "ui-pressable group relative overflow-hidden rounded-[24px] border-4 p-5 text-left transition-all duration-350",
+                                                                isActive
+                                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_16px_32px_-22px_var(--theme-shadow)]"
+                                                                    : "border-theme-border bg-theme-card-bg text-theme-text",
+                                                            )}
+                                                        >
+                                                            <div className="relative space-y-3">
+                                                                <div className={cn(
+                                                                    "inline-flex rounded-[18px] border-2 border-theme-border p-3 transition-transform duration-300 group-hover:scale-105",
+                                                                    isActive ? "bg-theme-card-bg text-theme-primary-text" : "bg-theme-base-bg text-theme-text-muted",
+                                                                )}>
+                                                                    {option.id === "standard" ? <BookOpen className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-lg font-black text-theme-text">{option.label}</p>
+                                                                    <p className="mt-1 text-sm font-medium text-theme-text-muted">
+                                                                        {option.id === "standard"
+                                                                            ? "保持考试约束，快速决定难度、RAG 和记忆注入。"
+                                                                            : "进入更自由的长文生成链路，追加篇幅和文风控制。"}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="flex items-center justify-between text-xs font-black text-theme-text-muted">
+                                                                    <span>{option.id === "standard" ? "4 步完成" : "5 步完成"}</span>
+                                                                    <span className="inline-flex items-center gap-1 rounded-full border-2 border-theme-border bg-theme-card-bg px-2.5 py-1 text-theme-text">
+                                                                        继续 <ChevronRight className="h-3.5 w-3.5" />
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </motion.button>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : null}
+
+                                        {activeAiWizardStep === "difficulty" ? (
+                                            <div className={cn("grid grid-cols-1 gap-3", genMode === "longform" ? "md:grid-cols-4" : "md:grid-cols-3")}>
+                                                {aiDifficultyCards.map((diff) => {
+                                                    const Icon = diff.icon;
+                                                    const isActive = diff.id === "native"
+                                                        ? longformTrack === "native"
+                                                        : longformTrack === "exam" && genDifficulty === diff.id;
+                                                    return (
+                                                        <motion.button
+                                                            key={diff.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                if (diff.id === "native") {
+                                                                    setLongformTrack("native");
+                                                                    return;
+                                                                }
+                                                                setLongformTrack("exam");
+                                                                setGenDifficulty(diff.id);
+                                                            }}
+                                                            whileHover={{ y: -2 }}
+                                                            whileTap={getPressableTap(reducedMotion, 6, 0.985)}
+                                                            style={getPressableStyle("var(--theme-shadow)", 6)}
+                                                            className={cn(
+                                                                "ui-pressable group relative overflow-hidden rounded-[24px] border-4 p-4 text-left transition-all duration-350",
+                                                                isActive
+                                                                    ? cn(diff.activeClass, "border-theme-border")
+                                                                    : "border-theme-border bg-theme-card-bg text-theme-text",
+                                                            )}
+                                                        >
+                                                            <div className="relative">
+                                                                <div className={cn(
+                                                                    "mb-3 inline-flex rounded-[18px] border-2 border-theme-border p-2.5 transition-transform duration-300 group-hover:scale-105",
+                                                                    isActive ? diff.iconClass : "bg-theme-base-bg text-theme-text-muted",
+                                                                )}>
+                                                                    <Icon className="h-4 w-4" />
+                                                                </div>
+                                                                <p className="text-base font-bold leading-tight text-theme-text">{diff.label}</p>
+                                                                <p className="mt-1 text-xs font-medium text-theme-text-muted">{diff.desc}</p>
+                                                                <p className="mt-0.5 text-[11px] text-theme-text-muted opacity-80">{diff.detail}</p>
+                                                            </div>
+                                                        </motion.button>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : null}
+
+                                        {activeAiWizardStep === "longform" ? (
+                                            <div className="space-y-4">
+                                                <div className="rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-4">
+                                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                                        <h6 className="text-xs font-black tracking-wide text-theme-text">长度档位</h6>
+                                                        <span className="text-[11px] font-bold text-theme-text-muted">±15%</span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                        {LONGFORM_LENGTH_TIERS.map((tier) => {
+                                                            const isActive = lengthTierId === tier.id;
+                                                            return (
+                                                                <button
+                                                                    key={tier.id}
+                                                                    type="button"
+                                                                    onClick={() => setLengthTierId(tier.id)}
+                                                                    className={cn(
+                                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                                        isActive
+                                                                            ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                            : "border-theme-border bg-theme-card-bg text-theme-text hover:text-theme-text",
+                                                                    )}
+                                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                                >
+                                                                    <p className="text-sm font-black">{tier.label}</p>
+                                                                    <p className="mt-1 text-[11px] font-semibold opacity-80">目标 {tier.targetWordCount} 词</p>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                <div className="rounded-[20px] border-3 border-dashed border-theme-border/70 bg-theme-card-bg/65 p-4">
+                                                    <div className="flex flex-wrap items-center justify-between gap-3">
+                                                        <div>
+                                                            <p className="text-sm font-black text-theme-text">下一步再定风格和主题</p>
+                                                            <p className="mt-1 text-xs font-medium leading-5 text-theme-text-muted">
+                                                                先把篇幅卡住，最后一步再一起确认写作风格、补充要求和具体题材，生成时更顺手。
+                                                            </p>
+                                                        </div>
+                                                        <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-3 py-1 text-[11px] font-black text-theme-text-muted">
+                                                            当前长度 · {activeLengthTier.label}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : null}
+
+                                        {activeAiWizardStep === "rag" ? (
+                                            <div className="grid gap-4 lg:grid-cols-2">
+                                                <div className="rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-4">
+                                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                                        <h6 className="text-xs font-black tracking-wide text-theme-text">RAG 模式</h6>
+                                                        <span className="text-[11px] font-bold text-theme-text-muted">
+                                                            {activeRagConfig.mode === "off" ? "完全关闭" : activeRagConfig.mode === "strict" ? "强制命中" : "软参考"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-2">
+                                                        {AI_GENERATION_RAG_MODE_OPTIONS.map((option) => {
+                                                            const isActive = activeRagConfig.mode === option.id;
+                                                            return (
+                                                                <button
+                                                                    key={option.id}
+                                                                    type="button"
+                                                                    onClick={() => updateAiReadingRagConfig({ mode: option.id })}
+                                                                    className={cn(
+                                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                                        isActive
+                                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                            : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                                    )}
+                                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                                >
+                                                                    <p className="text-sm font-black">{option.label}</p>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                <div className="rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-4">
+                                                    <div className="mb-2 flex items-center justify-between gap-2">
+                                                        <h6 className="text-xs font-black tracking-wide text-theme-text">RAG 来源</h6>
+                                                        <span className="text-[11px] font-bold text-theme-text-muted">
+                                                            {activeRagConfig.source === "vocab" ? "生词本" : activeRagConfig.source === "dictionary" ? "词典" : "混合"}
+                                                        </span>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 gap-2">
+                                                        {AI_GENERATION_RAG_SOURCE_OPTIONS.map((option) => {
+                                                            const isActive = activeRagConfig.source === option.id;
+                                                            return (
+                                                                <button
+                                                                    key={option.id}
+                                                                    type="button"
+                                                                    onClick={() => updateAiReadingRagConfig({ source: option.id })}
+                                                                    disabled={activeRagConfig.mode === "off"}
+                                                                    className={cn(
+                                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                                        activeRagConfig.mode === "off"
+                                                                            ? "cursor-not-allowed border-theme-border bg-theme-base-bg text-theme-text-muted opacity-55"
+                                                                            : isActive
+                                                                                ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                                : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                                    )}
+                                                                    style={getPressableStyle(activeRagConfig.mode === "off" ? "rgba(0,0,0,0.04)" : isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                                >
+                                                                    <p className="text-sm font-black">{option.label}</p>
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : null}
+
+                                        {activeAiWizardStep === "topic" ? (
+                                            <div className="space-y-4">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <span className={cn(
+                                                        "rounded-full border-2 px-2.5 py-1 text-[11px] font-black",
+                                                        longformTrack === "native" && "border-amber-200/80 bg-amber-100/75 text-amber-800",
+                                                        longformTrack === "exam" && genDifficulty === 'cet4' && "border-emerald-200/80 bg-emerald-100/75 text-emerald-700",
+                                                        longformTrack === "exam" && genDifficulty === 'cet6' && "border-sky-200/80 bg-sky-100/75 text-sky-700",
+                                                        longformTrack === "exam" && genDifficulty === 'ielts' && "border-violet-200/80 bg-violet-100/75 text-violet-700",
+                                                    )}>
+                                                        {longformTrack === "native" ? "母语者" : genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}
+                                                        {genMode === "longform" ? ` · 长文 · ${activeLongformStyle?.name ?? "科普"}` : ""}
+                                                    </span>
+                                                    <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
+                                                        {activeRagConfig.mode === "off" ? "无 RAG 注入" : `${activeRagConfig.mode === "strict" ? "严格" : "参考"} · ${activeRagConfig.source === "vocab" ? "生词本" : activeRagConfig.source === "dictionary" ? "词典" : "混合"}`}
+                                                    </span>
+                                                    {genTopic.trim() ? (
+                                                        <span className="rounded-full border-2 border-theme-border bg-theme-card-bg px-2.5 py-1 text-[11px] font-black text-theme-text">
+                                                            当前主题 · {genTopic}
+                                                        </span>
+                                                    ) : null}
+                                                </div>
+
+                                                {genMode === "longform" ? (
+                                                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                                                        <div className="rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-4">
+                                                            <div className="mb-2 flex items-center justify-between gap-2">
+                                                                <h6 className="text-xs font-black tracking-wide text-theme-text">风格选择</h6>
+                                                                <span className="text-[11px] font-bold text-theme-text-muted">和主题一起定</span>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                {LONGFORM_STYLE_OPTIONS.map((style) => {
+                                                                    const isActive = longformStyleId === style.id;
+                                                                    return (
+                                                                        <button
+                                                                            key={style.id}
+                                                                            type="button"
+                                                                            onClick={() => setLongformStyleId(style.id)}
+                                                                            className={cn(
+                                                                                "ui-pressable rounded-[18px] border-3 px-3 py-2.5 text-left text-sm font-black transition-all",
+                                                                                isActive
+                                                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                                            )}
+                                                                            style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                                        >
+                                                                            {style.name}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+
+                                                        <div className="rounded-[20px] border-3 border-theme-border bg-theme-card-bg p-4">
+                                                            <div className="flex h-full min-h-[320px] flex-col gap-4">
+                                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                                    <div>
+                                                                        <p className="text-sm font-black text-theme-text">
+                                                                            {longformStyleId === "custom" ? "自定义风格补充" : "当前长文设置"}
+                                                                        </p>
+                                                                        <p className="mt-1 text-xs font-medium leading-5 text-theme-text-muted">
+                                                                            {longformStyleId === "custom"
+                                                                                ? "把希望的文风、解释方式和表达感觉直接写在这里。难度轨道和长度设置会继续保留。"
+                                                                                : "篇幅和文风会一起进入生成请求，最后只需要补上题材就能直接出文。"}
+                                                                        </p>
+                                                                    </div>
+                                                                    {longformStyleId === "custom" ? (
+                                                                        <motion.button
+                                                                            type="button"
+                                                                            onClick={() => void handleOptimizeCustomStyle()}
+                                                                            disabled={isOptimizingCustomStyle || !customStylePrompt.trim()}
+                                                                            whileHover={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : { y: -1, scale: 1.01 }}
+                                                                            whileTap={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : getPressableTap(reducedMotion, 4, 0.985)}
+                                                                            style={getPressableStyle(isOptimizingCustomStyle || !customStylePrompt.trim() ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", 4)}
+                                                                            className={cn(
+                                                                                "ui-pressable rounded-full border-3 px-4 py-2 text-xs font-black transition-all",
+                                                                                isOptimizingCustomStyle || !customStylePrompt.trim()
+                                                                                    ? "cursor-not-allowed border-theme-border bg-theme-base-bg text-theme-text-muted opacity-60"
+                                                                                    : "border-theme-border bg-theme-primary-bg text-theme-primary-text",
+                                                                            )}
+                                                                        >
+                                                                            <span className="flex items-center gap-2">
+                                                                                {isOptimizingCustomStyle ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                                                                {isOptimizingCustomStyle ? "优化中..." : "AI优化"}
+                                                                            </span>
+                                                                        </motion.button>
+                                                                    ) : null}
+                                                                </div>
+
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-3 py-1 text-[11px] font-black text-theme-text">
+                                                                        {activeLengthTier.label} · {activeLengthTier.targetWordCount} 词
+                                                                    </span>
+                                                                    <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-3 py-1 text-[11px] font-black text-theme-text">
+                                                                        {activeLongformStyle?.name ?? "科普"}
+                                                                    </span>
+                                                                </div>
+
+                                                                {longformStyleId === "custom" ? (
+                                                                    <textarea
+                                                                        value={customStylePrompt}
+                                                                        onChange={(e) => setCustomStylePrompt(e.target.value)}
+                                                                        placeholder="例如：把这个主题的理论写得详细清楚，通俗易懂，层次分明，像老师耐心讲解一样。"
+                                                                        rows={8}
+                                                                        className="min-h-[220px] flex-1 resize-y rounded-[18px] border-3 border-theme-border bg-theme-base-bg px-4 py-3 text-sm font-medium leading-6 text-theme-text outline-none transition placeholder:text-theme-text-muted/65 focus:ring-4 focus:ring-theme-primary-bg"
+                                                                    />
+                                                                ) : (
+                                                                    <div className="flex flex-1 items-end rounded-[18px] border-2 border-dashed border-theme-border/60 bg-theme-base-bg/70 px-4 py-4">
+                                                                        <p className="text-xs font-medium leading-6 text-theme-text-muted">
+                                                                            已经把篇幅和风格锁进当前生成配置。下面选主题或自己输入题材后，就可以直接生成文章。
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
+
+                                                <div className="flex flex-wrap gap-2">
+                                                    {currentPresetTopics.map((topic) => (
+                                                        <motion.button
+                                                            key={topic}
+                                                            type="button"
+                                                            onClick={() => setGenTopic(topic)}
+                                                            whileHover={{ y: -1, scale: 1.02 }}
+                                                            whileTap={getPressableTap(reducedMotion, 4, 0.98)}
+                                                            style={getPressableStyle(genTopic === topic ? "#374151" : "#d8d3cb", 4)}
+                                                            className={cn(
+                                                                "ui-pressable rounded-full border-2 px-3.5 py-1.5 text-xs font-black transition-all duration-250",
+                                                                genTopic === topic
+                                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text"
+                                                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                            )}
+                                                        >
+                                                            {topic}
+                                                        </motion.button>
+                                                    ))}
+                                                </div>
+
+                                                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-[1fr_auto_auto]">
+                                                    <input
+                                                        type="text"
+                                                        value={genTopic}
+                                                        onChange={(e) => setGenTopic(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                                                        placeholder="输入主题（留空则随机），例如：Quantum Computing"
+                                                        className="w-full rounded-full border-4 border-theme-border bg-theme-base-bg px-5 py-3 text-sm font-medium text-theme-text transition-all placeholder:text-theme-text-muted/60 focus:border-theme-border focus:ring-4 focus:ring-theme-primary-bg focus:outline-none"
+                                                    />
+                                                    <motion.button
+                                                        type="button"
+                                                        onClick={handleRollTopic}
+                                                        disabled={isGenerating}
+                                                        whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
+                                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
+                                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.1)" : "var(--theme-shadow)", 6)}
+                                                        className={cn(
+                                                            "ui-pressable group relative overflow-hidden rounded-full px-4 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
+                                                            isGenerating
+                                                                ? "cursor-not-allowed border-4 border-theme-border bg-theme-card-bg text-theme-text-muted"
+                                                                : "border-4 border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg",
+                                                        )}
+                                                        aria-label="摇一个主题"
+                                                        title="摇一个主题"
+                                                    >
+                                                        <span className="relative flex items-center gap-2">
+                                                            <Dices className="h-4 w-4" />
+                                                            摇主题
+                                                        </span>
+                                                    </motion.button>
+                                                    <motion.button
+                                                        type="button"
+                                                        onClick={handleGenerate}
+                                                        disabled={isGenerating}
+                                                        whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
+                                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
+                                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.1)" : "var(--theme-shadow)", 6)}
+                                                        className={cn(
+                                                            "ui-pressable group relative overflow-hidden rounded-full px-5 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
+                                                            isGenerating
+                                                                ? "cursor-not-allowed border-4 border-theme-border bg-theme-card-bg text-theme-text-muted"
+                                                                : "border-4 border-theme-border bg-theme-active-bg text-theme-active-text",
+                                                        )}
+                                                    >
+                                                        <span className="relative flex items-center gap-2">
+                                                            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                                            {isGenerating ? "正在生成..." : "生成文章"}
+                                                        </span>
+                                                    </motion.button>
+                                                </div>
+
+                                            </div>
+                                        ) : null}
+                                    </motion.div>
+                                </AnimatePresence>
+
+                                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t-2 border-theme-border/60 pt-4">
+                                    <div className="text-xs font-semibold text-theme-text-muted">
+                                        {activeAiWizardStep === "mode"
+                                            ? "点上面的模式卡片，直接进入下一步。"
+                                            : activeAiWizardStep === "topic"
+                                                ? "确认主题后直接生成，回退不会丢掉前面的选择。"
+                                                : "可以继续下一步，也可以返回修改前面的决定。"}
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        {canGoToPreviousAiStep ? (
+                                            <button
+                                                type="button"
+                                                data-ai-gen-back="true"
+                                                onClick={goToPreviousAiStep}
+                                                className="ui-pressable inline-flex min-h-[44px] items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-base-bg px-4 py-2 text-sm font-black text-theme-text"
+                                                style={getPressableStyle("rgba(0,0,0,0.08)", 4)}
+                                            >
+                                                <ChevronLeft className="h-4 w-4" />
+                                                上一步
+                                            </button>
+                                        ) : null}
+                                        {activeAiWizardStep !== "mode" && canGoToNextAiStep ? (
+                                            <button
+                                                type="button"
+                                                data-ai-gen-next="true"
+                                                onClick={goToNextAiStep}
+                                                className="ui-pressable inline-flex min-h-[44px] items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-4 py-2 text-sm font-black text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                style={getPressableStyle("var(--theme-shadow)", 4)}
+                                            >
+                                                下一步
+                                                <ChevronRight className="h-4 w-4" />
+                                            </button>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </motion.section>
 
                     <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants} className="space-y-3">
