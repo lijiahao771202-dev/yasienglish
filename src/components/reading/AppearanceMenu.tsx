@@ -15,6 +15,7 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
         translationFontSize, setTranslationFontSize,
         translationColor, setTranslationColor,
         phraseDisplayMode, setPhraseDisplayMode,
+        paperStyle, setPaperStyle,
     } = useReadingSettings();
 
     type ThemeOption = {
@@ -122,6 +123,18 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
         { id: 'amber', name: 'Amber', swatch: 'bg-amber-500' },
     ];
 
+    const paperStyles: Array<{ id: typeof paperStyle; name: string; description: string }> = [
+        { id: 'brutalist', name: 'Default', description: '粗野主义' },
+        { id: 'glass', name: 'Liquid Glass', description: '液态玻璃' },
+        { id: 'parchment', name: 'Parchment', description: '复古羊皮' },
+        { id: 'grid', name: 'Grid', description: '网格笔记' },
+        { id: 'sakura', name: 'Sakura Pink', description: '浪漫樱粉' },
+        { id: 'matcha', name: 'Matcha Green', description: '护眼茶绿' },
+        { id: 'sky', name: 'Sky Blue', description: '静谧晴空' },
+        { id: 'charcoal', name: 'Charcoal Dark', description: '极客碳黑' },
+        { id: 'borderless', name: 'Borderless', description: '无边框' },
+    ];
+
     const handleIncreaseSize = () => {
         const currentIndex = sizes.indexOf(fontSize);
         if (currentIndex < sizes.length - 1) {
@@ -151,8 +164,9 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
     };
 
     return (
-        <div className="absolute top-full right-0 mt-4 w-[340px] bg-theme-card-bg p-5 rounded-[2rem] flex flex-col gap-5 text-theme-text border-4 border-theme-border shadow-[0_8px_0_var(--theme-shadow)] z-50 animate-in fade-in zoom-in-95">
-            <div className="flex justify-end">
+        <div className="absolute top-full right-0 mt-4 w-[340px] bg-theme-card-bg p-5 rounded-[2rem] flex flex-col gap-4 text-theme-text border-4 border-theme-border shadow-[0_8px_0_var(--theme-shadow)] z-50 animate-in fade-in zoom-in-95">
+            <div className="flex justify-between items-center px-1">
+                <span className="text-[13px] font-black tracking-widest text-theme-text-muted uppercase pl-1">外观设置</span>
                 <button
                     type="button"
                     onClick={onClose}
@@ -162,6 +176,8 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
                     <X className="h-5 w-5" />
                 </button>
             </div>
+
+            <div className="flex-1 max-h-[380px] overflow-y-auto no-scrollbar pr-0.5 space-y-4">
 
             {/* Theme Section */}
             <div className="space-y-3">
@@ -181,6 +197,31 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
                         >
                             <div className={cn("w-2.5 h-2.5 rounded-full border border-black/10", t.dot)} />
                             {t.name}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="h-1 bg-theme-border/10 rounded-full" />
+
+            {/* Paper Style Section */}
+            <div className="space-y-3">
+                <span className="text-xs font-black text-theme-text-muted uppercase tracking-widest pl-1 relative z-10 bg-theme-card-bg pb-1 w-full block">Paper Style</span>
+                <div className="grid grid-cols-3 gap-1.5">
+                    {paperStyles.map((p) => (
+                        <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setPaperStyle(p.id)}
+                            className={cn(
+                                "flex flex-col items-center gap-0.5 rounded-xl border-[3px] py-1.5 px-0.5 text-center transition-all",
+                                paperStyle === p.id
+                                    ? "bg-theme-active-bg border-theme-border text-theme-active-text shadow-[0_3px_0_var(--theme-shadow)]"
+                                    : "bg-theme-base-bg text-theme-text-muted border-transparent hover:border-theme-text-muted/30 hover:text-theme-text"
+                            )}
+                        >
+                            <div className="text-[11px] font-black">{p.name}</div>
+                            <div className="text-[9px] font-semibold opacity-70 leading-none">{p.description}</div>
                         </button>
                     ))}
                 </div>
@@ -352,6 +393,7 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
                         </div>
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );

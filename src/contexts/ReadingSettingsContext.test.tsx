@@ -18,6 +18,7 @@ function Consumer() {
         isFocusMode,
         isBionicMode,
         phraseDisplayMode,
+        paperStyle,
     } = useReadingSettings();
     return (
         <div
@@ -30,6 +31,7 @@ function Consumer() {
             data-focus={String(isFocusMode)}
             data-bionic={String(isBionicMode)}
             data-phrase-display-mode={phraseDisplayMode}
+            data-paper-style={paperStyle}
         />
     );
 }
@@ -51,6 +53,7 @@ describe("ReadingSettingsProvider", () => {
         window.localStorage.setItem("reading_focus_mode", "true");
         window.localStorage.setItem("reading_bionic_mode", "true");
         window.localStorage.setItem("reading_phrase_display_mode", "inline_wavy");
+        window.localStorage.setItem("reading_paper_style", "grid");
 
         const html = renderToString(
             <ReadingSettingsProvider>
@@ -67,6 +70,7 @@ describe("ReadingSettingsProvider", () => {
         expect(html).toContain('data-focus="false"');
         expect(html).toContain('data-bionic="false"');
         expect(html).toContain('data-phrase-display-mode="capsule"');
+        expect(html).toContain('data-paper-style="brutalist"');
     });
 
     it("hydrates client settings from local storage after mount", async () => {
@@ -80,6 +84,7 @@ describe("ReadingSettingsProvider", () => {
         window.localStorage.setItem("reading_focus_mode", "true");
         window.localStorage.setItem("reading_bionic_mode", "true");
         window.localStorage.setItem("reading_phrase_display_mode", "inline_wavy");
+        window.localStorage.setItem("reading_paper_style", "grid");
 
         const container = document.createElement("div");
         document.body.appendChild(container);
@@ -103,6 +108,7 @@ describe("ReadingSettingsProvider", () => {
         expect(node?.getAttribute("data-focus")).toBe("true");
         expect(node?.getAttribute("data-bionic")).toBe("true");
         expect(node?.getAttribute("data-phrase-display-mode")).toBe("inline_wavy");
+        expect(node?.getAttribute("data-paper-style")).toBe("grid");
 
         await act(async () => {
             root.unmount();

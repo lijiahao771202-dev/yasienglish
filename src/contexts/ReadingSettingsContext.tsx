@@ -7,6 +7,7 @@ type FontId = 'serif' | 'sans' | 'mono' | 'merriweather' | 'lora' | 'inter' | 'r
 type FontSize = 'text-base' | 'text-lg' | 'text-xl' | 'text-2xl';
 type TranslationColorId = 'muted' | 'stone' | 'ink' | 'indigo' | 'sky' | 'emerald' | 'rose' | 'amber';
 export type PhraseDisplayMode = 'capsule' | 'inline_wavy';
+export type PaperStyleId = 'brutalist' | 'glass' | 'parchment' | 'grid' | 'sakura' | 'matcha' | 'sky' | 'charcoal' | 'borderless';
 
 interface ReadingSettings {
     theme: ThemeId;
@@ -18,6 +19,7 @@ interface ReadingSettings {
     isFocusMode: boolean;
     isBionicMode: boolean;
     phraseDisplayMode: PhraseDisplayMode;
+    paperStyle: PaperStyleId;
 }
 
 interface ReadingSettingsContextType extends ReadingSettings {
@@ -28,6 +30,7 @@ interface ReadingSettingsContextType extends ReadingSettings {
     setTranslationFontSize: (size: FontSize) => void;
     setTranslationColor: (color: TranslationColorId) => void;
     setPhraseDisplayMode: (mode: PhraseDisplayMode) => void;
+    setPaperStyle: (style: PaperStyleId) => void;
     toggleFocusMode: () => void;
     toggleBionicMode: () => void;
     // Computed classes
@@ -36,6 +39,7 @@ interface ReadingSettingsContextType extends ReadingSettings {
     translationFontClass: string;
     translationFontSizeClass: string;
     translationColorClass: string;
+    paperStyleClass: string;
 }
 
 const ReadingSettingsContext = createContext<ReadingSettingsContextType | undefined>(undefined);
@@ -121,7 +125,9 @@ const DEFAULT_TRANSLATION_FONT: FontId = 'serif';
 const DEFAULT_TRANSLATION_FONT_SIZE: FontSize = 'text-base';
 const DEFAULT_TRANSLATION_COLOR: TranslationColorId = 'muted';
 const DEFAULT_PHRASE_DISPLAY_MODE: PhraseDisplayMode = 'capsule';
+const DEFAULT_PAPER_STYLE: PaperStyleId = 'brutalist';
 const READING_SETTINGS_EVENT = 'reading-settings-change';
+
 const TRANSLATION_COLORS: Record<TranslationColorId, string> = {
     muted: 'text-stone-500/95',
     stone: 'text-stone-600',
@@ -131,6 +137,18 @@ const TRANSLATION_COLORS: Record<TranslationColorId, string> = {
     emerald: 'text-emerald-700',
     rose: 'text-rose-700',
     amber: 'text-amber-700',
+};
+
+const PAPER_STYLE_CLASSES: Record<PaperStyleId, string> = {
+    brutalist: 'reading-paper-brutalist',
+    glass: 'reading-paper-glass',
+    parchment: 'reading-paper-parchment',
+    grid: 'reading-paper-grid',
+    sakura: 'reading-paper-sakura',
+    matcha: 'reading-paper-matcha',
+    sky: 'reading-paper-sky',
+    charcoal: 'reading-paper-charcoal',
+    borderless: 'reading-paper-borderless',
 };
 
 function readStoredTheme(): ThemeId {
@@ -184,6 +202,13 @@ function readStoredPhraseDisplayMode(): PhraseDisplayMode {
         : DEFAULT_PHRASE_DISPLAY_MODE;
 }
 
+function readStoredPaperStyle(): PaperStyleId {
+    const storedStyle = localStorage.getItem('reading_paper_style');
+    return storedStyle === 'brutalist' || storedStyle === 'glass' || storedStyle === 'parchment' || storedStyle === 'grid' || storedStyle === 'sakura' || storedStyle === 'matcha' || storedStyle === 'sky' || storedStyle === 'charcoal' || storedStyle === 'borderless'
+        ? (storedStyle as PaperStyleId)
+        : DEFAULT_PAPER_STYLE;
+}
+
 function subscribeReadingSettings(onStoreChange: () => void) {
     if (typeof window === 'undefined') {
         return () => undefined;
@@ -214,6 +239,7 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
     const isFocusMode = useSyncExternalStore(subscribeReadingSettings, readStoredFocusMode, () => false);
     const isBionicMode = useSyncExternalStore(subscribeReadingSettings, readStoredBionicMode, () => false);
     const phraseDisplayMode = useSyncExternalStore(subscribeReadingSettings, readStoredPhraseDisplayMode, () => DEFAULT_PHRASE_DISPLAY_MODE);
+    const paperStyle = useSyncExternalStore(subscribeReadingSettings, readStoredPaperStyle, () => DEFAULT_PAPER_STYLE);
 
     const updateTheme = (newTheme: ThemeId) => {
         localStorage.setItem('reading_theme', newTheme);
@@ -250,6 +276,11 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
         emitReadingSettingsChange();
     };
 
+    const updatePaperStyle = (newStyle: PaperStyleId) => {
+        localStorage.setItem('reading_paper_style', newStyle);
+        emitReadingSettingsChange();
+    };
+
     const toggleFocusMode = () => {
         const newVal = !isFocusMode;
         localStorage.setItem('reading_focus_mode', String(newVal));
@@ -271,6 +302,7 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
             translationFontSize,
             translationColor,
             phraseDisplayMode,
+            paperStyle,
             setTheme: updateTheme,
             setFont: updateFont,
             setFontSize: updateFontSize,
@@ -278,6 +310,7 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
             setTranslationFontSize: updateTranslationFontSize,
             setTranslationColor: updateTranslationColor,
             setPhraseDisplayMode: updatePhraseDisplayMode,
+            setPaperStyle: updatePaperStyle,
             isFocusMode,
             toggleFocusMode,
             isBionicMode,
@@ -287,6 +320,7 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
             translationFontClass: FONTS[translationFont],
             translationFontSizeClass: translationFontSize,
             translationColorClass: TRANSLATION_COLORS[translationColor],
+            paperStyleClass: PAPER_STYLE_CLASSES[paperStyle],
         }}>
             {children}
         </ReadingSettingsContext.Provider>

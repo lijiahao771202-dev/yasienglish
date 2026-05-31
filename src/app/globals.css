@@ -334,6 +334,337 @@
       transform: none;
     }
   }
+
+  /* Refined Underline Typography */
+  u, ins, .underline {
+    text-underline-offset: 3.5px;
+    text-decoration-skip-ink: auto;
+  }
+
+  .underline.decoration-slate-400\/80 {
+    text-underline-offset: 4.5px !important;
+    text-decoration-style: dashed !important;
+    text-decoration-color: color-mix(in srgb, var(--theme-text) 30%, transparent) !important;
+    text-decoration-thickness: 1.5px !important;
+    text-decoration-skip-ink: auto !important;
+    transition: text-decoration-color 180ms ease, text-underline-offset 180ms ease, text-decoration-style 180ms ease;
+  }
+
+  .underline.decoration-slate-400\/80:hover {
+    text-decoration-color: var(--theme-active-bg) !important;
+    text-decoration-style: solid !important;
+    text-underline-offset: 3.5px !important;
+  }
+
+  /* Paper Sheet Styles */
+  .reading-paper-brutalist {
+    border: 4px solid var(--theme-border);
+    background-color: var(--theme-base-bg);
+    box-shadow: 0 10px 0 var(--theme-shadow);
+  }
+
+  .reading-paper-glass {
+    border: 1px solid color-mix(in srgb, var(--theme-border) 20%, transparent);
+    background-color: color-mix(in srgb, var(--theme-base-bg) 75%, transparent);
+    backdrop-filter: blur(20px) saturate(1.2);
+    -webkit-backdrop-filter: blur(20px) saturate(1.2);
+    box-shadow:
+      0 1px 0 color-mix(in srgb, var(--theme-base-bg) 20%, white) inset,
+      0 18px 44px rgba(0, 0, 0, 0.05),
+      0 6px 16px rgba(0, 0, 0, 0.02);
+  }
+
+  .reading-paper-parchment {
+    --theme-base-bg: #faf4e8;
+    --theme-text: #5b4636;
+    --theme-text-muted: #8c7662;
+    --theme-border: #d8c8a8;
+    --theme-card-bg: #fdfaf2;
+    
+    border: 2px solid var(--theme-border);
+    background-color: var(--theme-base-bg);
+    color: var(--theme-text);
+    box-shadow: 
+      0 4px 20px rgba(0, 0, 0, 0.04),
+      0 2px 6px rgba(0, 0, 0, 0.02);
+  }
+
+  .reading-paper-grid {
+    --theme-base-bg: #ffffff;
+    --theme-text: #17120d;
+    --theme-text-muted: #64748b;
+    --theme-border: #cbd5e1;
+    --theme-card-bg: #ffffff;
+    
+    border: 2px solid var(--theme-border);
+    background-color: var(--theme-base-bg);
+    color: var(--theme-text);
+    background-image: 
+      linear-gradient(to right, color-mix(in srgb, var(--theme-text) 6%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in srgb, var(--theme-text) 6%, transparent) 1px, transparent 1px);
+    background-size: 24px 24px;
+    box-shadow: 
+      0 8px 30px rgba(0, 0, 0, 0.03),
+      0 2px 8px rgba(0, 0, 0, 0.01);
+  }
+
+  .reading-paper-sakura {
+    --theme-base-bg: #fff0f3;
+    --theme-text: #3b0712;
+    --theme-text-muted: #9f1239;
+    --theme-border: #fda4af;
+    --theme-card-bg: #fff1f2;
+    
+    border: 2px solid var(--theme-border);
+    background-color: var(--theme-base-bg);
+    box-shadow:
+      0 8px 30px rgba(253, 164, 175, 0.08),
+      0 2px 8px rgba(253, 164, 175, 0.02);
+    color: var(--theme-text);
+  }
+
+  .reading-paper-matcha {
+    --theme-base-bg: #f0fdf4;
+    --theme-text: #0f2d1e;
+    --theme-text-muted: #065f46;
+    --theme-border: #a7f3d0;
+    --theme-card-bg: #f4fbf7;
+    
+    border: 2px solid var(--theme-border);
+    background-color: var(--theme-base-bg);
+    box-shadow:
+      0 8px 30px rgba(167, 243, 208, 0.08),
+      0 2px 8px rgba(167, 243, 208, 0.02);
+    color: var(--theme-text);
+  }
+
+  .reading-paper-sky {
+    --theme-base-bg: #f0f9ff;
+    --theme-text: #0f223a;
+    --theme-text-muted: #075985;
+    --theme-border: #bae6fd;
+    --theme-card-bg: #f5faff;
+    
+    border: 2px solid var(--theme-border);
+    background-color: var(--theme-base-bg);
+    box-shadow:
+      0 8px 30px rgba(186, 230, 253, 0.08),
+      0 2px 8px rgba(186, 230, 253, 0.02);
+    color: var(--theme-text);
+  }
+
+  .reading-paper-charcoal {
+    --theme-base-bg: #18191c;
+    --theme-text: #f1f5f9;
+    --theme-text-muted: #94a3b8;
+    --theme-border: rgba(255, 255, 255, 0.12);
+    --theme-shadow: rgba(0, 0, 0, 0.3);
+    --theme-card-bg: #202226;
+    --theme-primary-bg: #2d3139;
+    --theme-active-bg: #38bdf8;
+    --theme-active-text: #ffffff;
+    
+    border: 2px solid var(--theme-border);
+    background-color: var(--theme-base-bg);
+    box-shadow:
+      0 16px 40px var(--theme-shadow),
+      0 4px 12px rgba(0, 0, 0, 0.15);
+    color: var(--theme-text);
+  }
+
+  /* Dark mode overrides for paper styles to adapt to dark background themes */
+  [data-bg-theme="dark"] .reading-paper-parchment,
+  [data-bg-theme="navy"] .reading-paper-parchment,
+  [data-bg-theme="coal"] .reading-paper-parchment,
+  [data-bg-theme="dracula"] .reading-paper-parchment,
+  [data-bg-theme="hacker"] .reading-paper-parchment,
+  [data-bg-theme="midnight"] .reading-paper-parchment,
+  [data-bg-theme="crimson"] .reading-paper-parchment,
+  [data-bg-theme="forest"] .reading-paper-parchment,
+  [data-bg-theme="ocean"] .reading-paper-parchment,
+  [data-bg-theme="nord"] .reading-paper-parchment,
+  [data-bg-theme="midnight-neon"] .reading-paper-parchment,
+  [data-bg-theme="noir-rose"] .reading-paper-parchment,
+  [data-bg-theme="cyber-night"] .reading-paper-parchment,
+  [data-bg-theme="obsidian-gold"] .reading-paper-parchment,
+  [data-bg-theme="nordic-aurora"] .reading-paper-parchment,
+  [data-bg-theme="crimson-velvet"] .reading-paper-parchment,
+  [data-bg-theme="velvet-midnight"] .reading-paper-parchment,
+  [data-bg-theme="carbon-fiber"] .reading-paper-parchment,
+  [data-bg-theme="bonsai-shadow"] .reading-paper-parchment,
+  [data-bg-theme="vintage-leather"] .reading-paper-parchment,
+  [data-bg-theme="neon-tokyo"] .reading-paper-parchment,
+  [data-bg-theme="arctic-ocean"] .reading-paper-parchment,
+  [data-bg-theme="polar-aurora"] .reading-paper-parchment,
+  [data-bg-theme="sapphire-lake"] .reading-paper-parchment,
+  [data-bg-theme="emerald-mist"] .reading-paper-parchment,
+  [data-bg-theme="glacier-sapphire"] .reading-paper-parchment,
+  [data-bg-theme="forest-glass"] .reading-paper-parchment {
+    --theme-base-bg: #2d261e;
+    --theme-text: #f4ecd8;
+    --theme-text-muted: #d8c8a8;
+    --theme-border: #8c7662;
+    --theme-card-bg: #3c3329;
+  }
+
+  [data-bg-theme="dark"] .reading-paper-sakura,
+  [data-bg-theme="navy"] .reading-paper-sakura,
+  [data-bg-theme="coal"] .reading-paper-sakura,
+  [data-bg-theme="dracula"] .reading-paper-sakura,
+  [data-bg-theme="hacker"] .reading-paper-sakura,
+  [data-bg-theme="midnight"] .reading-paper-sakura,
+  [data-bg-theme="crimson"] .reading-paper-sakura,
+  [data-bg-theme="forest"] .reading-paper-sakura,
+  [data-bg-theme="ocean"] .reading-paper-sakura,
+  [data-bg-theme="nord"] .reading-paper-sakura,
+  [data-bg-theme="midnight-neon"] .reading-paper-sakura,
+  [data-bg-theme="noir-rose"] .reading-paper-sakura,
+  [data-bg-theme="cyber-night"] .reading-paper-sakura,
+  [data-bg-theme="obsidian-gold"] .reading-paper-sakura,
+  [data-bg-theme="nordic-aurora"] .reading-paper-sakura,
+  [data-bg-theme="crimson-velvet"] .reading-paper-sakura,
+  [data-bg-theme="velvet-midnight"] .reading-paper-sakura,
+  [data-bg-theme="carbon-fiber"] .reading-paper-sakura,
+  [data-bg-theme="bonsai-shadow"] .reading-paper-sakura,
+  [data-bg-theme="vintage-leather"] .reading-paper-sakura,
+  [data-bg-theme="neon-tokyo"] .reading-paper-sakura,
+  [data-bg-theme="arctic-ocean"] .reading-paper-sakura,
+  [data-bg-theme="polar-aurora"] .reading-paper-sakura,
+  [data-bg-theme="sapphire-lake"] .reading-paper-sakura,
+  [data-bg-theme="emerald-mist"] .reading-paper-sakura,
+  [data-bg-theme="glacier-sapphire"] .reading-paper-sakura,
+  [data-bg-theme="forest-glass"] .reading-paper-sakura {
+    --theme-base-bg: #2d1822;
+    --theme-text: #ffd1dc;
+    --theme-text-muted: #f472b6;
+    --theme-border: #9f1239;
+    --theme-card-bg: #3c1e2d;
+  }
+
+  [data-bg-theme="dark"] .reading-paper-matcha,
+  [data-bg-theme="navy"] .reading-paper-matcha,
+  [data-bg-theme="coal"] .reading-paper-matcha,
+  [data-bg-theme="dracula"] .reading-paper-matcha,
+  [data-bg-theme="hacker"] .reading-paper-matcha,
+  [data-bg-theme="midnight"] .reading-paper-matcha,
+  [data-bg-theme="crimson"] .reading-paper-matcha,
+  [data-bg-theme="forest"] .reading-paper-matcha,
+  [data-bg-theme="ocean"] .reading-paper-matcha,
+  [data-bg-theme="nord"] .reading-paper-matcha,
+  [data-bg-theme="midnight-neon"] .reading-paper-matcha,
+  [data-bg-theme="noir-rose"] .reading-paper-matcha,
+  [data-bg-theme="cyber-night"] .reading-paper-matcha,
+  [data-bg-theme="obsidian-gold"] .reading-paper-matcha,
+  [data-bg-theme="nordic-aurora"] .reading-paper-matcha,
+  [data-bg-theme="crimson-velvet"] .reading-paper-matcha,
+  [data-bg-theme="velvet-midnight"] .reading-paper-matcha,
+  [data-bg-theme="carbon-fiber"] .reading-paper-matcha,
+  [data-bg-theme="bonsai-shadow"] .reading-paper-matcha,
+  [data-bg-theme="vintage-leather"] .reading-paper-matcha,
+  [data-bg-theme="neon-tokyo"] .reading-paper-matcha,
+  [data-bg-theme="arctic-ocean"] .reading-paper-matcha,
+  [data-bg-theme="polar-aurora"] .reading-paper-matcha,
+  [data-bg-theme="sapphire-lake"] .reading-paper-matcha,
+  [data-bg-theme="emerald-mist"] .reading-paper-matcha,
+  [data-bg-theme="glacier-sapphire"] .reading-paper-matcha,
+  [data-bg-theme="forest-glass"] .reading-paper-matcha {
+    --theme-base-bg: #14281f;
+    --theme-text: #d1fae5;
+    --theme-text-muted: #34d399;
+    --theme-border: #065f46;
+    --theme-card-bg: #1a3c2e;
+  }
+
+  [data-bg-theme="dark"] .reading-paper-sky,
+  [data-bg-theme="navy"] .reading-paper-sky,
+  [data-bg-theme="coal"] .reading-paper-sky,
+  [data-bg-theme="dracula"] .reading-paper-sky,
+  [data-bg-theme="hacker"] .reading-paper-sky,
+  [data-bg-theme="midnight"] .reading-paper-sky,
+  [data-bg-theme="crimson"] .reading-paper-sky,
+  [data-bg-theme="forest"] .reading-paper-sky,
+  [data-bg-theme="ocean"] .reading-paper-sky,
+  [data-bg-theme="nord"] .reading-paper-sky,
+  [data-bg-theme="midnight-neon"] .reading-paper-sky,
+  [data-bg-theme="noir-rose"] .reading-paper-sky,
+  [data-bg-theme="cyber-night"] .reading-paper-sky,
+  [data-bg-theme="obsidian-gold"] .reading-paper-sky,
+  [data-bg-theme="nordic-aurora"] .reading-paper-sky,
+  [data-bg-theme="crimson-velvet"] .reading-paper-sky,
+  [data-bg-theme="velvet-midnight"] .reading-paper-sky,
+  [data-bg-theme="carbon-fiber"] .reading-paper-sky,
+  [data-bg-theme="bonsai-shadow"] .reading-paper-sky,
+  [data-bg-theme="vintage-leather"] .reading-paper-sky,
+  [data-bg-theme="neon-tokyo"] .reading-paper-sky,
+  [data-bg-theme="arctic-ocean"] .reading-paper-sky,
+  [data-bg-theme="polar-aurora"] .reading-paper-sky,
+  [data-bg-theme="sapphire-lake"] .reading-paper-sky,
+  [data-bg-theme="emerald-mist"] .reading-paper-sky,
+  [data-bg-theme="glacier-sapphire"] .reading-paper-sky,
+  [data-bg-theme="forest-glass"] .reading-paper-sky {
+    --theme-base-bg: #142235;
+    --theme-text: #e0f2fe;
+    --theme-text-muted: #38bdf8;
+    --theme-border: #075985;
+    --theme-card-bg: #1a324e;
+  }
+
+  [data-bg-theme="dark"] .reading-paper-grid,
+  [data-bg-theme="navy"] .reading-paper-grid,
+  [data-bg-theme="coal"] .reading-paper-grid,
+  [data-bg-theme="dracula"] .reading-paper-grid,
+  [data-bg-theme="hacker"] .reading-paper-grid,
+  [data-bg-theme="midnight"] .reading-paper-grid,
+  [data-bg-theme="crimson"] .reading-paper-grid,
+  [data-bg-theme="forest"] .reading-paper-grid,
+  [data-bg-theme="ocean"] .reading-paper-grid,
+  [data-bg-theme="nord"] .reading-paper-grid,
+  [data-bg-theme="midnight-neon"] .reading-paper-grid,
+  [data-bg-theme="noir-rose"] .reading-paper-grid,
+  [data-bg-theme="cyber-night"] .reading-paper-grid,
+  [data-bg-theme="obsidian-gold"] .reading-paper-grid,
+  [data-bg-theme="nordic-aurora"] .reading-paper-grid,
+  [data-bg-theme="crimson-velvet"] .reading-paper-grid,
+  [data-bg-theme="velvet-midnight"] .reading-paper-grid,
+  [data-bg-theme="carbon-fiber"] .reading-paper-grid,
+  [data-bg-theme="bonsai-shadow"] .reading-paper-grid,
+  [data-bg-theme="vintage-leather"] .reading-paper-grid,
+  [data-bg-theme="neon-tokyo"] .reading-paper-grid,
+  [data-bg-theme="arctic-ocean"] .reading-paper-grid,
+  [data-bg-theme="polar-aurora"] .reading-paper-grid,
+  [data-bg-theme="sapphire-lake"] .reading-paper-grid,
+  [data-bg-theme="emerald-mist"] .reading-paper-grid,
+  [data-bg-theme="glacier-sapphire"] .reading-paper-grid,
+  [data-bg-theme="forest-glass"] .reading-paper-grid {
+    --theme-base-bg: #1e2022;
+    --theme-text: #e2e8f0;
+    --theme-text-muted: #94a3b8;
+    --theme-border: rgba(255, 255, 255, 0.12);
+    --theme-card-bg: #26292d;
+  }
+
+  .reading-paper-borderless {
+    border: none !important;
+    box-shadow: none !important;
+    background-color: var(--theme-base-bg);
+  }
+
+  .reading-phrase-hover-card {
+    border-radius: 18px;
+    border: 1.5px solid color-mix(in srgb, var(--theme-border) 24%, transparent);
+    background: color-mix(in srgb, color-mix(in srgb, var(--theme-card-bg) 95%, var(--theme-base-bg)) 96%, transparent);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.25) inset,
+      0 12px 36px rgba(0, 0, 0, 0.12),
+      0 4px 12px rgba(0, 0, 0, 0.04);
+    backdrop-filter: blur(24px) saturate(1.3);
+    -webkit-backdrop-filter: blur(24px) saturate(1.3);
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease,
+      box-shadow 220ms ease,
+      transform 220ms ease;
+  }
 }
 
 /* Phase 24: The Typographic Atelier - High-End Font Library */
@@ -1461,8 +1792,15 @@ body {
  * moves — not on every scroll frame inside the panel, which was the
  * source of severe flicker on inner scroll. */
 .ask-ai-panel {
-  background: var(--theme-base-bg);
+  background: color-mix(in srgb, color-mix(in srgb, var(--theme-card-bg) 95%, var(--theme-base-bg)) 96%, transparent);
   color: var(--theme-text);
+  border: 1.5px solid color-mix(in srgb, var(--theme-border) 24%, transparent);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 20px 48px rgba(0, 0, 0, 0.14),
+    0 4px 14px rgba(0, 0, 0, 0.05);
   transform: translateZ(0);
   will-change: transform;
   contain: layout paint;

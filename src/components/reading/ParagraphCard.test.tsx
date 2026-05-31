@@ -54,6 +54,9 @@ const {
         translationColorClass: "text-stone-500/95",
         isBionicMode: false,
         phraseDisplayMode: "capsule",
+        paperStyle: "brutalist",
+        paperStyleClass: "reading-paper-brutalist",
+        setPaperStyle: vi.fn(),
     },
 }));
 
@@ -526,6 +529,8 @@ afterEach(async () => {
     readingSettingsMock.translationColorClass = "text-stone-500/95";
     readingSettingsMock.isBionicMode = false;
     readingSettingsMock.phraseDisplayMode = "capsule";
+    (readingSettingsMock as any).paperStyle = "brutalist";
+    (readingSettingsMock as any).paperStyleClass = "reading-paper-brutalist";
     vi.useRealTimers();
     vi.unstubAllGlobals();
 });
@@ -631,6 +636,85 @@ describe("ParagraphCard", () => {
         expect(getTranslationAsides(container)[0]?.className).toContain("block");
         expect(getTranslationAsides(container)[0]?.className).toContain("w-full");
         expect(getTranslationAsides(container)[0]?.className).toContain("reading-translation-inset");
+    });
+
+    it("blurs translation lines and phrase translations by default and toggles on click", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            { source: "sunlight and water", translation: "阳光和水分" },
+                        ],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [
+                            { source: "stay strong", translation: "保持强壮" },
+                        ],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const translationLines = Array.from(container.querySelectorAll('[data-translation-line="true"]'));
+        expect(translationLines).toHaveLength(2);
+        
+        // Assert blurred by default
+        expect(translationLines[0]?.className).toContain("blur-[5.5px]");
+        expect(translationLines[1]?.className).toContain("blur-[5.5px]");
+
+        // Assert phrase translations inside are also blurred
+        const phraseTags = Array.from(container.querySelectorAll('[data-translation-phrase-tag="true"]'));
+        expect(phraseTags).toHaveLength(2);
+        
+        const phraseTrans0 = phraseTags[0]?.querySelector('.blur-\\[5\\.5px\\]');
+        const phraseTrans1 = phraseTags[1]?.querySelector('.blur-\\[5\\.5px\\]');
+        expect(phraseTrans0).toBeTruthy();
+        expect(phraseTrans1).toBeTruthy();
+
+        // Click first translation line to toggle reveal
+        await act(async () => {
+            translationLines[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        // First translation line should be clear now, second remains blurred
+        expect(translationLines[0]?.className).toContain("blur-0");
+        expect(translationLines[0]?.className).not.toContain("blur-[5.5px]");
+        expect(translationLines[1]?.className).toContain("blur-[5.5px]");
+
+        // Phrase translation under the first line should be clear
+        expect(phraseTags[0]?.querySelector('.blur-0')).toBeTruthy();
+        expect(phraseTags[0]?.querySelector('.blur-\\[5\\.5px\\]')).toBeFalsy();
+        
+        // Phrase translation under the second line should still be blurred
+        expect(phraseTags[1]?.querySelector('.blur-\\[5\\.5px\\]')).toBeTruthy();
+
+        // Click first line again to blur it again
+        await act(async () => {
+            translationLines[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(translationLines[0]?.className).toContain("blur-[5.5px]");
+        expect(phraseTags[0]?.querySelector('.blur-\\[5\\.5px\\]')).toBeTruthy();
     });
 
     it("applies reading appearance font and size to translation-mode english sentence lines", async () => {

@@ -102,7 +102,7 @@ export function ArticleDisplay({
     const [activeAskAnchorParagraphOrder, setActiveAskAnchorParagraphOrder] = useState<number | null>(null);
     const lastWordTriggerRef = useRef<{ word: string; at: number }>({ word: "", at: 0 });
 
-    const { fontClass, isFocusMode } = useReadingSettings();
+    const { fontClass, isFocusMode, paperStyleClass } = useReadingSettings();
     const [lockedFocusIndex, setLockedFocusIndex] = useState<number | null>(null);
 
     useEffect(() => {
@@ -561,7 +561,7 @@ export function ArticleDisplay({
             variants={containerVariants}
             className="relative mx-auto w-full pb-28"
         >
-            <div className="relative mb-24 rounded-[2rem] border-4 border-theme-border bg-theme-base-bg p-6 shadow-[0_10px_0_var(--theme-shadow)] transition-all duration-500 md:p-10 xl:p-12">
+            <div className={cn("relative mb-24 rounded-[2rem] p-6 transition-all duration-500 md:p-10 xl:p-12", paperStyleClass)}>
                 {/* Isolate overflow-hidden decoration to prevent clipping popups */}
                 <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-[calc(2rem-4px)]">
                     <div className="absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-theme-base-bg/95 to-transparent" />

@@ -22,6 +22,8 @@ const readingSettingsMock = vi.hoisted(() => ({
     setTranslationColor: vi.fn(),
     phraseDisplayMode: "capsule",
     setPhraseDisplayMode: vi.fn(),
+    paperStyle: "brutalist",
+    setPaperStyle: vi.fn(),
 }));
 
 vi.mock("@/contexts/ReadingSettingsContext", () => ({

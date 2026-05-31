@@ -373,24 +373,46 @@ function buildFallbackSentenceTranslations(
     }, []);
 }
 
-function renderSentenceTranslationLine(translation: string, textClassName?: string) {
+function SentenceTranslationLine({
+    translation,
+    textClassName,
+}: {
+    translation: string;
+    textClassName?: string;
+}) {
+    const [isRevealed, setIsRevealed] = React.useState(false);
+
     return (
         <div
             data-translation-line="true"
-            className={cn("mt-2 block w-full leading-[1.9]", textClassName)}
+            onClick={() => setIsRevealed(!isRevealed)}
+            className={cn(
+                "mt-2 block w-full leading-[1.9] cursor-pointer transition-all duration-300 select-none",
+                isRevealed ? "blur-0" : "blur-[5.5px] opacity-40 hover:opacity-60",
+                textClassName
+            )}
+            title="点击显示 / 隐藏翻译"
         >
             {translation}
         </div>
     );
 }
 
-function renderTranslationAside(
-    translation: string,
-    phraseItems: Array<{ source: string; translation: string }> = [],
-    onPhraseClick?: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>) => void,
-    inlinePhraseNode?: React.ReactNode,
-    textClassName?: string,
-) {
+function TranslationAside({
+    translation,
+    phraseItems = [],
+    onPhraseClick,
+    inlinePhraseNode,
+    textClassName,
+}: {
+    translation: string;
+    phraseItems?: Array<{ source: string; translation: string }>;
+    onPhraseClick?: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>) => void;
+    inlinePhraseNode?: React.ReactNode;
+    textClassName?: string;
+}) {
+    const [isRevealed, setIsRevealed] = React.useState(false);
+
     return (
         <div
             data-translation-aside="true"
@@ -398,7 +420,13 @@ function renderTranslationAside(
         >
             <div
                 data-translation-line="true"
-                className={cn("block w-full leading-[1.8] opacity-90", textClassName)}
+                onClick={() => setIsRevealed(!isRevealed)}
+                className={cn(
+                    "block w-full leading-[1.8] cursor-pointer transition-all duration-300 select-none",
+                    isRevealed ? "opacity-90 blur-0" : "blur-[5.5px] opacity-40 hover:opacity-60",
+                    textClassName
+                )}
+                title="点击显示 / 隐藏翻译"
             >
                 {translation}
             </div>
@@ -406,13 +434,14 @@ function renderTranslationAside(
                 <div data-translation-phrases="true" className="mt-2.5">
                     {inlinePhraseNode}
                 </div>
-            ) : renderPhraseTranslationList(phraseItems, onPhraseClick)}
+            ) : renderPhraseTranslationList(phraseItems, isRevealed, onPhraseClick)}
         </div>
     );
 }
 
 function renderPhraseTranslationList(
     items: Array<{ source: string; translation: string }>,
+    isParentRevealed: boolean,
     onPhraseClick?: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>) => void,
 ) {
     if (items.length === 0) return null;
@@ -444,7 +473,10 @@ function renderPhraseTranslationList(
                 >
                     <span className="min-w-0 font-semibold tracking-[0.01em] text-stone-700">{item.source}</span>
                     <span className="text-stone-300">·</span>
-                    <span className="min-w-0 text-stone-500">{item.translation}</span>
+                    <span className={cn(
+                        "min-w-0 transition-all duration-300 select-none",
+                        isParentRevealed ? "text-stone-500 blur-0" : "text-stone-500/70 blur-[5.5px] opacity-40 hover:opacity-75"
+                    )}>{item.translation}</span>
                     {onPhraseClick ? (
                         <BookPlus className="h-3.5 w-3.5 shrink-0 text-stone-300 opacity-0 transition group-hover/phrase:opacity-100 group-hover/phrase:text-stone-500 group-focus-visible/phrase:opacity-100 group-focus-visible/phrase:text-stone-500" />
                     ) : null}
@@ -563,36 +595,36 @@ function renderInlinePhraseText(
                 <div
                     data-translation-inline-hover-card={isOpen ? "open" : "closed"}
                     className={cn(
-                        "reading-apple-inset absolute left-0 top-full z-30 mt-2 min-w-[15rem] max-w-[min(22rem,calc(100vw-2rem))] p-2.5 text-left transition",
+                        "reading-phrase-hover-card absolute left-0 top-full z-30 mt-2 min-w-[16rem] max-w-[min(23rem,calc(100vw-2rem))] p-3.5 text-left transition",
                         isOpen ? "pointer-events-auto opacity-100 translate-y-0" : "pointer-events-none opacity-0 -translate-y-1",
                     )}
                     onMouseEnter={() => options.onHoverPhrase(hoverKey)}
                     onMouseLeave={() => options.onLeavePhrase(hoverKey)}
                 >
-                    <div className="text-[11px] font-semibold leading-5 tracking-[0.01em] text-stone-800 break-words">{range.item.source}</div>
-                    <div className="mt-0.5 text-[10px] leading-4 text-stone-500 break-words">{range.item.translation}</div>
-                    <div className="mt-2.5 grid grid-cols-2 gap-1.5">
+                    <div className="text-[13.5px] font-bold leading-5 tracking-[0.01em] text-theme-text break-words">{range.item.source}</div>
+                    <div className="mt-1.5 text-[12.5px] leading-relaxed text-theme-text-muted break-words">{range.item.translation}</div>
+                    <div className="mt-3.5 grid grid-cols-2 gap-2">
                         <button
                             type="button"
-                            className="reading-apple-capsule inline-flex h-7.5 items-center justify-center gap-1 px-2 text-[10px] font-semibold text-stone-700 transition"
+                            className="reading-apple-capsule inline-flex h-8 items-center justify-center gap-1 px-2.5 text-[11.5px] font-semibold text-theme-text transition"
                             onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
                                 options.onInspectPhrase(range.item, event, sentence);
                             }}
                         >
-                            <Globe className="h-3 w-3 text-stone-400" />
+                            <Globe className="h-3.5 w-3.5 text-theme-text-muted" />
                             查看短语
                         </button>
                         <button
                             type="button"
                             className={cn(
-                                "reading-apple-capsule inline-flex h-7.5 items-center justify-center gap-1 px-2 text-[10px] font-semibold transition",
+                                "reading-apple-capsule inline-flex h-8 items-center justify-center gap-1 px-2.5 text-[11.5px] font-semibold transition",
                                 saveState === "saved" || saveState === "exists"
                                     ? "border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_10px_22px_rgba(16,185,129,0.10)]"
                                     : saveState === "error"
                                         ? "border-rose-200 bg-rose-50 text-rose-600 shadow-[0_10px_22px_rgba(244,63,94,0.08)]"
-                                        : "text-stone-600",
+                                        : "text-theme-text",
                             )}
                             disabled={saveState === "saving"}
                             onClick={(event) => {
@@ -601,11 +633,11 @@ function renderInlinePhraseText(
                                 void options.onSavePhrase(range.item.source, range.item.translation, sentence);
                             }}
                         >
-                            {saveState === "saving" ? <Loader2 className="h-3 w-3 animate-spin" /> : <BookPlus className="h-3 w-3" />}
+                            {saveState === "saving" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BookPlus className="h-3.5 w-3.5" />}
                             {saveState === "saved" ? "已加入" : saveState === "exists" ? "已存在" : saveState === "error" ? "重试保存" : "加入生词本"}
                         </button>
                     </div>
-                    <div className="mt-1.5 text-[8.5px] leading-4 text-stone-400 opacity-75">单词点击仍走原文查询</div>
+                    <div className="mt-2.5 text-[10px] leading-4 text-theme-text-muted opacity-80">单词点击仍走原文查询</div>
                 </div>
             </span>,
         );
@@ -2549,17 +2581,18 @@ export function ParagraphCard({
                                             ),
                                         )}
                                     </div>
-                                    {showTranslation && !shouldHidePlainTranslation && unitTranslation
-                                        ? renderTranslationAside(
-                                            unitTranslation,
-                                            phraseDisplayMode === "capsule" ? phraseTranslations : [],
-                                            phraseDisplayMode === "capsule"
-                                                ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
-                                                : undefined,
-                                            undefined,
-                                            translationTextClassName,
-                                        )
-                                        : null}
+                                    {showTranslation && !shouldHidePlainTranslation && unitTranslation ? (
+                                        <TranslationAside
+                                            translation={unitTranslation}
+                                            phraseItems={phraseDisplayMode === "capsule" ? phraseTranslations : []}
+                                            onPhraseClick={
+                                                phraseDisplayMode === "capsule"
+                                                    ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
+                                                    : undefined
+                                            }
+                                            textClassName={translationTextClassName}
+                                        />
+                                    ) : null}
                                     </div>
                                     <div
                                         data-sentence-action-rail="true"
@@ -2667,12 +2700,12 @@ export function ParagraphCard({
                                         </button>
                                     </div>
                                 ) : null}
-                                {!entry.error && entry.hasUsableAnalysis && resolvedAnalysisTranslation && entry.expanded
-                                    ? renderSentenceTranslationLine(
-                                        resolvedAnalysisTranslation,
-                                        translationTextClassName,
-                                    )
-                                    : null}
+                                {!entry.error && entry.hasUsableAnalysis && resolvedAnalysisTranslation && entry.expanded ? (
+                                    <SentenceTranslationLine
+                                        translation={resolvedAnalysisTranslation}
+                                        textClassName={translationTextClassName}
+                                    />
+                                ) : null}
                             </div>
                         </li>
                     );
@@ -4706,7 +4739,11 @@ export function ParagraphCard({
                             data-paragraph-translation-block="true"
                             className="relative group/trans pt-1"
                         >
-                            {renderTranslationAside(translation, [], undefined, undefined, translationTextClassName)}
+                            <TranslationAside
+                                translation={translation}
+                                phraseItems={[]}
+                                textClassName={translationTextClassName}
+                            />
                             <button
                                 onClick={() => handleTranslate(true)}
                                 className="absolute right-0 top-0 rounded-full bg-white/85 p-1.5 text-stone-400 opacity-0 shadow-sm transition-all hover:bg-white hover:text-stone-700 group-hover/trans:opacity-100"
@@ -5412,7 +5449,7 @@ export function SelectionActionPopup({
         Math.max(viewportPadding, askDockWindow.top),
         Math.max(viewportPadding, window.innerHeight - clampedAskDockHeight - viewportPadding),
     );
-    const popupWidth = isAskDockMode ? clampedAskDockWidth : 330;
+    const popupWidth = isAskDockMode ? clampedAskDockWidth : 290;
     const popupHeight = Math.min(measuredHeight || 240, window.innerHeight - viewportPadding * 2);
     const preferredTop = selectionRect.bottom + 10 + dragOffset.y;
     const flippedTop = selectionRect.top - popupHeight - 10 + dragOffset.y;
@@ -5549,15 +5586,13 @@ export function SelectionActionPopup({
     };
 
     const popupContainerClassName = cn(
-        // Removed backdrop-blur entirely — it caused per-frame recomposition
-        // while the inner content scrolled, producing the flicker. The panel
-        // now uses a solid theme background, paired with GPU promotion in
-        // `.ask-ai-panel` for smooth scrolling.
-        "ask-ai-panel relative overflow-hidden rounded-[1.25rem] border border-theme-border/30 shadow-2xl",
+        // The panel uses premium border, shadows and glassmorphism styling
+        // defined inside `.ask-ai-panel` class in globals.css.
+        "ask-ai-panel relative overflow-hidden rounded-[1.25rem]",
         isAskDockMode
             ? "flex h-full flex-col"
             : "max-h-[min(560px,calc(100vh-2rem))] overflow-y-auto",
-        isAskReplayMode ? "p-2" : "p-3.5",
+        isAskReplayMode ? "p-2" : "p-3",
     );
     const askBodyClassName = cn(
         "overflow-y-auto px-1 -mx-1 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-theme-border/50 [&::-webkit-scrollbar-track]:bg-transparent",
@@ -5631,7 +5666,7 @@ export function SelectionActionPopup({
                 <div
                     data-selection-ask-drag-handle={isAskDockMode ? "true" : undefined}
                     className={cn(
-                        "relative mb-3 flex items-start justify-between gap-3 border-b border-theme-border/20 pb-3",
+                        "relative mb-2 flex items-center justify-between gap-3 select-none",
                         isAskDockMode || isAskReplayMode ? "cursor-grab select-none active:cursor-grabbing" : "cursor-grab active:cursor-grabbing",
                     )}
                     onPointerDown={isAskDockMode || isAskReplayMode ? handleAskDockMoveStart : handleDragStart}
@@ -5639,102 +5674,119 @@ export function SelectionActionPopup({
                     onPointerUp={isAskDockMode || isAskReplayMode ? handleAskDockInteractionEnd : handleDragEnd}
                     onPointerCancel={isAskDockMode || isAskReplayMode ? handleAskDockInteractionEnd : handleDragEnd}
                 >
-                    <div className="min-w-0 flex items-center gap-1">
+                    <div className="min-w-0 flex items-center gap-1.5">
                         {popupMode === "ask" ? (
                             <motion.button
                                 type="button"
                                 onClick={onReturnToSelection}
                                 whileTap={{ scale: 0.95 }}
-                                className="shrink-0 rounded-full p-1.5 text-theme-text-muted hover:text-theme-text hover:bg-theme-active-hover transition-colors -ml-1.5"
+                                className="shrink-0 rounded-full p-1 text-theme-text-muted hover:text-theme-text hover:bg-theme-border/10 transition-colors -ml-1"
                             >
-                                <ChevronLeft className="h-4 w-4" />
+                                <ChevronLeft className="h-3.5 w-3.5" />
                             </motion.button>
                         ) : null}
-                        <h3 className="line-clamp-2 text-[15px] font-bold leading-tight text-theme-text tracking-tight">
-                            {selectedText || (isAskDockMode ? "Ask AI" : "选中文本")}
-                        </h3>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="shrink-0 text-[10px] font-extrabold uppercase tracking-widest text-theme-text-muted/65 leading-none">
+                                {isAskDockMode ? "AI助手" : "已选择"}
+                            </span>
+                            <span className="truncate text-[11px] font-bold text-theme-text-muted/80 tracking-tight italic max-w-[150px] leading-none">
+                                {selectedText ? `“${selectedText}”` : ""}
+                            </span>
+                        </div>
                     </div>
                     <motion.button
                         type="button"
                         onClick={onClose}
                         whileTap={{ scale: 0.95 }}
-                        className="shrink-0 rounded-full border border-theme-border/50 bg-theme-surface p-1.5 text-theme-text shadow-sm transition-colors hover:bg-theme-active-hover"
+                        className="shrink-0 rounded-full p-1 text-theme-text-muted hover:text-theme-text hover:bg-theme-border/10 transition-all"
                     >
-                        <X className="h-4 w-4" />
+                        <X className="h-3.5 w-3.5" />
                     </motion.button>
                 </div>
 
                 {(!isAskReplayMode && !isAskComposerOpen) ? (
                     <>
                     {!(isEditingNote || isNoteComposerOpen) && (
-                        <>
-                        <div className="grid grid-cols-2 gap-2">
-                        <motion.button
-                            type="button"
-                            onClick={onCreateHighlight}
-                            disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            whileTap={{ scale: 0.98 }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-emerald-500/20 bg-emerald-500/10 px-2 py-2 text-[12px] font-black text-emerald-600 shadow-sm transition-all hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            <Highlighter className="h-3.5 w-3.5" />
-                            高亮
-                        </motion.button>
-                        <motion.button
-                            type="button"
-                            onClick={onCreateUnderline}
-                            disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            whileTap={{ scale: 0.98 }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-fuchsia-500/20 bg-fuchsia-500/10 px-2 py-2 text-[12px] font-black text-fuchsia-600 shadow-sm transition-all hover:bg-fuchsia-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            <Underline className="h-3.5 w-3.5" />
-                            下划线
-                        </motion.button>
-                        <motion.button
-                            type="button"
-                            onClick={onOpenNoteComposer}
-                            disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
-                            whileTap={{ scale: 0.98 }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-blue-500/20 bg-blue-500/10 px-2 py-2 text-[12px] font-black text-blue-600 shadow-sm transition-all hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            <PenTool className="h-3.5 w-3.5" />
-                            {isEditingNote ? "编辑标注" : "标注"}
-                        </motion.button>
-                        <motion.button
-                            type="button"
-                            onClick={onAnalyze}
-                            disabled={isAnalyzingPhrase}
-                            whileTap={{ scale: 0.98 }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-[14px] border border-indigo-500/20 bg-indigo-500/10 px-2 py-2 text-[12px] font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                            {isAnalyzingPhrase ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                            解读
-                        </motion.button>
-                    </div>
-                    <div className="mt-2 text-center">
-                        <motion.button
-                            type="button"
-                            onClick={onLookupWord}
-                            whileTap={{ scale: 0.98 }}
-                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-sky-500/20 bg-sky-500/10 px-2 py-2.5 text-[12px] font-black text-sky-600 shadow-sm transition-all hover:bg-sky-500/15"
-                        >
-                            <BookOpen className="h-3.5 w-3.5" />
-                            查询选中词境 / 单词
-                        </motion.button>
-                    </div>
-                    </>
+                        <div className="space-y-1.5">
+                            <div className="grid grid-cols-4 gap-1.5">
+                                <motion.button
+                                    type="button"
+                                    onClick={onCreateHighlight}
+                                    disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                                    whileTap={{ scale: 0.96 }}
+                                    className="flex flex-col items-center justify-center gap-1 rounded-xl border border-emerald-500/15 bg-gradient-to-b from-emerald-500/3 to-emerald-500/10 py-1.5 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 hover:from-emerald-500/8 hover:to-emerald-500/16 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
+                                >
+                                    <Highlighter className="h-3.5 w-3.5" />
+                                    <span className="text-[10px]">高亮</span>
+                                </motion.button>
+                                <motion.button
+                                    type="button"
+                                    onClick={onCreateUnderline}
+                                    disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                                    whileTap={{ scale: 0.96 }}
+                                    className="flex flex-col items-center justify-center gap-1 rounded-xl border border-fuchsia-500/15 bg-gradient-to-b from-fuchsia-500/3 to-fuchsia-500/10 py-1.5 text-[11px] font-bold text-fuchsia-600 dark:text-fuchsia-400 hover:from-fuchsia-500/8 hover:to-fuchsia-500/16 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
+                                >
+                                    <Underline className="h-3.5 w-3.5" />
+                                    <span className="text-[10px]">下划线</span>
+                                </motion.button>
+                                <motion.button
+                                    type="button"
+                                    onClick={onOpenNoteComposer}
+                                    disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
+                                    whileTap={{ scale: 0.96 }}
+                                    className="flex flex-col items-center justify-center gap-1 rounded-xl border border-blue-500/15 bg-gradient-to-b from-blue-500/3 to-blue-500/10 py-1.5 text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:from-blue-500/8 hover:to-blue-500/16 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
+                                >
+                                    <PenTool className="h-3.5 w-3.5" />
+                                    <span className="text-[10px]">{isEditingNote ? "编辑" : "标注"}</span>
+                                </motion.button>
+                                <motion.button
+                                    type="button"
+                                    onClick={onAnalyze}
+                                    disabled={isAnalyzingPhrase}
+                                    whileTap={{ scale: 0.96 }}
+                                    className="flex flex-col items-center justify-center gap-1 rounded-xl border border-indigo-500/15 bg-gradient-to-b from-indigo-500/3 to-indigo-500/10 py-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:from-indigo-500/8 hover:to-indigo-500/16 disabled:cursor-not-allowed disabled:opacity-40 transition-all"
+                                >
+                                    {isAnalyzingPhrase ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                    <span className="text-[10px]">解读</span>
+                                </motion.button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-1.5">
+                                <motion.button
+                                    type="button"
+                                    onClick={onLookupWord}
+                                    whileTap={{ scale: 0.97 }}
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-sky-500/15 bg-gradient-to-b from-sky-500/3 to-sky-500/10 py-1.5 text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:from-sky-500/8 hover:to-sky-500/16 transition-all"
+                                >
+                                    <BookOpen className="h-3.5 w-3.5" />
+                                    查询词境/单词
+                                </motion.button>
+                                <motion.button
+                                    type="button"
+                                    onClick={() => {
+                                        setExpandedQaIds([]);
+                                        onOpenAskComposer();
+                                    }}
+                                    whileTap={{ scale: 0.97 }}
+                                    className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-500/20 bg-gradient-to-b from-indigo-500/5 via-purple-500/5 to-pink-500/5 py-1.5 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:from-indigo-500/12 hover:via-purple-500/12 hover:to-pink-500/12 transition-all"
+                                >
+                                    <MessageCircleQuestion className="h-3.5 w-3.5 animate-pulse-slow" />
+                                    向AI提问
+                                </motion.button>
+                            </div>
+                        </div>
                     )}
                     </>
                 ) : null}
 
                 {(!isAskReplayMode && !isAskComposerOpen) && deleteActionCount > 0 ? (
-                    <div className={cn("mt-2.5 grid gap-2", deleteActionCount === 1 ? "grid-cols-1" : "grid-cols-2")}>
+                    <div className={cn("mt-2 grid gap-1.5", deleteActionCount === 1 ? "grid-cols-1" : "grid-cols-2")}>
                         {canDeleteHighlight ? (
                             <motion.button
                                 type="button"
                                 onClick={onDeleteHighlight}
                                 disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
                                 whileTap={{ scale: 0.98 }}
-                                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-rose-500/20 bg-rose-500/10 px-2 py-2 text-xs font-black text-rose-600 transition-colors hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-rose-500/20 bg-gradient-to-br from-rose-500/5 to-rose-500/15 px-2 py-2 text-xs font-bold text-rose-600 transition-all hover:from-rose-500/12 hover:to-rose-500/22 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 删除高亮
                             </motion.button>
@@ -5745,30 +5797,13 @@ export function SelectionActionPopup({
                                 onClick={onDeleteUnderline}
                                 disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
                                 whileTap={{ scale: 0.98 }}
-                                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-amber-500/20 bg-amber-500/10 px-2 py-2 text-xs font-black text-amber-600 transition-colors hover:bg-amber-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-amber-500/15 px-2 py-2 text-xs font-bold text-amber-600 transition-all hover:from-amber-500/12 hover:to-amber-500/22 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 删除下划线
                             </motion.button>
                         ) : null}
                     </div>
                 ) : null}
-
-                {isAskReplayMode ? null : (!isAskComposerOpen && (
-                    <div className="mt-2.5">
-                        <motion.button
-                            type="button"
-                            onClick={() => {
-                                setExpandedQaIds([]);
-                                onOpenAskComposer();
-                            }}
-                            whileTap={{ scale: 0.98 }}
-                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-[14px] border border-indigo-500/30 bg-indigo-500/10 px-2 py-2 text-[12px] font-black text-indigo-600 shadow-sm transition-all hover:bg-indigo-500/15"
-                        >
-                            <MessageCircleQuestion className="h-3.5 w-3.5" />
-                            向AI提问
-                        </motion.button>
-                    </div>
-                ))}
 
                 {isAskReplayMode || isAskComposerOpen ? (
                     <div 
@@ -5952,7 +5987,7 @@ export function SelectionActionPopup({
                             onClick={onEditNote}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
                             whileTap={{ scale: 0.98 }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-blue-500/20 bg-blue-500/10 px-2 py-2 text-xs font-black text-blue-600 transition-colors hover:bg-blue-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-blue-500/20 bg-gradient-to-br from-blue-500/5 to-blue-500/15 px-2 py-2 text-xs font-bold text-blue-600 transition-all hover:from-blue-500/12 hover:to-blue-500/22 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             编辑标注
                         </motion.button>
@@ -5961,7 +5996,7 @@ export function SelectionActionPopup({
                             onClick={onDeleteNote}
                             disabled={!canCreateReadingNote || isSavingReadingNote || noteLayerHidden}
                             whileTap={{ scale: 0.98 }}
-                            className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-rose-500/20 bg-rose-500/10 px-2 py-2 text-xs font-black text-rose-600 transition-colors hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex items-center justify-center gap-1.5 rounded-[12px] border border-rose-500/20 bg-gradient-to-br from-rose-500/5 to-rose-500/15 px-2 py-2 text-xs font-bold text-rose-600 transition-all hover:from-rose-500/12 hover:to-rose-500/22 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                             删除标注
                         </motion.button>
@@ -5969,19 +6004,19 @@ export function SelectionActionPopup({
                 ) : null}
 
                 {(!isAskReplayMode && !isAskComposerOpen) && noteLayerHidden ? (
-                    <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-[11px] font-medium text-blue-700">
+                    <div className="mt-2 rounded-lg border border-blue-200/50 bg-blue-500/10 px-2.5 py-2 text-[11px] font-semibold text-blue-600 dark:text-blue-400">
                         语法分析已开启，笔记高亮层暂时隐藏。关闭语法分析后会恢复显示。
                     </div>
                 ) : null}
 
                 {(!isAskReplayMode && !isAskComposerOpen) && (!noteLayerHidden && isEditingNote) ? (
-                    <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-2 text-[11px] font-semibold text-cyan-700">
+                    <div className="mt-2 rounded-lg border border-cyan-200/50 bg-cyan-500/10 px-2.5 py-2 text-[11px] font-semibold text-cyan-600 dark:text-cyan-400">
                         已选中已有标注，直接修改内容后保存即可更新。
                     </div>
                 ) : null}
 
                 {(!isAskReplayMode && !isAskComposerOpen) && isNoteComposerOpen && (
-                    <div className="mt-3 space-y-2.5 rounded-[14px] border border-theme-border/30 bg-theme-surface p-3 shadow-sm">
+                    <div className="mt-3 space-y-2.5 rounded-[14px] border border-theme-border/20 bg-theme-surface p-3 shadow-sm">
                         <textarea
                             value={noteDraft}
                             onChange={(event) => onNoteDraftChange(event.target.value)}
@@ -5993,7 +6028,7 @@ export function SelectionActionPopup({
                                 type="button"
                                 onClick={onCancelNoteComposer}
                                 whileTap={{ scale: 0.95 }}
-                                className="rounded-[10px] border border-theme-border/50 bg-theme-base-bg px-3 py-1.5 text-xs font-black text-theme-text transition-colors hover:bg-theme-surface"
+                                className="rounded-[10px] border border-theme-border/15 bg-theme-card-bg/40 px-3 py-1.5 text-xs font-bold text-theme-text-muted hover:text-theme-text hover:bg-theme-border/20 transition-all"
                             >
                                 取消
                             </motion.button>
@@ -6002,7 +6037,7 @@ export function SelectionActionPopup({
                                 onClick={onSaveNote}
                                 disabled={!noteDraft.trim() || isSavingReadingNote}
                                 whileTap={{ scale: 0.95 }}
-                                className="rounded-[10px] bg-blue-500/10 px-3 py-1.5 text-xs font-black text-blue-600 transition-colors hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="rounded-[10px] border border-blue-500/25 bg-gradient-to-br from-blue-500/5 to-blue-500/15 px-3 py-1.5 text-xs font-bold text-blue-600 transition-all hover:from-blue-500/12 hover:to-blue-500/22 disabled:cursor-not-allowed disabled:opacity-50"
                             >
                                 {isSavingReadingNote ? "保存中..." : (isEditingNote ? "更新标注" : "保存标注")}
                             </motion.button>
@@ -6011,37 +6046,37 @@ export function SelectionActionPopup({
                 )}
 
                 {(!isAskReplayMode && !isAskComposerOpen) && phraseAnalysis && (
-                    <div className="mt-3 space-y-3 rounded-xl border border-theme-border/20 bg-theme-surface p-3">
+                    <div className="mt-3 space-y-3 rounded-xl border border-theme-border/25 bg-theme-surface p-3">
                         {phraseAnalysis.translation ? (
                             <div className="space-y-1">
-                                <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-amber-600/80">
-                                    <Globe className="h-3 w-3" />
+                                <div className="flex items-center gap-1.5 text-[9.5px] font-extrabold uppercase tracking-widest text-amber-600 dark:text-amber-400/80">
+                                    <Globe className="h-3.5 w-3.5" />
                                     <span>中文翻译</span>
                                 </div>
-                                <p className="text-sm font-semibold text-stone-800">{phraseAnalysis.translation}</p>
+                                <p className="text-[13.5px] font-bold text-theme-text leading-relaxed">{phraseAnalysis.translation}</p>
                             </div>
                         ) : null}
 
                         {phraseAnalysis.grammar_point ? (
-                            <div className="space-y-1 border-t border-stone-100 pt-2">
-                                <div className="text-[10px] font-bold uppercase tracking-widest text-blue-500/80">语法解析</div>
-                                <p className="text-xs leading-relaxed text-stone-600">{phraseAnalysis.grammar_point}</p>
+                            <div className="space-y-1 border-t border-theme-border/10 pt-2.5">
+                                <div className="text-[9.5px] font-extrabold uppercase tracking-widest text-blue-500 dark:text-blue-400/80">语法解析</div>
+                                <p className="text-xs leading-relaxed text-theme-text-muted">{phraseAnalysis.grammar_point}</p>
                             </div>
                         ) : null}
 
                         {phraseAnalysis.nuance ? (
-                            <div className="rounded-lg border border-amber-100 bg-amber-50/70 px-2.5 py-2 text-xs italic text-amber-800">
+                            <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-2.5 py-2 text-xs italic text-amber-700 dark:text-amber-300">
                                 {phraseAnalysis.nuance}
                             </div>
                         ) : null}
 
                         {Array.isArray(phraseAnalysis.vocabulary) && phraseAnalysis.vocabulary.length > 0 ? (
-                            <div className="space-y-1 border-t border-stone-100 pt-2">
-                                <div className="text-[10px] font-bold uppercase tracking-widest text-stone-400">核心词汇</div>
-                                <div className="space-y-1">
+                            <div className="space-y-2 border-t border-theme-border/10 pt-2.5">
+                                <div className="text-[9.5px] font-extrabold uppercase tracking-widest text-theme-text-muted/65">核心词汇</div>
+                                <div className="space-y-1.5">
                                     {phraseAnalysis.vocabulary.map((item, idx) => (
-                                        <div key={`${item.word || "word"}-${idx}`} className="text-xs text-stone-600">
-                                            <span className="font-semibold text-stone-800">{item.word || "词汇"}:</span> {item.definition || ""}
+                                        <div key={`${item.word || "word"}-${idx}`} className="text-xs text-theme-text-muted">
+                                            <span className="font-bold text-theme-text">{item.word || "词汇"}:</span> {item.definition || ""}
                                         </div>
                                     ))}
                                 </div>
