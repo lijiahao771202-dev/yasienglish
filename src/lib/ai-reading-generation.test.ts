@@ -6,6 +6,7 @@ import {
     getStrictRagLimit,
     getLongformLengthTierMeta,
     getLongformStyleMeta,
+    isAIGenerationArticleCompleted,
     isQuizEligibleArticle,
     normalizeAIGenerationMode,
     normalizeAIGenerationRagMode,
@@ -13,6 +14,8 @@ import {
     normalizeLongformLengthTierId,
     normalizeLongformTrack,
     normalizeLongformStyleId,
+    resolveAIGenerationArticleCompletedAt,
+    shouldAutoCompleteNoQuizAIGenerationArticle,
 } from "./ai-reading-generation";
 
 describe("ai reading generation helpers", () => {
@@ -163,6 +166,107 @@ describe("ai reading generation helpers", () => {
         expect(isQuizEligibleArticle({
             difficulty: "cet6",
             quizEligible: true,
+        })).toBe(false);
+    });
+
+    it("treats quiz submissions and reading completion timestamps as valid AI completion signals", () => {
+        expect(isAIGenerationArticleCompleted({
+            quizCompleted: true,
+        })).toBe(true);
+
+        expect(isAIGenerationArticleCompleted({
+            quizCompleted: false,
+            readingCompletedAt: 1710000000000,
+        })).toBe(true);
+
+        expect(isAIGenerationArticleCompleted({
+            quizCompleted: false,
+        })).toBe(false);
+
+        expect(resolveAIGenerationArticleCompletedAt({
+            quizCompleted: false,
+            readingCompletedAt: 1710000000000,
+        })).toBe(1710000000000);
+
+        expect(resolveAIGenerationArticleCompletedAt({
+            quizCompleted: true,
+        }, 1711000000000)).toBe(1711000000000);
+    });
+
+    it("requires both near-bottom scroll and minimum reading time before auto-completing no-quiz AI articles", () => {
+        const article = {
+            isAIGenerated: true,
+            difficulty: "ielts" as const,
+            quizEligible: false,
+        };
+
+        expect(shouldAutoCompleteNoQuizAIGenerationArticle({
+            article,
+            scrollProgress: 0.95,
+            articleStartedAt: 1_000,
+            now: 25_000,
+            scrollThreshold: 0.92,
+            minReadingMs: 30_000,
+        })).toBe(false);
+
+        expect(shouldAutoCompleteNoQuizAIGenerationArticle({
+            article,
+            scrollProgress: 0.78,
+            articleStartedAt: 1_000,
+            now: 35_000,
+            scrollThreshold: 0.92,
+            minReadingMs: 30_000,
+        })).toBe(false);
+
+        expect(shouldAutoCompleteNoQuizAIGenerationArticle({
+            article,
+            scrollProgress: 0.95,
+            articleStartedAt: 1_000,
+            now: 35_000,
+            scrollThreshold: 0.92,
+            minReadingMs: 30_000,
+        })).toBe(true);
+    });
+
+    it("does not auto-complete quiz articles, completed articles, or articles without a reading start time", () => {
+        expect(shouldAutoCompleteNoQuizAIGenerationArticle({
+            article: {
+                isAIGenerated: true,
+                difficulty: "cet6",
+                quizEligible: true,
+            },
+            scrollProgress: 0.95,
+            articleStartedAt: 1_000,
+            now: 35_000,
+            scrollThreshold: 0.92,
+            minReadingMs: 30_000,
+        })).toBe(false);
+
+        expect(shouldAutoCompleteNoQuizAIGenerationArticle({
+            article: {
+                isAIGenerated: true,
+                difficulty: "cet6",
+                quizEligible: false,
+                readingCompletedAt: 1710000000000,
+            },
+            scrollProgress: 0.95,
+            articleStartedAt: 1_000,
+            now: 35_000,
+            scrollThreshold: 0.92,
+            minReadingMs: 30_000,
+        })).toBe(false);
+
+        expect(shouldAutoCompleteNoQuizAIGenerationArticle({
+            article: {
+                isAIGenerated: true,
+                difficulty: "cet6",
+                quizEligible: false,
+            },
+            scrollProgress: 0.95,
+            articleStartedAt: null,
+            now: 35_000,
+            scrollThreshold: 0.92,
+            minReadingMs: 30_000,
         })).toBe(false);
     });
 

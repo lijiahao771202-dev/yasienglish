@@ -18,6 +18,8 @@ import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { GenerationOverlay, type GenerationProgressState } from "./GenerationOverlay";
 import { TranslationSlotMachine } from "@/components/battle/TranslationSlotMachine";
 import { filterAIGenerationHistory, getAIGenerationDifficultyCounts, type HistoryDifficultyFilter } from "./ai-history";
+import { AIGenLearningTracker } from "./AIGenLearningTracker";
+import type { AIGenLearningReadEvent } from "./ai-learning-tracker";
 import {
     AI_GENERATION_MODE_OPTIONS,
     AI_GENERATION_RAG_MODE_OPTIONS,
@@ -25,6 +27,7 @@ import {
     buildAIGenerationRequestBody,
     DEFAULT_AI_GENERATION_RAG_SELECTION,
     formatLongformHistoryDescriptor,
+    isAIGenerationArticleCompleted,
     LONGFORM_LENGTH_TIERS,
     LONGFORM_STYLE_OPTIONS,
     type AIGenerationMode,
@@ -58,6 +61,7 @@ export interface ArticleItem {
     wordCount?: number;
     fetchedAt?: number;
     quizCompleted?: boolean;
+    readingCompletedAt?: number;
     quizCorrect?: number;
     quizTotal?: number;
     quizScorePercent?: number;
@@ -87,12 +91,25 @@ interface AIGenHistoryRecord {
     isAIGenerated?: boolean;
     isCatMode?: boolean;
     quizCompleted?: boolean;
+    readingCompletedAt?: number;
     quizCorrect?: number;
     quizTotal?: number;
     quizScorePercent?: number;
     catSelfAssessed?: boolean;
     catBand?: number;
     catScoreSnapshot?: number;
+}
+
+interface ReadArticleHistoryRecord {
+    url: string;
+    timestamp: number;
+    read_at?: number;
+    archived_at?: number;
+    article_payload?: {
+        isAIGenerated?: boolean;
+        isCatMode?: boolean;
+        readingCompletedAt?: number;
+    };
 }
 
 type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen' | 'cat_mode';
@@ -332,6 +349,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const [isCatRankOverviewOpen, setIsCatRankOverviewOpen] = useState(false);
     const [showHubTour, setShowHubTour] = useState(false);
     const [showCatSlotMachine, setShowCatSlotMachine] = useState(false);
+    const [aiLearningReadEvents, setAiLearningReadEvents] = useState<AIGenLearningReadEvent[]>([]);
     const [aiWizardStep, setAiWizardStep] = useState<AIGenerationWizardStep>("mode");
     const [genProgress, setGenProgress] = useState<GenerationProgressState>({
         step: 'idle',
@@ -612,10 +630,17 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     .filter((item) => item.entity === "read_articles" && item.operation === "delete")
                     .map((item) => item.record_key),
             );
+            const readRows = (await db.read_articles.toArray() as unknown as ReadArticleHistoryRecord[])
+                .filter((item) => !pendingDeleteUrls.has(item.url));
             const archivedAtByUrl = new Map(
-                (await db.read_articles.toArray())
+                readRows
                     .filter((item) => typeof item.archived_at === "number")
                     .map((item) => [item.url, item.archived_at] as const),
+            );
+            const readingCompletedAtByUrl = new Map(
+                readRows
+                    .map((item) => [item.url, item.article_payload?.readingCompletedAt] as const)
+                    .filter((entry): entry is readonly [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1])),
             );
             const rows = (await db.articles
                 .toArray() as unknown as AIGenHistoryRecord[])
@@ -646,6 +671,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 wordCount: row.wordCount,
                 fetchedAt: row.timestamp || Date.now(),
                 quizCompleted: row.quizCompleted,
+                readingCompletedAt: row.readingCompletedAt ?? readingCompletedAtByUrl.get(row.url),
                 quizCorrect: row.quizCorrect,
                 quizTotal: row.quizTotal,
                 quizScorePercent: row.quizScorePercent,
@@ -656,11 +682,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             }));
 
             const ordered = sortByNewest(historyItems);
+            const readEvents = readRows.map((item) => ({
+                url: item.url,
+                timestamp: item.timestamp,
+                readAt: item.read_at || item.timestamp,
+                isAIGenerated: item.article_payload?.isAIGenerated,
+                isCatMode: item.article_payload?.isCatMode,
+            }));
             setArticles(ordered);
+            setAiLearningReadEvents(readEvents);
             if (onListUpdate) onListUpdate(ordered.filter((item) => !item.archivedAt));
         } catch (error) {
             console.error("Failed to load AI-generated history:", error);
             setArticles([]);
+            setAiLearningReadEvents([]);
             if (onListUpdate) onListUpdate([]);
         }
     }, [onListUpdate]);
@@ -1184,6 +1219,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 try {
                     if (onArticleDeleted) onArticleDeleted(link);
                     await deleteReadArticleSnapshot(link);
+                    setAiLearningReadEvents((prev) => prev.filter((item) => item.url !== link));
                     setArticles((prev) => {
                         const next = prev.filter(a => a.link !== link);
                         if (onListUpdate) onListUpdate(next);
@@ -1606,22 +1642,27 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
 
                         <div
                             data-ai-gen-wizard="true"
-                            className="mt-6 space-y-5"
+                            className="mt-6 space-y-4"
                         >
+                            {/* Step Progress Stepper */}
                             <div
                                 data-ai-gen-progress="true"
                                 data-tour-target="hub-ai-progress"
-                                className="flex flex-col gap-4 rounded-[24px] border-4 border-theme-border bg-theme-card-bg p-4 md:flex-row md:items-center md:justify-between"
+                                className="flex flex-col gap-2 rounded-xl border border-theme-border/30 bg-theme-card-bg/95 p-2 px-3 md:flex-row md:items-center md:justify-between"
                             >
-                                <div className="space-y-1">
-                                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">
-                                        Wizard Progress
-                                    </p>
-                                    <p className="text-sm font-black text-theme-text">
-                                        第 {normalizedAiWizardStepIndex + 1} 步 / 共 {aiWizardSteps.length} 步
-                                    </p>
+                                <div className="flex items-center gap-2 py-0.5">
+                                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-theme-primary-bg text-[10px] font-black text-theme-primary-text border border-theme-border shadow-[0_1px_0_var(--theme-shadow)]">
+                                        {normalizedAiWizardStepIndex + 1}
+                                    </span>
+                                    <span className="text-[11px] font-black text-theme-text">
+                                        第 {normalizedAiWizardStepIndex + 1} / {aiWizardSteps.length} 步
+                                    </span>
+                                    <span className="h-3 w-[1px] bg-theme-border/20 hidden sm:inline-block" />
+                                    <span className="text-[11px] font-semibold text-theme-text-muted hidden sm:inline-block">
+                                        {aiWizardStepMeta[activeAiWizardStep].label}
+                                    </span>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-2">
+                                <div className="flex flex-wrap items-center gap-1">
                                     {aiWizardSteps.map((step, index) => {
                                         const isActive = step === activeAiWizardStep;
                                         const isCompleted = index < normalizedAiWizardStepIndex;
@@ -1631,20 +1672,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                 type="button"
                                                 onClick={() => goToAiWizardStep(step)}
                                                 className={cn(
-                                                    "ui-pressable inline-flex min-h-[44px] items-center gap-2 rounded-full border-[3px] px-3.5 py-2 text-xs font-black transition-all",
+                                                    "ui-pressable inline-flex h-7 items-center gap-1 rounded-full border px-2 text-[10.5px] font-black transition-all",
                                                     isActive
-                                                        ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                        ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_1px_0_var(--theme-shadow)]"
                                                         : isCompleted
-                                                            ? "border-theme-border bg-theme-active-bg text-theme-active-text"
-                                                            : "border-theme-border bg-theme-base-bg text-theme-text-muted hover:text-theme-text",
+                                                            ? "border-theme-border/15 bg-theme-active-bg/25 text-theme-active-text"
+                                                            : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-base-bg/40 hover:text-theme-text",
                                                 )}
-                                                style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0)", isActive ? 1.5 : 0)}
                                                 aria-label={`切换到${aiWizardStepMeta[step].label}`}
                                             >
-                                                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border-2 border-current text-[10px]">
+                                                <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-current/10 text-[8.5px] font-black">
                                                     {index + 1}
                                                 </span>
-                                                {aiWizardStepMeta[step].label}
+                                                <span>{aiWizardStepMeta[step].label}</span>
                                             </button>
                                         );
                                     })}
@@ -1654,26 +1695,26 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             <div
                                 data-ai-gen-step={activeAiWizardStep}
                                 data-tour-target="hub-ai-step"
-                                className={cn(insetCardClass, "p-4 md:p-5")}
+                                className="rounded-2xl border border-theme-border/35 bg-theme-card-bg p-3.5"
                             >
-                                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                                <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                                     <div>
-                                        <p className="text-[11px] font-black uppercase tracking-[0.18em] text-theme-text-muted">
+                                        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-theme-text-muted">
                                             {currentAiWizardMeta.eyebrow}
                                         </p>
-                                        <h5 className="mt-1 text-lg font-black text-theme-text">
+                                        <h5 className="mt-0.5 text-sm font-black text-theme-text">
                                             {currentAiWizardMeta.label}
                                         </h5>
-                                        <p className="mt-2 max-w-2xl text-sm font-medium leading-6 text-theme-text-muted">
+                                        <p className="mt-1 max-w-2xl text-[11px] font-semibold leading-relaxed text-theme-text-muted">
                                             {currentAiWizardMeta.description}
                                         </p>
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="rounded-full border border-theme-border/20 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text-muted">
                                             {genMode === "standard" ? "标准考试逻辑" : longformTrack === "native" ? "母语者长文" : "纯阅读长文"}
                                         </span>
                                         {activeAiWizardStep !== "mode" ? (
-                                            <span className="rounded-full border-2 border-theme-border bg-theme-card-bg px-2.5 py-1 text-[11px] font-black text-theme-text">
+                                            <span className="rounded-full border border-theme-border/20 bg-theme-card-bg px-2 py-0.5 text-[9px] font-black text-theme-text">
                                                 {longformTrack === "native" ? "母语者" : genDifficulty === "cet4" ? "四级" : genDifficulty === "cet6" ? "六级" : "雅思"}
                                             </span>
                                         ) : null}
@@ -1687,7 +1728,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
                                         exit={panelExit}
                                         transition={panelTransition}
-                                        className="space-y-4"
+                                        className="space-y-3"
                                     >
                                         {activeAiWizardStep === "mode" ? (
                                             <div className="grid gap-3 md:grid-cols-2">
@@ -1698,36 +1739,52 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                             key={option.id}
                                                             type="button"
                                                             onClick={() => handleAiModeSelect(option.id)}
-                                                            whileHover={{ y: -2 }}
-                                                            whileTap={getPressableTap(reducedMotion, 6, 0.985)}
-                                                            style={getPressableStyle("var(--theme-shadow)", 6)}
+                                                            whileHover={{ y: -0.5 }}
+                                                            whileTap={getPressableTap(reducedMotion, 3, 0.985)}
+                                                            style={{
+                                                                ...getPressableStyle("var(--theme-shadow)", isActive ? 2 : 0),
+                                                                backgroundColor: isActive 
+                                                                    ? "color-mix(in srgb, var(--theme-primary-bg) 5%, var(--theme-card-bg))"
+                                                                    : undefined
+                                                            }}
                                                             className={cn(
-                                                                "ui-pressable group relative overflow-hidden rounded-[24px] border-4 p-5 text-left transition-all duration-350",
+                                                                "ui-pressable group relative overflow-hidden rounded-xl border p-3.5 text-left transition-all duration-300",
                                                                 isActive
-                                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_16px_32px_-22px_var(--theme-shadow)]"
-                                                                    : "border-theme-border bg-theme-card-bg text-theme-text",
+                                                                    ? "border-theme-border shadow-[0_2px_0_0_var(--theme-shadow)] -translate-y-[0.5px]"
+                                                                    : "border-theme-border/15 bg-theme-card-bg/60 opacity-80 hover:opacity-100 hover:border-theme-border/40",
                                                             )}
                                                         >
-                                                            <div className="relative space-y-3">
-                                                                <div className={cn(
-                                                                    "inline-flex rounded-[18px] border-2 border-theme-border p-3 transition-transform duration-300 group-hover:scale-105",
-                                                                    isActive ? "bg-theme-card-bg text-theme-primary-text" : "bg-theme-base-bg text-theme-text-muted",
-                                                                )}>
-                                                                    {option.id === "standard" ? <BookOpen className="h-5 w-5" /> : <Sparkles className="h-5 w-5" />}
+                                                            <div className="relative flex items-start gap-3.5">
+                                                                <div className="flex-shrink-0">
+                                                                    <div className={cn(
+                                                                        "inline-flex rounded-xl border p-2 transition-all duration-300 group-hover:scale-105",
+                                                                        isActive 
+                                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_1px_0_var(--theme-shadow)]" 
+                                                                            : "border-theme-border/20 bg-theme-base-bg text-theme-text-muted",
+                                                                    )}>
+                                                                        {option.id === "standard" ? <BookOpen className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+                                                                    </div>
                                                                 </div>
-                                                                <div>
-                                                                    <p className="text-lg font-black text-theme-text">{option.label}</p>
-                                                                    <p className="mt-1 text-sm font-medium text-theme-text-muted">
+                                                                <div className="flex-1 min-w-0 space-y-1">
+                                                                    <div className="flex items-center justify-between gap-2">
+                                                                        <p className="text-xs font-black text-theme-text">{option.label}</p>
+                                                                        <span className="rounded-full bg-theme-base-bg/60 px-2 py-0.5 text-[9px] font-black text-theme-text-muted border border-theme-border/10">
+                                                                            {option.id === "standard" ? "4 步完成" : "5 步完成"}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="text-[11px] font-medium leading-relaxed text-theme-text-muted">
                                                                         {option.id === "standard"
                                                                             ? "保持考试约束，快速决定难度、RAG 和记忆注入。"
                                                                             : "进入更自由的长文生成链路，追加篇幅和文风控制。"}
                                                                     </p>
-                                                                </div>
-                                                                <div className="flex items-center justify-between text-xs font-black text-theme-text-muted">
-                                                                    <span>{option.id === "standard" ? "4 步完成" : "5 步完成"}</span>
-                                                                    <span className="inline-flex items-center gap-1 rounded-full border-2 border-theme-border bg-theme-card-bg px-2.5 py-1 text-theme-text">
-                                                                        继续 <ChevronRight className="h-3.5 w-3.5" />
-                                                                    </span>
+                                                                    <div className="flex justify-end pt-1">
+                                                                        <span className={cn(
+                                                                            "inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[9px] font-black text-theme-text transition-colors",
+                                                                            isActive ? "border-theme-border bg-theme-active-bg" : "border-theme-border/30 bg-theme-card-bg group-hover:border-theme-border/50"
+                                                                        )}>
+                                                                            继续 <ChevronRight className="h-2.5 w-2.5" />
+                                                                        </span>
+                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </motion.button>
@@ -1737,7 +1794,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         ) : null}
 
                                         {activeAiWizardStep === "difficulty" ? (
-                                            <div className={cn("grid grid-cols-1 gap-3", genMode === "longform" ? "md:grid-cols-4" : "md:grid-cols-3")}>
+                                            <div className={cn("grid grid-cols-1 gap-2.5", genMode === "longform" ? "md:grid-cols-4" : "md:grid-cols-3")}>
                                                 {aiDifficultyCards.map((diff) => {
                                                     const Icon = diff.icon;
                                                     const isActive = diff.id === "native"
@@ -1755,26 +1812,38 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                 setLongformTrack("exam");
                                                                 setGenDifficulty(diff.id);
                                                             }}
-                                                            whileHover={{ y: -2 }}
-                                                            whileTap={getPressableTap(reducedMotion, 6, 0.985)}
-                                                            style={getPressableStyle("var(--theme-shadow)", 6)}
+                                                            whileHover={{ y: -0.5 }}
+                                                            whileTap={getPressableTap(reducedMotion, 3, 0.985)}
+                                                            style={getPressableStyle("var(--theme-shadow)", isActive ? 2 : 0)}
                                                             className={cn(
-                                                                "ui-pressable group relative overflow-hidden rounded-[24px] border-4 p-4 text-left transition-all duration-350",
+                                                                "ui-pressable group relative overflow-hidden rounded-xl border p-3 text-left transition-all duration-300",
                                                                 isActive
-                                                                    ? cn(diff.activeClass, "border-theme-border")
-                                                                    : "border-theme-border bg-theme-card-bg text-theme-text",
+                                                                    ? cn("border-theme-border", 
+                                                                        diff.id === "cet4" && "bg-emerald-500/5 text-emerald-700 shadow-[0_2px_0_0_var(--theme-shadow)] -translate-y-[0.5px]",
+                                                                        diff.id === "cet6" && "bg-sky-500/5 text-sky-700 shadow-[0_2px_0_0_var(--theme-shadow)] -translate-y-[0.5px]",
+                                                                        diff.id === "ielts" && "bg-violet-500/5 text-violet-700 shadow-[0_2px_0_0_var(--theme-shadow)] -translate-y-[0.5px]",
+                                                                        diff.id === "native" && "bg-amber-500/5 text-amber-700 shadow-[0_2px_0_0_var(--theme-shadow)] -translate-y-[0.5px]"
+                                                                      )
+                                                                    : "border-theme-border/15 bg-theme-card-bg/60 opacity-80 hover:opacity-100 hover:border-theme-border/40",
                                                             )}
                                                         >
                                                             <div className="relative">
                                                                 <div className={cn(
-                                                                    "mb-3 inline-flex rounded-[18px] border-2 border-theme-border p-2.5 transition-transform duration-300 group-hover:scale-105",
-                                                                    isActive ? diff.iconClass : "bg-theme-base-bg text-theme-text-muted",
+                                                                    "mb-2.5 inline-flex rounded-lg border p-2 transition-transform duration-300 group-hover:scale-105",
+                                                                    isActive 
+                                                                        ? cn("border-theme-border",
+                                                                            diff.id === "cet4" && "bg-emerald-100 text-emerald-700",
+                                                                            diff.id === "cet6" && "bg-sky-100 text-sky-700",
+                                                                            diff.id === "ielts" && "bg-violet-100 text-violet-700",
+                                                                            diff.id === "native" && "bg-amber-100 text-amber-700"
+                                                                          ) 
+                                                                        : "border-theme-border/20 bg-theme-base-bg text-theme-text-muted",
                                                                 )}>
                                                                     <Icon className="h-4 w-4" />
                                                                 </div>
-                                                                <p className="text-base font-bold leading-tight text-theme-text">{diff.label}</p>
-                                                                <p className="mt-1 text-xs font-medium text-theme-text-muted">{diff.desc}</p>
-                                                                <p className="mt-0.5 text-[11px] text-theme-text-muted opacity-80">{diff.detail}</p>
+                                                                <p className="text-sm font-black text-theme-text leading-tight">{diff.label}</p>
+                                                                <p className="mt-1 text-xs font-semibold text-theme-text-muted">{diff.desc}</p>
+                                                                <p className="mt-0.5 text-[10px] font-semibold text-theme-text-muted/80">{diff.detail}</p>
                                                             </div>
                                                         </motion.button>
                                                     );
@@ -1783,11 +1852,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         ) : null}
 
                                         {activeAiWizardStep === "longform" ? (
-                                            <div className="space-y-4">
-                                                <div className="rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-4">
+                                            <div className="space-y-3">
+                                                <div className="rounded-xl border border-theme-border/25 bg-theme-base-bg/20 p-3">
                                                     <div className="mb-2 flex items-center justify-between gap-2">
-                                                        <h6 className="text-xs font-black tracking-wide text-theme-text">长度档位</h6>
-                                                        <span className="text-[11px] font-bold text-theme-text-muted">±15%</span>
+                                                        <h6 className="text-[11px] font-black tracking-wide text-theme-text">长度档位</h6>
+                                                        <span className="text-[9px] font-bold text-theme-text-muted">±15%</span>
                                                     </div>
                                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                                         {LONGFORM_LENGTH_TIERS.map((tier) => {
@@ -1798,30 +1867,30 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                     type="button"
                                                                     onClick={() => setLengthTierId(tier.id)}
                                                                     className={cn(
-                                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                                        "ui-pressable rounded-lg border px-2.5 py-1.5 text-left transition-all",
                                                                         isActive
-                                                                            ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                                            : "border-theme-border bg-theme-card-bg text-theme-text hover:text-theme-text",
+                                                                            ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_1.5px_0_var(--theme-shadow)]"
+                                                                            : "border-theme-border/20 bg-theme-card-bg text-theme-text-muted hover:border-theme-border/40 hover:text-theme-text",
                                                                     )}
-                                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", isActive ? 1.5 : 0)}
                                                                 >
-                                                                    <p className="text-sm font-black">{tier.label}</p>
-                                                                    <p className="mt-1 text-[11px] font-semibold opacity-80">目标 {tier.targetWordCount} 词</p>
+                                                                    <p className="text-[11px] font-black">{tier.label}</p>
+                                                                    <p className="mt-0.5 text-[9px] font-semibold opacity-80">目标 {tier.targetWordCount} 词</p>
                                                                 </button>
                                                             );
                                                         })}
                                                     </div>
                                                 </div>
 
-                                                <div className="rounded-[20px] border-3 border-dashed border-theme-border/70 bg-theme-card-bg/65 p-4">
+                                                <div className="rounded-xl border border-dashed border-theme-border/35 bg-theme-card-bg/60 p-3">
                                                     <div className="flex flex-wrap items-center justify-between gap-3">
-                                                        <div>
-                                                            <p className="text-sm font-black text-theme-text">下一步再定风格和主题</p>
-                                                            <p className="mt-1 text-xs font-medium leading-5 text-theme-text-muted">
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-[11px] font-black text-theme-text">下一步再定风格和主题</p>
+                                                            <p className="mt-0.5 text-[9px] font-medium leading-normal text-theme-text-muted">
                                                                 先把篇幅卡住，最后一步再一起确认写作风格、补充要求和具体题材，生成时更顺手。
                                                             </p>
                                                         </div>
-                                                        <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-3 py-1 text-[11px] font-black text-theme-text-muted">
+                                                        <span className="rounded-full border border-theme-border/30 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text-muted">
                                                             当前长度 · {activeLengthTier.label}
                                                         </span>
                                                     </div>
@@ -1830,15 +1899,15 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         ) : null}
 
                                         {activeAiWizardStep === "rag" ? (
-                                            <div className="grid gap-4 lg:grid-cols-2">
-                                                <div className="rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-4">
+                                            <div className="grid gap-3 lg:grid-cols-2">
+                                                <div className="rounded-xl border border-theme-border/25 bg-theme-base-bg/20 p-3">
                                                     <div className="mb-2 flex items-center justify-between gap-2">
-                                                        <h6 className="text-xs font-black tracking-wide text-theme-text">RAG 模式</h6>
-                                                        <span className="text-[11px] font-bold text-theme-text-muted">
+                                                        <h6 className="text-[11px] font-black tracking-wide text-theme-text">RAG 模式</h6>
+                                                        <span className="text-[9px] font-bold text-theme-text-muted">
                                                             {activeRagConfig.mode === "off" ? "完全关闭" : activeRagConfig.mode === "strict" ? "强制命中" : "软参考"}
                                                         </span>
                                                     </div>
-                                                    <div className="grid grid-cols-1 gap-2">
+                                                    <div className="grid grid-cols-1 gap-1.5">
                                                         {AI_GENERATION_RAG_MODE_OPTIONS.map((option) => {
                                                             const isActive = activeRagConfig.mode === option.id;
                                                             return (
@@ -1847,28 +1916,28 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                     type="button"
                                                                     onClick={() => updateAiReadingRagConfig({ mode: option.id })}
                                                                     className={cn(
-                                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                                        "ui-pressable rounded-lg border px-2.5 py-1.5 text-left transition-all",
                                                                         isActive
-                                                                            ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                                            : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                                            ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_1.5px_0_var(--theme-shadow)]"
+                                                                            : "border-theme-border/20 bg-theme-card-bg text-theme-text-muted hover:border-theme-border/40 hover:text-theme-text",
                                                                     )}
-                                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", isActive ? 1.5 : 0)}
                                                                 >
-                                                                    <p className="text-sm font-black">{option.label}</p>
+                                                                    <p className="text-[11px] font-black">{option.label}</p>
                                                                 </button>
                                                             );
                                                         })}
                                                     </div>
                                                 </div>
 
-                                                <div className="rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-4">
+                                                <div className="rounded-xl border border-theme-border/25 bg-theme-base-bg/20 p-3">
                                                     <div className="mb-2 flex items-center justify-between gap-2">
-                                                        <h6 className="text-xs font-black tracking-wide text-theme-text">RAG 来源</h6>
-                                                        <span className="text-[11px] font-bold text-theme-text-muted">
+                                                        <h6 className="text-[11px] font-black tracking-wide text-theme-text">RAG 来源</h6>
+                                                        <span className="text-[9px] font-bold text-theme-text-muted">
                                                             {activeRagConfig.source === "vocab" ? "生词本" : activeRagConfig.source === "dictionary" ? "词典" : "混合"}
                                                         </span>
                                                     </div>
-                                                    <div className="grid grid-cols-1 gap-2">
+                                                    <div className="grid grid-cols-1 gap-1.5">
                                                         {AI_GENERATION_RAG_SOURCE_OPTIONS.map((option) => {
                                                             const isActive = activeRagConfig.source === option.id;
                                                             return (
@@ -1878,16 +1947,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                     onClick={() => updateAiReadingRagConfig({ source: option.id })}
                                                                     disabled={activeRagConfig.mode === "off"}
                                                                     className={cn(
-                                                                        "ui-pressable rounded-[18px] border-3 px-3 py-3 text-left transition-all",
+                                                                        "ui-pressable rounded-lg border px-2.5 py-1.5 text-left transition-all",
                                                                         activeRagConfig.mode === "off"
-                                                                            ? "cursor-not-allowed border-theme-border bg-theme-base-bg text-theme-text-muted opacity-55"
+                                                                            ? "cursor-not-allowed border-theme-border/10 bg-theme-base-bg/40 text-theme-text-muted/40 opacity-50"
                                                                             : isActive
-                                                                                ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                                                : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                                                ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_1.5px_0_var(--theme-shadow)]"
+                                                                                : "border-theme-border/20 bg-theme-card-bg text-theme-text-muted hover:border-theme-border/40 hover:text-theme-text",
                                                                     )}
-                                                                    style={getPressableStyle(activeRagConfig.mode === "off" ? "rgba(0,0,0,0.04)" : isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                                    style={getPressableStyle(activeRagConfig.mode === "off" ? "rgba(0,0,0,0)" : isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", isActive ? 1.5 : 0)}
                                                                 >
-                                                                    <p className="text-sm font-black">{option.label}</p>
+                                                                    <p className="text-[11px] font-black">{option.label}</p>
                                                                 </button>
                                                             );
                                                         })}
@@ -1897,36 +1966,36 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         ) : null}
 
                                         {activeAiWizardStep === "topic" ? (
-                                            <div className="space-y-4">
-                                                <div className="flex flex-wrap items-center gap-2">
+                                            <div className="space-y-3">
+                                                <div className="flex flex-wrap items-center gap-1.5">
                                                     <span className={cn(
-                                                        "rounded-full border-2 px-2.5 py-1 text-[11px] font-black",
-                                                        longformTrack === "native" && "border-amber-200/80 bg-amber-100/75 text-amber-800",
-                                                        longformTrack === "exam" && genDifficulty === 'cet4' && "border-emerald-200/80 bg-emerald-100/75 text-emerald-700",
-                                                        longformTrack === "exam" && genDifficulty === 'cet6' && "border-sky-200/80 bg-sky-100/75 text-sky-700",
-                                                        longformTrack === "exam" && genDifficulty === 'ielts' && "border-violet-200/80 bg-violet-100/75 text-violet-700",
+                                                        "rounded-full border px-2 py-0.5 text-[9px] font-black",
+                                                        longformTrack === "native" && "border-amber-200/50 bg-amber-100/60 text-amber-800",
+                                                        longformTrack === "exam" && genDifficulty === 'cet4' && "border-emerald-200/50 bg-emerald-100/60 text-emerald-700",
+                                                        longformTrack === "exam" && genDifficulty === 'cet6' && "border-sky-200/50 bg-sky-100/60 text-sky-700",
+                                                        longformTrack === "exam" && genDifficulty === 'ielts' && "border-violet-200/50 bg-violet-100/60 text-violet-700",
                                                     )}>
                                                         {longformTrack === "native" ? "母语者" : genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}
                                                         {genMode === "longform" ? ` · 长文 · ${activeLongformStyle?.name ?? "科普"}` : ""}
                                                     </span>
-                                                    <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-2.5 py-1 text-[11px] font-black text-theme-text-muted">
+                                                    <span className="rounded-full border border-theme-border/30 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text-muted">
                                                         {activeRagConfig.mode === "off" ? "无 RAG 注入" : `${activeRagConfig.mode === "strict" ? "严格" : "参考"} · ${activeRagConfig.source === "vocab" ? "生词本" : activeRagConfig.source === "dictionary" ? "词典" : "混合"}`}
                                                     </span>
                                                     {genTopic.trim() ? (
-                                                        <span className="rounded-full border-2 border-theme-border bg-theme-card-bg px-2.5 py-1 text-[11px] font-black text-theme-text">
+                                                        <span className="rounded-full border border-theme-border/30 bg-theme-card-bg px-2 py-0.5 text-[9px] font-black text-theme-text">
                                                             当前主题 · {genTopic}
                                                         </span>
                                                     ) : null}
                                                 </div>
 
                                                 {genMode === "longform" ? (
-                                                    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-                                                        <div className="rounded-[20px] border-3 border-theme-border bg-theme-base-bg p-4">
+                                                    <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                                                        <div className="rounded-xl border border-theme-border/25 bg-theme-base-bg/20 p-3">
                                                             <div className="mb-2 flex items-center justify-between gap-2">
-                                                                <h6 className="text-xs font-black tracking-wide text-theme-text">风格选择</h6>
-                                                                <span className="text-[11px] font-bold text-theme-text-muted">和主题一起定</span>
+                                                                <h6 className="text-[11px] font-black tracking-wide text-theme-text">风格选择</h6>
+                                                                <span className="text-[9px] font-bold text-theme-text-muted">和主题一起定</span>
                                                             </div>
-                                                            <div className="grid grid-cols-2 gap-2">
+                                                            <div className="grid grid-cols-2 gap-1.5">
                                                                 {LONGFORM_STYLE_OPTIONS.map((style) => {
                                                                     const isActive = longformStyleId === style.id;
                                                                     return (
@@ -1935,12 +2004,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                             type="button"
                                                                             onClick={() => setLongformStyleId(style.id)}
                                                                             className={cn(
-                                                                                "ui-pressable rounded-[18px] border-3 px-3 py-2.5 text-left text-sm font-black transition-all",
+                                                                                "ui-pressable rounded-lg border px-2.5 py-1.5 text-left text-[11px] font-black transition-all",
                                                                                 isActive
-                                                                                    ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                                                    ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_1.5px_0_var(--theme-shadow)]"
+                                                                                    : "border-theme-border/20 bg-theme-card-bg text-theme-text-muted hover:border-theme-border/40 hover:text-theme-text",
                                                                             )}
-                                                                            style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 4)}
+                                                                            style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", isActive ? 1.5 : 0)}
                                                                         >
                                                                             {style.name}
                                                                         </button>
@@ -1949,17 +2018,17 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                             </div>
                                                         </div>
 
-                                                        <div className="rounded-[20px] border-3 border-theme-border bg-theme-card-bg p-4">
-                                                            <div className="flex h-full min-h-[320px] flex-col gap-4">
+                                                        <div className="rounded-xl border border-theme-border/30 bg-theme-card-bg p-3">
+                                                            <div className="flex h-full min-h-[180px] flex-col gap-2.5">
                                                                 <div className="flex flex-wrap items-start justify-between gap-3">
-                                                                    <div>
-                                                                        <p className="text-sm font-black text-theme-text">
-                                                                            {longformStyleId === "custom" ? "自定义风格补充" : "当前长文设置"}
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="text-[11px] font-black text-theme-text">
+                                                                            {longformStyleId === "custom" ? "自定义风格" : "长文设置详情"}
                                                                         </p>
-                                                                        <p className="mt-1 text-xs font-medium leading-5 text-theme-text-muted">
+                                                                        <p className="mt-0.5 text-[9px] font-medium leading-normal text-theme-text-muted">
                                                                             {longformStyleId === "custom"
-                                                                                ? "把希望的文风、解释方式和表达感觉直接写在这里。难度轨道和长度设置会继续保留。"
-                                                                                : "篇幅和文风会一起进入生成请求，最后只需要补上题材就能直接出文。"}
+                                                                                ? "写下要求的文风、解释深度或语言习惯。"
+                                                                                : "当前难度和长度档位将伴随所选风格提交。"}
                                                                         </p>
                                                                     </div>
                                                                     {longformStyleId === "custom" ? (
@@ -1967,29 +2036,29 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                             type="button"
                                                                             onClick={() => void handleOptimizeCustomStyle()}
                                                                             disabled={isOptimizingCustomStyle || !customStylePrompt.trim()}
-                                                                            whileHover={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : { y: -1, scale: 1.01 }}
-                                                                            whileTap={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : getPressableTap(reducedMotion, 4, 0.985)}
-                                                                            style={getPressableStyle(isOptimizingCustomStyle || !customStylePrompt.trim() ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", 4)}
+                                                                            whileHover={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : { y: -0.5, scale: 1.01 }}
+                                                                            whileTap={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : getPressableTap(reducedMotion, 2, 0.985)}
+                                                                            style={getPressableStyle(isOptimizingCustomStyle || !customStylePrompt.trim() ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", isOptimizingCustomStyle || !customStylePrompt.trim() ? 0 : 1.5)}
                                                                             className={cn(
-                                                                                "ui-pressable rounded-full border-3 px-4 py-2 text-xs font-black transition-all",
+                                                                                "ui-pressable rounded-full border px-2.5 py-0.5 text-[9px] font-black transition-all",
                                                                                 isOptimizingCustomStyle || !customStylePrompt.trim()
-                                                                                    ? "cursor-not-allowed border-theme-border bg-theme-base-bg text-theme-text-muted opacity-60"
+                                                                                    ? "cursor-not-allowed border-theme-border/30 bg-theme-base-bg text-theme-text-muted opacity-60"
                                                                                     : "border-theme-border bg-theme-primary-bg text-theme-primary-text",
                                                                             )}
                                                                         >
-                                                                            <span className="flex items-center gap-2">
-                                                                                {isOptimizingCustomStyle ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                                                                                {isOptimizingCustomStyle ? "优化中..." : "AI优化"}
+                                                                            <span className="flex items-center gap-1.5">
+                                                                                {isOptimizingCustomStyle ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                                                                                {isOptimizingCustomStyle ? "优化中" : "AI优化"}
                                                                             </span>
                                                                         </motion.button>
                                                                     ) : null}
                                                                 </div>
 
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-3 py-1 text-[11px] font-black text-theme-text">
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    <span className="rounded-full border border-theme-border/35 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text">
                                                                         {activeLengthTier.label} · {activeLengthTier.targetWordCount} 词
                                                                     </span>
-                                                                    <span className="rounded-full border-2 border-theme-border bg-theme-base-bg px-3 py-1 text-[11px] font-black text-theme-text">
+                                                                    <span className="rounded-full border border-theme-border/35 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text">
                                                                         {activeLongformStyle?.name ?? "科普"}
                                                                     </span>
                                                                 </div>
@@ -1999,12 +2068,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                         value={customStylePrompt}
                                                                         onChange={(e) => setCustomStylePrompt(e.target.value)}
                                                                         placeholder="例如：把这个主题的理论写得详细清楚，通俗易懂，层次分明，像老师耐心讲解一样。"
-                                                                        rows={8}
-                                                                        className="min-h-[220px] flex-1 resize-y rounded-[18px] border-3 border-theme-border bg-theme-base-bg px-4 py-3 text-sm font-medium leading-6 text-theme-text outline-none transition placeholder:text-theme-text-muted/65 focus:ring-4 focus:ring-theme-primary-bg"
+                                                                        rows={3}
+                                                                        className="min-h-[90px] flex-1 resize-y rounded-lg border border-theme-border/40 bg-theme-base-bg px-2.5 py-1.5 text-[11px] font-medium leading-normal text-theme-text outline-none transition placeholder:text-theme-text-muted/65 focus:ring-1 focus:ring-theme-primary-bg"
                                                                     />
                                                                 ) : (
-                                                                    <div className="flex flex-1 items-end rounded-[18px] border-2 border-dashed border-theme-border/60 bg-theme-base-bg/70 px-4 py-4">
-                                                                        <p className="text-xs font-medium leading-6 text-theme-text-muted">
+                                                                    <div className="flex flex-1 items-end rounded-lg border border-dashed border-theme-border/35 bg-theme-base-bg/70 px-2.5 py-2">
+                                                                        <p className="text-[9px] font-medium leading-normal text-theme-text-muted">
                                                                             已经把篇幅和风格锁进当前生成配置。下面选主题或自己输入题材后，就可以直接生成文章。
                                                                         </p>
                                                                     </div>
@@ -2014,20 +2083,20 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                     </div>
                                                 ) : null}
 
-                                                <div className="flex flex-wrap gap-2">
+                                                <div className="flex flex-wrap gap-1.5">
                                                     {currentPresetTopics.map((topic) => (
                                                         <motion.button
                                                             key={topic}
                                                             type="button"
                                                             onClick={() => setGenTopic(topic)}
-                                                            whileHover={{ y: -1, scale: 1.02 }}
-                                                            whileTap={getPressableTap(reducedMotion, 4, 0.98)}
-                                                            style={getPressableStyle(genTopic === topic ? "#374151" : "#d8d3cb", 4)}
+                                                            whileHover={{ y: -0.5, scale: 1.01 }}
+                                                            whileTap={getPressableTap(reducedMotion, 2, 0.98)}
+                                                            style={getPressableStyle(genTopic === topic ? "var(--theme-shadow)" : "rgba(0,0,0,0.06)", genTopic === topic ? 1.5 : 0)}
                                                             className={cn(
-                                                                "ui-pressable rounded-full border-2 px-3.5 py-1.5 text-xs font-black transition-all duration-250",
+                                                                "ui-pressable rounded-full border px-2.5 py-0.5 text-[10px] font-black transition-all duration-200",
                                                                 genTopic === topic
                                                                     ? "border-theme-border bg-theme-primary-bg text-theme-primary-text"
-                                                                    : "border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
+                                                                    : "border-theme-border/20 bg-theme-card-bg text-theme-text-muted hover:text-theme-text hover:border-theme-border/40",
                                                             )}
                                                         >
                                                             {topic}
@@ -2035,33 +2104,33 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                     ))}
                                                 </div>
 
-                                                <div className="grid grid-cols-1 gap-2.5 md:grid-cols-[1fr_auto_auto]">
+                                                <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto_auto]">
                                                     <input
                                                         type="text"
                                                         value={genTopic}
                                                         onChange={(e) => setGenTopic(e.target.value)}
                                                         onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
                                                         placeholder="输入主题（留空则随机），例如：Quantum Computing"
-                                                        className="w-full rounded-full border-4 border-theme-border bg-theme-base-bg px-5 py-3 text-sm font-medium text-theme-text transition-all placeholder:text-theme-text-muted/60 focus:border-theme-border focus:ring-4 focus:ring-theme-primary-bg focus:outline-none"
+                                                        className="w-full h-8 px-3 rounded-full border border-theme-border/40 bg-theme-base-bg text-[11px] font-medium text-theme-text transition-all placeholder:text-theme-text-muted/65 focus:border-theme-border focus:ring-1 focus:ring-theme-primary-bg focus:outline-none"
                                                     />
                                                     <motion.button
                                                         type="button"
                                                         onClick={handleRollTopic}
                                                         disabled={isGenerating}
-                                                        whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
-                                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
-                                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.1)" : "var(--theme-shadow)", 6)}
+                                                        whileHover={isGenerating ? undefined : { y: -0.5, scale: 1.01 }}
+                                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 2, 0.985)}
+                                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", isGenerating ? 0 : 1.5)}
                                                         className={cn(
-                                                            "ui-pressable group relative overflow-hidden rounded-full px-4 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
+                                                            "ui-pressable group relative overflow-hidden rounded-full h-8 px-3 text-[11px] font-black transition-all duration-300 disabled:shadow-none border",
                                                             isGenerating
-                                                                ? "cursor-not-allowed border-4 border-theme-border bg-theme-card-bg text-theme-text-muted"
-                                                                : "border-4 border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg",
+                                                                ? "cursor-not-allowed border-theme-border/30 bg-theme-card-bg text-theme-text-muted"
+                                                                : "border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg",
                                                         )}
                                                         aria-label="摇一个主题"
                                                         title="摇一个主题"
                                                     >
-                                                        <span className="relative flex items-center gap-2">
-                                                            <Dices className="h-4 w-4" />
+                                                        <span className="relative flex items-center gap-1.5">
+                                                            <Dices className="h-3.5 w-3.5" />
                                                             摇主题
                                                         </span>
                                                     </motion.button>
@@ -2069,18 +2138,18 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                         type="button"
                                                         onClick={handleGenerate}
                                                         disabled={isGenerating}
-                                                        whileHover={isGenerating ? undefined : { y: -1, scale: 1.01 }}
-                                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 6, 0.985)}
-                                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.1)" : "var(--theme-shadow)", 6)}
+                                                        whileHover={isGenerating ? undefined : { y: -0.5, scale: 1.01 }}
+                                                        whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 2, 0.985)}
+                                                        style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", isGenerating ? 0 : 1.5)}
                                                         className={cn(
-                                                            "ui-pressable group relative overflow-hidden rounded-full px-5 py-3 text-sm font-black transition-all duration-300 disabled:shadow-none",
+                                                            "ui-pressable group relative overflow-hidden rounded-full h-8 px-3.5 text-[11px] font-black transition-all duration-300 disabled:shadow-none border",
                                                             isGenerating
-                                                                ? "cursor-not-allowed border-4 border-theme-border bg-theme-card-bg text-theme-text-muted"
-                                                                : "border-4 border-theme-border bg-theme-active-bg text-theme-active-text",
+                                                                ? "cursor-not-allowed border-theme-border/30 bg-theme-card-bg text-theme-text-muted"
+                                                                : "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_1.5px_0_var(--theme-shadow)]",
                                                         )}
                                                     >
-                                                        <span className="relative flex items-center gap-2">
-                                                            {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                                                        <span className="relative flex items-center gap-1.5">
+                                                            {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                                                             {isGenerating ? "正在生成..." : "生成文章"}
                                                         </span>
                                                     </motion.button>
@@ -2091,24 +2160,24 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                     </motion.div>
                                 </AnimatePresence>
 
-                                <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t-2 border-theme-border/60 pt-4">
-                                    <div className="text-xs font-semibold text-theme-text-muted">
+                                <div className="mt-3.5 flex flex-wrap items-center justify-between gap-3 border-t border-theme-border/20 pt-3">
+                                    <div className="text-[9px] font-semibold text-theme-text-muted">
                                         {activeAiWizardStep === "mode"
                                             ? "点上面的模式卡片，直接进入下一步。"
                                             : activeAiWizardStep === "topic"
                                                 ? "确认主题后直接生成，回退不会丢掉前面的选择。"
                                                 : "可以继续下一步，也可以返回修改前面的决定。"}
                                     </div>
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-1.5">
                                         {canGoToPreviousAiStep ? (
                                             <button
                                                 type="button"
                                                 data-ai-gen-back="true"
                                                 onClick={goToPreviousAiStep}
-                                                className="ui-pressable inline-flex min-h-[44px] items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-base-bg px-4 py-2 text-sm font-black text-theme-text"
-                                                style={getPressableStyle("rgba(0,0,0,0.08)", 4)}
+                                                className="ui-pressable inline-flex h-8 items-center gap-1 rounded-full border border-theme-border bg-theme-card-bg px-2.5 text-[11px] font-black text-theme-text"
+                                                style={getPressableStyle("rgba(0,0,0,0.06)", 0)}
                                             >
-                                                <ChevronLeft className="h-4 w-4" />
+                                                <ChevronLeft className="h-3 w-3" />
                                                 上一步
                                             </button>
                                         ) : null}
@@ -2117,11 +2186,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                 type="button"
                                                 data-ai-gen-next="true"
                                                 onClick={goToNextAiStep}
-                                                className="ui-pressable inline-flex min-h-[44px] items-center gap-2 rounded-full border-[3px] border-theme-border bg-theme-primary-bg px-4 py-2 text-sm font-black text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
-                                                style={getPressableStyle("var(--theme-shadow)", 4)}
+                                                className="ui-pressable inline-flex h-8 items-center gap-1 rounded-full border border-theme-border bg-theme-primary-bg px-3 text-[11px] font-black text-theme-primary-text shadow-[0_1.5px_0_var(--theme-shadow)]"
+                                                style={getPressableStyle("var(--theme-shadow)", 1.5)}
                                             >
                                                 下一步
-                                                <ChevronRight className="h-4 w-4" />
+                                                <ChevronRight className="h-3 w-3" />
                                             </button>
                                         ) : null}
                                     </div>
@@ -2129,6 +2198,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             </div>
                         </div>
                     </motion.section>
+
+                    <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants}>
+                        <AIGenLearningTracker articles={articles} readEvents={aiLearningReadEvents} />
+                    </motion.div>
 
                     <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants} className="space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-3 px-1">
@@ -2226,7 +2299,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                     >
                                         <ArticleCard
                                             item={item}
-                                            status={item.quizCompleted ? 'read' : 'unread'}
+                                            status={isAIGenerationArticleCompleted(item) ? 'read' : 'unread'}
                                             category="ai_gen"
                                             onSelect={handleSelectArticle}
                                             onDelete={handleDelete}

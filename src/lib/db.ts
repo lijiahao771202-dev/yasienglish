@@ -174,6 +174,7 @@ export interface CachedArticle {
         itemType?: string;
     }>;
     quizQualityTier?: "ok" | "low_confidence";
+    readingCompletedAt?: number;
 }
 
 export interface CachedQuizQuestion {

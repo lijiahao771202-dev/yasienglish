@@ -55,6 +55,7 @@ describe("buildReadArticleCloudPayload", () => {
             isAIGenerated: true,
             generationMode: "longform",
             quizEligible: false,
+            readingCompletedAt: 1234567999,
             longformStyle: {
                 id: "science",
                 name: "科普",
@@ -79,6 +80,7 @@ describe("buildReadArticleCloudPayload", () => {
             targetWordCount: 1200,
         });
         expect(payload.wordCount).toBe(1176);
+        expect(payload.readingCompletedAt).toBe(1234567999);
     });
 
     it("preserves RAG generation metadata in the cloud snapshot payload", () => {

@@ -133,6 +133,22 @@ export function AppearanceMenu({ onClose }: { onClose: () => void }) {
         { id: 'sky', name: 'Sky Blue', description: '静谧晴空' },
         { id: 'charcoal', name: 'Charcoal Dark', description: '极客碳黑' },
         { id: 'borderless', name: 'Borderless', description: '无边框' },
+        { id: 'kraft', name: 'Kraft Paper', description: '复古牛皮' },
+        { id: 'ruled', name: 'Ruled Paper', description: '横线信纸' },
+        { id: 'eink', name: 'E-Ink', description: '电子墨水' },
+        { id: 'blueprint', name: 'Blueprint', description: '工程蓝图' },
+        { id: 'cyberpunk', name: 'Cyberpunk', description: '赛博霓虹' },
+        { id: 'wheat', name: 'Wheat Straw', description: '麦香麦秆' },
+        { id: 'butter', name: 'Butter Cream', description: '黄油奶酪' },
+        { id: 'lavender', name: 'Lavender Mist', description: '薰衣草雾' },
+        { id: 'oat', name: 'Oat Milk', description: '燕麦拿铁' },
+        { id: 'newspaper', name: 'Newspaper', description: '复古报纸' },
+        { id: 'graph', name: 'Graph Paper', description: '复古方格' },
+        { id: 'linen', name: 'French Linen', description: '亚麻织物' },
+        { id: 'pistachio', name: 'Pistachio', description: '开心果绿' },
+        { id: 'apricot', name: 'Creamy Apricot', description: '奶油杏色' },
+        { id: 'manuscript', name: 'Manuscript', description: '古典手稿' },
+        { id: 'horizon', name: 'Sky Horizon', description: '晴空渐变' },
     ];
 
     const handleIncreaseSize = () => {

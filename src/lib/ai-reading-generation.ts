@@ -299,6 +299,68 @@ export function isQuizEligibleArticle(article: {
     return article.quizEligible !== false;
 }
 
+export function resolveAIGenerationArticleCompletedAt(
+    article: {
+        quizCompleted?: boolean | null;
+        readingCompletedAt?: number | null;
+    } | null | undefined,
+    fallbackCompletedAt?: number | null,
+) {
+    const readingCompletedAt = article?.readingCompletedAt;
+    if (typeof readingCompletedAt === "number" && Number.isFinite(readingCompletedAt) && readingCompletedAt > 0) {
+        return readingCompletedAt;
+    }
+    if (article?.quizCompleted && typeof fallbackCompletedAt === "number" && Number.isFinite(fallbackCompletedAt) && fallbackCompletedAt > 0) {
+        return fallbackCompletedAt;
+    }
+    return null;
+}
+
+export function isAIGenerationArticleCompleted(article: {
+    quizCompleted?: boolean | null;
+    readingCompletedAt?: number | null;
+} | null | undefined) {
+    return Boolean(article?.quizCompleted || (
+        typeof article?.readingCompletedAt === "number"
+        && Number.isFinite(article.readingCompletedAt)
+        && article.readingCompletedAt > 0
+    ));
+}
+
+export function shouldAutoCompleteNoQuizAIGenerationArticle(params: {
+    article: {
+        isAIGenerated?: boolean | null;
+        difficulty?: ReadingDifficulty | null;
+        longformTrack?: LongformTrack | null;
+        quizEligible?: boolean | null;
+        quizCompleted?: boolean | null;
+        readingCompletedAt?: number | null;
+    } | null | undefined;
+    scrollProgress: number;
+    articleStartedAt: number | null | undefined;
+    now: number;
+    scrollThreshold: number;
+    minReadingMs: number;
+}) {
+    const {
+        article,
+        scrollProgress,
+        articleStartedAt,
+        now,
+        scrollThreshold,
+        minReadingMs,
+    } = params;
+
+    if (!article?.isAIGenerated) return false;
+    if (isQuizEligibleArticle(article)) return false;
+    if (isAIGenerationArticleCompleted(article)) return false;
+    if (scrollProgress < scrollThreshold) return false;
+    if (typeof articleStartedAt !== "number" || !Number.isFinite(articleStartedAt) || articleStartedAt <= 0) return false;
+    if (!Number.isFinite(now) || now <= articleStartedAt) return false;
+
+    return now - articleStartedAt >= minReadingMs;
+}
+
 export function formatLongformHistoryDescriptor(article: {
     difficulty?: ReadingDifficulty | null;
     generationMode?: AIGenerationMode | null;

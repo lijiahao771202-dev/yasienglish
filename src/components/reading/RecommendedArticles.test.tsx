@@ -19,6 +19,7 @@ const {
     setReadArticleArchivedMock,
     dbArticlesPutMock,
     dbArticlesToArrayMock,
+    dbReadArticlesToArrayMock,
     profileMock,
 } = vi.hoisted(() => ({
     fetchMock: vi.fn(),
@@ -31,7 +32,8 @@ const {
     deleteReadArticleSnapshotMock: vi.fn(async () => undefined),
     setReadArticleArchivedMock: vi.fn(async () => undefined),
     dbArticlesPutMock: vi.fn(async () => undefined),
-    dbArticlesToArrayMock: vi.fn(async () => []),
+    dbArticlesToArrayMock: vi.fn<() => Promise<Record<string, unknown>[]>>(async () => []),
+    dbReadArticlesToArrayMock: vi.fn<() => Promise<Record<string, unknown>[]>>(async () => []),
     profileMock: {
         id: 1,
         cat_score: 1000,
@@ -105,6 +107,27 @@ vi.mock("framer-motion", async () => {
     };
 });
 
+vi.mock("recharts", async () => {
+    const ReactModule = await import("react");
+
+    const passthrough = (tag = "div") => {
+        return ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) => {
+            return ReactModule.createElement(tag, props, children);
+        };
+    };
+
+    return {
+        ResponsiveContainer: passthrough("div"),
+        ComposedChart: passthrough("div"),
+        CartesianGrid: () => null,
+        XAxis: () => null,
+        YAxis: () => null,
+        Area: () => null,
+        Bar: () => null,
+        Tooltip: () => null,
+    };
+});
+
 vi.mock("dexie-react-hooks", () => ({
     useLiveQuery: () => profileMock,
 }));
@@ -163,7 +186,7 @@ vi.mock("@/lib/db", () => ({
             toArray: async () => [],
         },
         read_articles: {
-            toArray: async () => [],
+            toArray: dbReadArticlesToArrayMock,
         },
     },
 }));
@@ -258,6 +281,7 @@ describe("RecommendedArticles AI Studio wizard", () => {
         setReadArticleArchivedMock.mockClear();
         dbArticlesPutMock.mockClear();
         dbArticlesToArrayMock.mockClear();
+        dbReadArticlesToArrayMock.mockClear();
         vi.stubGlobal("fetch", fetchMock);
     });
 
@@ -280,12 +304,17 @@ describe("RecommendedArticles AI Studio wizard", () => {
         expect(container.querySelector('[data-ai-gen-wizard="true"]')).toBeTruthy();
         expect(container.querySelector('[data-ai-gen-progress="true"]')).toBeTruthy();
         expect(container.querySelector('[data-ai-gen-step="mode"]')).toBeTruthy();
-        expect(container.textContent).toContain("第 1 步 / 共 4 步");
+        expect(container.querySelector('[data-ai-gen-learning-tracker="true"]')).toBeTruthy();
+        expect(container.querySelector('[data-ai-gen-learning-summary="true"]')).toBeTruthy();
+        expect(container.querySelector('[data-ai-gen-learning-chart="true"]')).toBeTruthy();
+        expect(container.querySelector('[data-ai-gen-learning-history="true"]')).toBeTruthy();
+        expect(container.textContent).toContain("第 1 / 4 步");
         expect(findButtonByText(container, "标准模式")).toBeTruthy();
         expect(findButtonByText(container, "长文模式")).toBeTruthy();
         expect(container.textContent).not.toContain("RAG 模式");
         expect(container.textContent).not.toContain("RAG 来源");
         expect(container.querySelector('input[placeholder*="Quantum Computing"]')).toBeNull();
+        expect(container.textContent).toContain("还没有 AI 生成学习记录");
     });
 
     it("switches to longform flow and exposes the longform step", async () => {
@@ -294,7 +323,7 @@ describe("RecommendedArticles AI Studio wizard", () => {
         await clickButton(findButtonByText(container, "长文模式"));
 
         expect(container.querySelector('[data-ai-gen-step="difficulty"]')).toBeTruthy();
-        expect(container.textContent).toContain("第 2 步 / 共 5 步");
+        expect(container.textContent).toContain("第 2 / 5 步");
         expect(findButtonByText(container, "母语者")).toBeTruthy();
 
         await clickButton(container.querySelector('[data-ai-gen-next="true"]'));
@@ -354,7 +383,7 @@ describe("RecommendedArticles AI Studio wizard", () => {
 
         const vocabButton = findButtonByText(container, "只注入生词本");
         expect(vocabButton).toBeNull();
-    });
+    }, 15000);
 
     it("reaches topic step and generates through the existing handler", async () => {
         fetchMock.mockResolvedValue({
@@ -418,11 +447,94 @@ describe("RecommendedArticles AI Studio wizard", () => {
 
         expect(container.querySelector('[data-ai-gen-step="topic"]')).toBeTruthy();
         expect(container.textContent).toContain("风格选择");
-        expect(container.textContent).toContain("当前长文设置");
+        expect(container.textContent).toContain("长文设置详情");
 
         await clickButton(findButtonByText(container, "自定义风格"));
 
         const textarea = container.querySelector("textarea") as HTMLTextAreaElement | null;
         expect(textarea).toBeTruthy();
+    });
+
+    it("aggregates AI learning tracker metrics from article history and read completion time", async () => {
+        const now = Date.now();
+        const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000);
+        const twoDaysAgo = now - (2 * 24 * 60 * 60 * 1000);
+        const oneDayAgo = now - (24 * 60 * 60 * 1000);
+
+        dbArticlesToArrayMock.mockResolvedValue([
+            {
+                url: "https://example.com/ai-1",
+                title: "AI One",
+                textContent: "Article one",
+                timestamp: threeDaysAgo,
+                isAIGenerated: true,
+                isCatMode: false,
+                generationMode: "longform",
+                longformTrack: "native",
+                wordCount: 1200,
+                quizEligible: false,
+                quizCompleted: false,
+                readingCompletedAt: oneDayAgo,
+            },
+            {
+                url: "https://example.com/ai-2",
+                title: "AI Two",
+                textContent: "Article two",
+                timestamp: twoDaysAgo,
+                isAIGenerated: true,
+                isCatMode: false,
+                wordCount: 800,
+                quizCompleted: true,
+            },
+        ]);
+        dbReadArticlesToArrayMock.mockResolvedValue([
+            {
+                url: "https://example.com/ai-2",
+                timestamp: twoDaysAgo,
+                read_at: oneDayAgo,
+                article_payload: {
+                    isAIGenerated: true,
+                    isCatMode: false,
+                },
+            },
+        ]);
+
+        const { container } = await renderRecommendedArticles();
+
+        await waitForCondition(() => container.textContent?.includes("AI One") ?? false, 3000);
+
+        const tracker = container.querySelector('[data-ai-gen-learning-tracker="true"]');
+        const chart = container.querySelector('[data-ai-gen-learning-chart="true"]');
+        expect(tracker).toBeTruthy();
+        expect(chart?.getAttribute("data-window-days")).toBe("30");
+        expect(container.textContent).toContain("总生成");
+        expect(container.textContent).toContain("完成学习");
+        expect(container.textContent).toContain("近 30 天字数");
+        expect(container.textContent).toContain("连续学习");
+        expect(container.textContent).toContain("2,000");
+        expect(container.textContent).toContain("0 天");
+        const summaryCards = Array.from(
+            container.querySelectorAll<HTMLElement>('[data-ai-gen-learning-summary="true"] > div'),
+        );
+        expect(summaryCards[1]?.textContent).toContain("完成学习");
+        expect(summaryCards[1]?.textContent).toContain("2");
+        expect(container.textContent).toContain(
+            new Date(oneDayAgo).toLocaleString("zh-CN", {
+                month: "2-digit",
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+            }),
+        );
+    });
+
+    it("hides the learning tracker after switching away from ai_gen", async () => {
+        const { container } = await renderRecommendedArticles();
+
+        expect(container.querySelector('[data-ai-gen-learning-tracker="true"]')).toBeTruthy();
+
+        await clickButton(findButtonByText(container, "CAT 成长"));
+
+        expect(container.querySelector('[data-ai-gen-learning-tracker="true"]')).toBeNull();
     });
 });

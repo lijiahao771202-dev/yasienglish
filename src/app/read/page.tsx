@@ -62,7 +62,13 @@ import type {
     LongformTrack,
     LongformStyleMeta,
 } from "@/lib/ai-reading-generation";
-import { isQuizEligibleArticle } from "@/lib/ai-reading-generation";
+import {
+    isQuizEligibleArticle,
+    shouldAutoCompleteNoQuizAIGenerationArticle,
+} from "@/lib/ai-reading-generation";
+
+const AI_READING_COMPLETION_SCROLL_THRESHOLD = 0.92;
+const AI_READING_COMPLETION_MIN_READING_MS = 45_000;
 
 interface ArticleData {
     title: string;
@@ -122,6 +128,7 @@ interface ArticleData {
     quizResponses?: QuizSubmitPayload["responses"];
     quizQualityTier?: "ok" | "low_confidence";
     catSelfAssessed?: boolean;
+    readingCompletedAt?: number;
 }
 
 interface ArticleBlock {
@@ -487,6 +494,7 @@ function ReadingPageContent() {
     const quizPanelDragStateRef = useRef<QuizPanelDragState | null>(null);
     const wasSplitLayoutRef = useRef(false);
     const scrollBeforeSplitRef = useRef(0);
+    const aiReadingCompletionInFlightUrlRef = useRef<string | null>(null);
     const dockHideTimerRef = useRef<number | null>(null);
     const quizPrefetchRef = useRef<Record<string, boolean>>({});
     const deletedArticleUrlsRef = useRef<Set<string>>(new Set());
@@ -824,6 +832,17 @@ function ReadingPageContent() {
         setArticleSnapshotRevision((prev) => prev + 1);
     }, []);
 
+    const resetReadingViewport = useCallback(() => {
+        setScrollProgress(0);
+        window.scrollTo({ top: 0, behavior: "auto" });
+        document.documentElement.scrollTop = 0;
+        document.body.scrollTop = 0;
+        const node = readingColumnRef.current;
+        if (node) {
+            node.scrollTo({ top: 0, left: 0, behavior: "auto" });
+        }
+    }, []);
+
     const persistArticleLocally = useCallback(async (targetArticle: ArticleData | null | undefined) => {
         if (!targetArticle?.url) return;
         const articleUrl = targetArticle.url.trim();
@@ -868,6 +887,7 @@ function ReadingPageContent() {
             quizResponses: targetArticle.quizResponses,
             quizQualityTier: targetArticle.quizQualityTier,
             catSelfAssessed: targetArticle.catSelfAssessed,
+            readingCompletedAt: targetArticle.readingCompletedAt,
         });
     }, []);
 
@@ -1016,6 +1036,53 @@ function ReadingPageContent() {
             cancelled = true;
         };
     }, [pretestCompletionCacheKey]);
+
+    useEffect(() => {
+        aiReadingCompletionInFlightUrlRef.current = null;
+    }, [article?.url]);
+
+    useEffect(() => {
+        if (!article?.url) return;
+        const now = Date.now();
+        if (!shouldAutoCompleteNoQuizAIGenerationArticle({
+            article,
+            scrollProgress,
+            articleStartedAt,
+            now,
+            scrollThreshold: AI_READING_COMPLETION_SCROLL_THRESHOLD,
+            minReadingMs: AI_READING_COMPLETION_MIN_READING_MS,
+        })) return;
+        if (aiReadingCompletionInFlightUrlRef.current === article.url) return;
+
+        const completedAt = now;
+        const articleUrl = article.url;
+        aiReadingCompletionInFlightUrlRef.current = articleUrl;
+
+        void (async () => {
+            try {
+                await db.articles.update(articleUrl, {
+                    readingCompletedAt: completedAt,
+                    timestamp: Date.now(),
+                });
+                setArticle((prev) => {
+                    if (!prev || prev.url !== articleUrl || prev.readingCompletedAt) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        readingCompletedAt: completedAt,
+                    };
+                });
+                markArticleSnapshotDirty();
+                window.dispatchEvent(new CustomEvent('yasi:sync_smart_goals'));
+            } catch (error) {
+                console.error("Failed to persist AI reading completion:", error);
+                if (aiReadingCompletionInFlightUrlRef.current === articleUrl) {
+                    aiReadingCompletionInFlightUrlRef.current = null;
+                }
+            }
+        })();
+    }, [article, articleStartedAt, markArticleSnapshotDirty, scrollProgress]);
 
     useEffect(() => {
         if (quizEligibleForArticle) return;
@@ -1606,6 +1673,7 @@ function ReadingPageContent() {
             const cached = await db.articles.get({ url });
 
             if (cached) {
+                resetReadingViewport();
                 setArticle({
                     title: cached.title,
                     content: cached.content,
@@ -1643,6 +1711,7 @@ function ReadingPageContent() {
                     quizResponses: cached.quizResponses,
                     quizQualityTier: cached.quizQualityTier,
                     catSelfAssessed: cached.catSelfAssessed,
+                    readingCompletedAt: cached.readingCompletedAt,
                 });
 
                 // Update timestamp
@@ -1666,6 +1735,7 @@ function ReadingPageContent() {
             const finalUrl = response.data.url || url;
 
             const articleData = { ...response.data, url: finalUrl };
+            resetReadingViewport();
             setArticle(articleData);
             markReadArticleInStore(finalUrl);
             setArticleStartedAt(Date.now());
@@ -1783,6 +1853,7 @@ function ReadingPageContent() {
                         return {
                             ...prev,
                             quizCompleted: true,
+                            readingCompletedAt: Date.now(),
                             quizCorrect: correct,
                             quizTotal: total,
                             quizScorePercent: scorePercent,
@@ -1797,8 +1868,10 @@ function ReadingPageContent() {
                         void (async () => {
                             try {
                                 const { db } = await import("@/lib/db");
+                                const completedAt = Date.now();
                                 await db.articles.update(article.url, {
                                     quizCompleted: true,
+                                    readingCompletedAt: completedAt,
                                     quizCorrect: correct,
                                     quizTotal: total,
                                     quizScorePercent: scorePercent,
@@ -2417,6 +2490,7 @@ function ReadingPageContent() {
                                         if (nextArticle.url) {
                                             deletedArticleUrlsRef.current.delete(nextArticle.url);
                                         }
+                                        resetReadingViewport();
                                         setArticle(nextArticle);
                                         setArticleStartedAt(Date.now());
                                         void persistArticleLocally(nextArticle)

@@ -48,5 +48,6 @@ export function buildReadArticleCloudPayload(
         quizAnswers: article.quizAnswers,
         quizResponses: article.quizResponses,
         quizQualityTier: article.quizQualityTier,
+        readingCompletedAt: article.readingCompletedAt,
     };
 }

@@ -7,7 +7,7 @@ type FontId = 'serif' | 'sans' | 'mono' | 'merriweather' | 'lora' | 'inter' | 'r
 type FontSize = 'text-base' | 'text-lg' | 'text-xl' | 'text-2xl';
 type TranslationColorId = 'muted' | 'stone' | 'ink' | 'indigo' | 'sky' | 'emerald' | 'rose' | 'amber';
 export type PhraseDisplayMode = 'capsule' | 'inline_wavy';
-export type PaperStyleId = 'brutalist' | 'glass' | 'parchment' | 'grid' | 'sakura' | 'matcha' | 'sky' | 'charcoal' | 'borderless';
+export type PaperStyleId = 'brutalist' | 'glass' | 'parchment' | 'grid' | 'sakura' | 'matcha' | 'sky' | 'charcoal' | 'borderless' | 'kraft' | 'ruled' | 'eink' | 'blueprint' | 'cyberpunk' | 'wheat' | 'butter' | 'lavender' | 'oat' | 'newspaper' | 'graph' | 'linen' | 'pistachio' | 'apricot' | 'manuscript' | 'horizon';
 
 interface ReadingSettings {
     theme: ThemeId;
@@ -149,6 +149,22 @@ const PAPER_STYLE_CLASSES: Record<PaperStyleId, string> = {
     sky: 'reading-paper-sky',
     charcoal: 'reading-paper-charcoal',
     borderless: 'reading-paper-borderless',
+    kraft: 'reading-paper-kraft',
+    ruled: 'reading-paper-ruled',
+    eink: 'reading-paper-eink',
+    blueprint: 'reading-paper-blueprint',
+    cyberpunk: 'reading-paper-cyberpunk',
+    wheat: 'reading-paper-wheat',
+    butter: 'reading-paper-butter',
+    lavender: 'reading-paper-lavender',
+    oat: 'reading-paper-oat',
+    newspaper: 'reading-paper-newspaper',
+    graph: 'reading-paper-graph',
+    linen: 'reading-paper-linen',
+    pistachio: 'reading-paper-pistachio',
+    apricot: 'reading-paper-apricot',
+    manuscript: 'reading-paper-manuscript',
+    horizon: 'reading-paper-horizon',
 };
 
 function readStoredTheme(): ThemeId {
@@ -204,7 +220,7 @@ function readStoredPhraseDisplayMode(): PhraseDisplayMode {
 
 function readStoredPaperStyle(): PaperStyleId {
     const storedStyle = localStorage.getItem('reading_paper_style');
-    return storedStyle === 'brutalist' || storedStyle === 'glass' || storedStyle === 'parchment' || storedStyle === 'grid' || storedStyle === 'sakura' || storedStyle === 'matcha' || storedStyle === 'sky' || storedStyle === 'charcoal' || storedStyle === 'borderless'
+    return storedStyle === 'brutalist' || storedStyle === 'glass' || storedStyle === 'parchment' || storedStyle === 'grid' || storedStyle === 'sakura' || storedStyle === 'matcha' || storedStyle === 'sky' || storedStyle === 'charcoal' || storedStyle === 'borderless' || storedStyle === 'kraft' || storedStyle === 'ruled' || storedStyle === 'eink' || storedStyle === 'blueprint' || storedStyle === 'cyberpunk' || storedStyle === 'wheat' || storedStyle === 'butter' || storedStyle === 'lavender' || storedStyle === 'oat' || storedStyle === 'newspaper' || storedStyle === 'graph' || storedStyle === 'linen' || storedStyle === 'pistachio' || storedStyle === 'apricot' || storedStyle === 'manuscript' || storedStyle === 'horizon'
         ? (storedStyle as PaperStyleId)
         : DEFAULT_PAPER_STYLE;
 }
