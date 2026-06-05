@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createCompletionMock } = vi.hoisted(() => ({
+const { createCompletionMock, createNoThinkingClientMock } = vi.hoisted(() => ({
     createCompletionMock: vi.fn(),
+    createNoThinkingClientMock: vi.fn(),
 }));
 
 vi.mock("@/lib/deepseek", () => ({
@@ -12,6 +13,7 @@ vi.mock("@/lib/deepseek", () => ({
             },
         },
     },
+    createDeepSeekClientForCurrentUserWithoutThinking: createNoThinkingClientMock,
 }));
 
 import { POST } from "./route";
@@ -54,6 +56,14 @@ function buildRequest(overrides: Partial<{
 describe("score_translation route", () => {
     beforeEach(() => {
         createCompletionMock.mockReset();
+        createNoThinkingClientMock.mockReset();
+        createNoThinkingClientMock.mockResolvedValue({
+            chat: {
+                completions: {
+                    create: createCompletionMock,
+                },
+            },
+        });
         vi.spyOn(console, "error").mockImplementation(() => {});
     });
 
@@ -156,5 +166,29 @@ describe("score_translation route", () => {
         expect(response.status).toBe(200);
         expect(data.score).toBeLessThanOrEqual(2);
         expect(String(data.judge_reasoning)).toContain("需中文翻译");
+    });
+
+    it("uses the no-thinking scoring client for fast translation scoring", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletionPayload({
+                score: 8.5,
+                judge_reasoning: "核心语义基本完整。",
+            }),
+        );
+
+        const response = await POST(buildRequest({
+            mode: "translation",
+            is_reverse: true,
+            user_translation: "我昨天去了超市。",
+            original_chinese: "我昨天去了超市。",
+            reference_english: "I went to the supermarket yesterday.",
+        }));
+        const data = await response.json();
+
+        expect(response.status).toBe(200);
+        expect(createNoThinkingClientMock).toHaveBeenCalledTimes(1);
+        expect(createCompletionMock).toHaveBeenCalledTimes(1);
+        expect(data.score).toBe(8.5);
+        expect(data.judge_reasoning).toBe("核心语义基本完整。");
     });
 });

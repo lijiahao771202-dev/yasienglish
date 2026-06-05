@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Area, Bar, CartesianGrid, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BookOpen, Flame, GraduationCap, Languages, Award, CheckCircle2 } from "lucide-react";
+import { BookOpen, Flame, GraduationCap, Languages, Award, CheckCircle2, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
     AI_GEN_TRACKER_WINDOW_DAYS,
     buildAIGenLearningTrackerModel,
+    extractAvailableMonths,
     type AIGenLearningArticleRecord,
     type AIGenLearningDayPoint,
     type AIGenLearningReadEvent,
@@ -32,9 +33,17 @@ function getChartMax(points: AIGenLearningDayPoint[]) {
 
 export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrackerProps) {
     const reducedMotion = useReducedMotion();
+    const [selectedRange, setSelectedRange] = useState<string>("last-30-days");
+
+    const availableMonths = useMemo(() => {
+        return extractAvailableMonths(articles, readEvents);
+    }, [articles, readEvents]);
+
     const model = useMemo(
-        () => buildAIGenLearningTrackerModel(articles, readEvents),
-        [articles, readEvents],
+        () => buildAIGenLearningTrackerModel(articles, readEvents, {
+            targetMonth: selectedRange === "last-30-days" ? undefined : selectedRange
+        }),
+        [articles, readEvents, selectedRange],
     );
 
     const summaryItems = [
@@ -56,7 +65,7 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
         },
         {
             key: "words",
-            label: `近 ${AI_GEN_TRACKER_WINDOW_DAYS} 天字数`,
+            label: `${model.windowLabel}字数`,
             value: formatWordCount(model.wordsLastWindow),
             detail: "按生成日期累计",
             icon: Languages,
@@ -91,12 +100,34 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                             把 AI 生成的学习节奏压成一个轻量总览，直接看近 {AI_GEN_TRACKER_WINDOW_DAYS} 天的生成、完成和字数变化。
                         </p>
                     </div>
-                    <div className="inline-flex items-center gap-1.5 rounded-full border border-theme-border bg-theme-card-bg px-3 py-1.5 text-xs font-black text-theme-text shadow-[0_2px_0_var(--theme-shadow)]">
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                        </span>
-                        最近 {AI_GEN_TRACKER_WINDOW_DAYS} 天
+                    <div className="relative inline-flex items-center rounded-full border border-theme-border bg-theme-card-bg pl-3 shadow-[0_2px_0_var(--theme-shadow)] focus-within:ring-2 focus-within:ring-theme-border/50">
+                        {selectedRange === "last-30-days" && (
+                            <span className="relative flex h-2 w-2 shrink-0 mr-1.5">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                            </span>
+                        )}
+                        <select
+                            value={selectedRange}
+                            onChange={(e) => setSelectedRange(e.target.value)}
+                            className={cn(
+                                "appearance-none cursor-pointer bg-transparent py-1.5 pr-8 text-xs font-black text-theme-text focus:outline-none",
+                                selectedRange === "last-30-days" ? "pl-0.5" : "pl-1.5"
+                            )}
+                        >
+                            <option value="last-30-days">最近 30 天</option>
+                            {availableMonths.map((m) => {
+                                const [year, month] = m.split("-");
+                                return (
+                                    <option key={m} value={m}>
+                                        {year}年{Number(month)}月
+                                    </option>
+                                );
+                            })}
+                        </select>
+                        <div className="pointer-events-none absolute right-2.5 flex items-center text-theme-text-muted">
+                            <ChevronDown className="h-3.5 w-3.5 stroke-[2.5]" />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -160,7 +191,7 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                 >
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-theme-border/20 px-4 py-2.5 md:px-5">
                         <div>
-                            <p className="text-xs font-black text-theme-text">近 30 天学习走势</p>
+                            <p className="text-xs font-black text-theme-text">{model.windowLabel}学习走势</p>
                             <p className="mt-0.5 text-[10px] font-medium text-theme-text-muted">
                                 柱状显示生成/完成，面积显示每日生成字数。
                             </p>
@@ -187,8 +218,15 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                                 还没有 AI 生成学习记录。先生成一篇文章，后面这里会开始追踪你的每日节奏。
                             </div>
                         ) : (
+                            <motion.div
+                                key={selectedRange}
+                                initial={reducedMotion ? undefined : { opacity: 0, y: 8 }}
+                                animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
+                                transition={{ duration: 0.4, ease: "easeOut" }}
+                                className="h-full w-full"
+                            >
                             <ResponsiveContainer width="100%" height="100%">
-                                <ComposedChart data={model.chartData} margin={{ top: 10, right: 10, left: -22, bottom: 0 }}>
+                                <ComposedChart data={model.chartData} margin={{ top: 10, right: 8, left: -20, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="ai-learning-words-fill" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="5%" stopColor="color-mix(in srgb, var(--theme-text) 50%, #f59e0b)" stopOpacity={0.15} />
@@ -198,12 +236,20 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
 
                                     <CartesianGrid strokeDasharray="3 3" stroke="color-mix(in srgb, var(--theme-border) 18%, transparent)" />
                                     <XAxis
+                                        xAxisId="generated"
                                         dataKey="shortLabel"
                                         tick={{ fontSize: 9, fill: "var(--theme-text-muted)", fontFamily: "var(--font-mono)", fontWeight: "600" }}
                                         axisLine={false}
                                         tickLine={false}
-                                        interval={4}
-                                        minTickGap={14}
+                                        interval="preserveStartEnd"
+                                        minTickGap={10}
+                                        padding={{ left: 12, right: 12 }}
+                                    />
+                                    <XAxis
+                                        xAxisId="completed"
+                                        dataKey="shortLabel"
+                                        hide
+                                        padding={{ left: 12, right: 12 }}
                                     />
                                     <YAxis
                                         yAxisId="count"
@@ -240,15 +286,15 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                                                     <div className="mt-2 space-y-1.5 text-[11px] font-bold">
                                                         <div className="flex items-center justify-between gap-6">
                                                             <div className="flex items-center gap-1.5">
-                                                                <span className="h-2 w-2 rounded-sm border border-theme-border bg-[#38bdf8]" />
-                                                                <span className="text-theme-text-muted">生成篇数</span>
+                                                                 <span className="h-2 w-2 rounded-sm border border-theme-border bg-[#38bdf8]" />
+                                                                 <span className="text-theme-text-muted">生成篇数</span>
                                                             </div>
                                                             <span className="font-mono font-black text-theme-text">{point.generatedCount} 篇</span>
                                                         </div>
                                                         <div className="flex items-center justify-between gap-6">
                                                             <div className="flex items-center gap-1.5">
-                                                                <span className="h-2 w-2 rounded-sm border border-theme-border bg-[#34d399]" />
-                                                                <span className="text-theme-text-muted">完成学习</span>
+                                                                 <span className="h-2.5 w-2.5 rounded-sm border border-theme-border bg-[#34d399]" />
+                                                                 <span className="text-theme-text-muted">完成学习</span>
                                                             </div>
                                                             <span className="font-mono font-black text-theme-text">{point.completedCount} 篇</span>
                                                         </div>
@@ -265,6 +311,7 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                                         }}
                                     />
                                     <Area
+                                        xAxisId="generated"
                                         yAxisId="words"
                                         type="monotone"
                                         dataKey="generatedWords"
@@ -273,27 +320,36 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                                         strokeWidth={2.5}
                                         dot={false}
                                         activeDot={{ r: 4, fill: "#f59e0b", stroke: "var(--theme-border)", strokeWidth: 1.5 }}
+                                        isAnimationActive={false}
+                                        className="tracker-area-words"
                                     />
                                     <Bar
+                                        xAxisId="generated"
                                         yAxisId="count"
                                         dataKey="generatedCount"
                                         fill="#38bdf8"
                                         stroke="var(--theme-border)"
-                                        strokeWidth={1.5}
+                                        strokeWidth={1}
                                         radius={[1.5, 1.5, 0, 0]}
-                                        barSize={6}
+                                        barSize={9}
+                                        isAnimationActive={false}
+                                        className="tracker-bar-generated"
                                     />
                                     <Bar
+                                        xAxisId="completed"
                                         yAxisId="count"
                                         dataKey="completedCount"
                                         fill="#34d399"
                                         stroke="var(--theme-border)"
-                                        strokeWidth={1.5}
-                                        radius={[1.5, 1.5, 0, 0]}
-                                        barSize={6}
+                                        strokeWidth={1}
+                                        radius={[1, 1, 0, 0]}
+                                        barSize={5}
+                                        isAnimationActive={false}
+                                        className="tracker-bar-completed"
                                     />
                                 </ComposedChart>
                             </ResponsiveContainer>
+                            </motion.div>
                         )}
                     </div>
                 </div>

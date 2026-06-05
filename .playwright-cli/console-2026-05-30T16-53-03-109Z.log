@@ -748,3 +748,1155 @@ Import traces:
 [72571372ms] [LOG] [Fast Refresh] done in 322ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
 [73386753ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
 [73386818ms] [LOG] [Fast Refresh] done in 167ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76227694ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76228158ms] [LOG] [Fast Refresh] done in 567ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76406623ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76408948ms] [LOG] [Fast Refresh] done in 2414ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76414704ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76415261ms] [LOG] [Fast Refresh] done in 648ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76523143ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76523390ms] [LOG] [Fast Refresh] done in 350ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76532054ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76532563ms] [LOG] [Fast Refresh] done in 437ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76542577ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76543021ms] [LOG] [Fast Refresh] done in 519ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76549942ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76550087ms] [LOG] [Fast Refresh] done in 222ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76557307ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76559315ms] [LOG] [Fast Refresh] done in 2107ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76568408ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76569250ms] [LOG] [Fast Refresh] done in 934ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76704619ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76705148ms] [LOG] [Fast Refresh] done in 584ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76786945ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76787207ms] [LOG] [Fast Refresh] done in 345ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76851102ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76851859ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76851859ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76854426ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76854426ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76854529ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76854659ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76854660ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76854697ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76854698ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76854800ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76854847ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76854847ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76855856ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76855857ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76855915ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76855916ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76855962ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76856468ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856469ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856559ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856559ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856573ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76856807ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856807ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856853ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856853ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856948ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856949ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76856958ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76857248ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857248ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857268ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857268ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857391ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76857434ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857435ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857609ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857609ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857700ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857700ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76857803ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76858138ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76858139ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76858173ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76858173ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76858274ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76859011ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:343:26
+Parsing ecmascript source code failed
+  341 |                                 </ComposedChart>
+  342 |                             </ResponsiveContainer>
+> 343 |                         )}
+      |                          ^
+  344 |                     </div>
+  345 |                 </div>
+  346 |
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76859011ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:345:18
+Parsing ecmascript source code failed
+  343 |                         )}
+  344 |                     </div>
+> 345 |                 </div>
+      |                  ^^^^^
+  346 |
+  347 |                 <div
+  348 |                     data-ai-gen-learning-history="true"
+
+Unterminated regexp literal
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[76864347ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76864612ms] [LOG] [Fast Refresh] done in 226ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76889924ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76892544ms] [LOG] [Fast Refresh] done in 2676ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76898813ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76898986ms] [LOG] [Fast Refresh] done in 252ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76904654ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76904660ms] [LOG] [Fast Refresh] done in 108ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76913696ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76913727ms] [LOG] [Fast Refresh] done in 133ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76921774ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[76921795ms] [LOG] [Fast Refresh] done in 122ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[77020426ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[77020567ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:217:48
+Parsing ecmascript source code failed
+  215 |                     <div className="h-[210px] bg-theme-base-bg/40 px-2 pb-2.5 pt-1.5 md:h-[230px] md:px-3">
+  216 |                         {!model.hasHistory ? (
+> 217 |                                              ) : (
+      |                                                ^
+  218 |                             <motion.div
+  219 |                                 key={selectedRange}
+  220 |                                 initial={reducedMotion ? undefined : { opacity: 0, y: 8 }}
+
+Expected '</', got ':'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[77039974ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[77040118ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:217:48
+Parsing ecmascript source code failed
+  215 |                     <div className="h-[210px] bg-theme-base-bg/40 px-2 pb-2.5 pt-1.5 md:h-[230px] md:px-3">
+  216 |                         {!model.hasHistory ? (
+> 217 |                                              ) : (
+      |                                                ^
+  218 |                             <motion.div
+  219 |                                 key={selectedRange}
+  220 |                                 initial={reducedMotion ? undefined : { opacity: 0, y: 8 }}
+
+Expected '</', got ':'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[77050025ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[77050891ms] [ERROR] ./src/components/reading/AIGenLearningTracker.tsx:217:48
+Parsing ecmascript source code failed
+  215 |                     <div className="h-[210px] bg-theme-base-bg/40 px-2 pb-2.5 pt-1.5 md:h-[230px] md:px-3">
+  216 |                         {!model.hasHistory ? (
+> 217 |                                              ) : (
+      |                                                ^
+  218 |                             <motion.div
+  219 |                                 key={selectedRange}
+  220 |                                 initial={reducedMotion ? undefined : { opacity: 0, y: 8 }}
+
+Expected '</', got ':'
+
+Import traces:
+  Client Component Browser:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component Browser]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Client Component Browser]
+    ./src/app/read/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/components/reading/AIGenLearningTracker.tsx [Client Component SSR]
+    ./src/components/reading/RecommendedArticles.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Client Component SSR]
+    ./src/app/read/page.tsx [Server Component] @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[77062551ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[77062777ms] [LOG] [Fast Refresh] done in 202ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[77676575ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[77676694ms] [LOG] [Fast Refresh] done in 222ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[79750768ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[79750781ms] [LOG] [Fast Refresh] done in 116ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[89662772ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[113812207ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[132618084ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[140769678ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140770683ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140771686ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140772042ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/favicon.ico?_probe=1780300755142:0
+[140772690ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140773695ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140778703ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140783717ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140788729ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140792034ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/favicon.ico?_probe=1780300775141:0
+[140793758ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140798792ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140803903ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[140809141ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:4000/_next/webpack-hmr?id=CLjvt3UahyqfELinnKWya' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10876
+[152606845ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[152606933ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[152607086ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[152607090ms] [LOG] [Fast Refresh] done in 105ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153085047ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153085122ms] [LOG] [Fast Refresh] done in 179ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153196142ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153210446ms] [LOG] [Fast Refresh] done in 14407ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153212967ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153213274ms] [LOG] [Fast Refresh] done in 408ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153214728ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153218075ms] [LOG] [Fast Refresh] done in 3448ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153219234ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153219247ms] [LOG] [Fast Refresh] done in 115ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153220408ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153220783ms] [LOG] [Fast Refresh] done in 476ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153222779ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153227209ms] [LOG] [Fast Refresh] done in 4532ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153228518ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153228544ms] [LOG] [Fast Refresh] done in 127ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153281492ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[153282112ms] [LOG] [Fast Refresh] done in 721ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[162647293ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[164510207ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[164511130ms] [LOG] [Fast Refresh] done in 1029ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[164522234ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[164522879ms] [LOG] [Fast Refresh] done in 748ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[164522984ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[164523027ms] [LOG] [Fast Refresh] done in 145ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[168482041ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[202603933ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[211043192ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[222634060ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[222634138ms] [LOG] [Fast Refresh] done in 25071ms @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[232850156ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[287767023ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[298238804ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[384108804ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[385282581ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[389360717ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[396106116ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[405229170ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[407284264ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[415218683ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[429950511ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[430128344ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[430158472ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[431637506ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[431667594ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[432789382ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[475941934ms] [LOG] [HMR] connected @ http://127.0.0.1:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297

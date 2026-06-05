@@ -222,6 +222,28 @@ interface SentenceGrammarUiState {
     expanded: boolean;
 }
 
+interface HandwriteSentenceState {
+    draft: string;
+    isEditing: boolean;
+    revealed: boolean;
+    isScoring: boolean;
+    score: number | null;
+    scoredDraft: string | null;
+    judgeReasoning: string | null;
+    error: string | null;
+}
+
+interface RewriteSentenceState {
+    draft: string;
+    isEditing: boolean;
+    isGeneratingPrompt: boolean;
+    prompt: RewritePracticePrompt | null;
+    isScoring: boolean;
+    score: RewritePracticeScore | null;
+    scoredDraft: string | null;
+    error: string | null;
+}
+
 type SelectionPopupMode = "selection" | "ask" | "ask-replay";
 type AskAnswerMode = "default" | "short" | "detailed";
 type AskThinkingMode = "off" | "on";
@@ -403,12 +425,14 @@ function TranslationAside({
     phraseItems = [],
     onPhraseClick,
     inlinePhraseNode,
+    actionNode,
     textClassName,
 }: {
     translation: string;
     phraseItems?: Array<{ source: string; translation: string }>;
     onPhraseClick?: (item: { source: string; translation: string }, event: React.MouseEvent<HTMLButtonElement>) => void;
     inlinePhraseNode?: React.ReactNode;
+    actionNode?: React.ReactNode;
     textClassName?: string;
 }) {
     const [isRevealed, setIsRevealed] = React.useState(false);
@@ -418,6 +442,11 @@ function TranslationAside({
             data-translation-aside="true"
             className="reading-translation-inset mt-2.5 block w-full max-w-[min(100%,46rem)] px-3 py-2 text-left"
         >
+            {actionNode ? (
+                <div className="mb-2 flex items-center justify-end">
+                    {actionNode}
+                </div>
+            ) : null}
             <div
                 data-translation-line="true"
                 onClick={() => setIsRevealed(!isRevealed)}
@@ -435,6 +464,396 @@ function TranslationAside({
                     {inlinePhraseNode}
                 </div>
             ) : renderPhraseTranslationList(phraseItems, isRevealed, onPhraseClick)}
+        </div>
+    );
+}
+
+function createEmptyHandwriteSentenceState(): HandwriteSentenceState {
+    return {
+        draft: "",
+        isEditing: false,
+        revealed: false,
+        isScoring: false,
+        score: null,
+        scoredDraft: null,
+        judgeReasoning: null,
+        error: null,
+    };
+}
+
+function clampHandwriteScoreToTen(value: unknown) {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return 0;
+    return Math.max(0, Math.min(10, numeric));
+}
+
+function createEmptyRewriteSentenceState(): RewriteSentenceState {
+    return {
+        draft: "",
+        isEditing: false,
+        isGeneratingPrompt: false,
+        prompt: null,
+        isScoring: false,
+        score: null,
+        scoredDraft: null,
+        error: null,
+    };
+}
+
+function HandwriteTranslationPractice({
+    draft,
+    error,
+    isRevealed,
+    isScoring,
+    judgeReasoning,
+    onDraftChange,
+    onScore,
+    onToggleReveal,
+    onExit,
+    referenceTranslation,
+    showScoreResult,
+    score,
+    textClassName,
+}: {
+    draft: string;
+    error: string | null;
+    isRevealed: boolean;
+    isScoring: boolean;
+    judgeReasoning: string | null;
+    onDraftChange: (value: string) => void;
+    onScore: () => void;
+    onToggleReveal: () => void;
+    onExit: () => void;
+    referenceTranslation: string;
+    showScoreResult: boolean;
+    score: number | null;
+    textClassName?: string;
+}) {
+    const canReveal = draft.trim().length > 0 && referenceTranslation.trim().length > 0;
+
+    return (
+        <div
+            data-handwrite-panel="true"
+            className="reading-translation-inset mt-2.5 block w-full max-w-[min(100%,46rem)] px-3 py-3 text-left"
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+        >
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.02em] text-stone-500">
+                    <PenTool className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    <span>先自己手写这一句的翻译</span>
+                </div>
+                <button
+                    type="button"
+                    data-handwrite-exit-button="true"
+                    onClick={onExit}
+                    className="reading-apple-capsule inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-stone-500 transition hover:border-stone-200 hover:bg-white hover:text-stone-700"
+                >
+                    <ChevronLeft className="h-3 w-3" strokeWidth={1.8} />
+                    返回
+                </button>
+            </div>
+
+            <PretextTextarea
+                data-handwrite-input="true"
+                value={draft}
+                onChange={(event) => onDraftChange(event.target.value)}
+                measurementValue={draft || "先自己手写这一句的翻译"}
+                minRows={3}
+                placeholder="先自己手写这一句的翻译..."
+                autoFocus
+                className="mt-2 w-full resize-none rounded-[16px] border border-stone-200/80 bg-white/92 px-3.5 py-3 text-[14px] leading-6 text-stone-700 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+            />
+
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    data-handwrite-reveal-button="true"
+                    onClick={onToggleReveal}
+                    disabled={!canReveal}
+                    className={cn(
+                        "reading-apple-capsule inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold transition",
+                        canReveal
+                            ? "border-stone-200 bg-white text-stone-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
+                            : "cursor-not-allowed border-stone-200/80 bg-stone-100/70 text-stone-400",
+                    )}
+                >
+                    {isRevealed ? <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.8} /> : <Languages className="h-3.5 w-3.5" strokeWidth={1.8} />}
+                    {isRevealed ? "收起参考" : "显示参考"}
+                </button>
+
+                {isRevealed ? (
+                    <button
+                        type="button"
+                        data-handwrite-score-button="true"
+                        onClick={onScore}
+                        disabled={isScoring}
+                        className={cn(
+                            "reading-apple-capsule inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold transition",
+                            isScoring
+                                ? "cursor-wait border-amber-200 bg-amber-50 text-amber-600"
+                                : "border-emerald-200 bg-emerald-50/80 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100",
+                        )}
+                    >
+                        {isScoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} /> : <Sparkles className="h-3.5 w-3.5" strokeWidth={1.8} />}
+                        {isScoring ? "评分中..." : "AI评分"}
+                    </button>
+                ) : null}
+            </div>
+
+            {error ? (
+                <div className="mt-2 rounded-[14px] border border-rose-200 bg-rose-50/90 px-3 py-2 text-[12px] leading-5 text-rose-600">
+                    {error}
+                </div>
+            ) : null}
+
+            {isRevealed ? (
+                <div
+                    data-handwrite-reference="true"
+                    className={cn(
+                        "mt-3 rounded-[16px] border border-indigo-100/90 bg-[linear-gradient(180deg,rgba(238,242,255,0.92),rgba(255,255,255,0.96))] px-3.5 py-3 leading-[1.85] text-stone-600",
+                        textClassName,
+                    )}
+                >
+                    {referenceTranslation}
+                </div>
+            ) : null}
+
+            {isRevealed && showScoreResult && score !== null ? (
+                <div
+                    data-handwrite-score-result="true"
+                    className="mt-2.5 rounded-[14px] border border-emerald-200/80 bg-emerald-50/85 px-3 py-2.5 text-[12px] leading-5 text-emerald-800"
+                >
+                    <div className="flex items-center gap-1.5 font-bold">
+                        <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+                        <span>{score.toFixed(1)}/10</span>
+                    </div>
+                    {judgeReasoning ? (
+                        <p className="mt-1 text-[12px] font-medium leading-5 text-emerald-700">{judgeReasoning}</p>
+                    ) : null}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function RewriteSentencePractice({
+    sourceSentence,
+    draft,
+    prompt,
+    error,
+    isGeneratingPrompt,
+    isScoring,
+    score,
+    showScoreResult,
+    onDraftChange,
+    onRetryPrompt,
+    onScore,
+    onExit,
+}: {
+    sourceSentence: string;
+    draft: string;
+    prompt: RewritePracticePrompt | null;
+    error: string | null;
+    isGeneratingPrompt: boolean;
+    isScoring: boolean;
+    score: RewritePracticeScore | null;
+    showScoreResult: boolean;
+    onDraftChange: (value: string) => void;
+    onRetryPrompt: () => void;
+    onScore: () => void;
+    onExit: () => void;
+}) {
+    const canScore = draft.trim().length > 0 && Boolean(prompt) && !isGeneratingPrompt;
+
+    return (
+        <div
+            data-rewrite-panel="true"
+            className="reading-translation-inset mt-2.5 block w-full max-w-[min(100%,46rem)] px-3 py-3 text-left"
+            onClick={(event) => event.stopPropagation()}
+            onMouseDown={(event) => event.stopPropagation()}
+        >
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold tracking-[0.02em] text-stone-500">
+                    <PenTool className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    <span>先按这个句式自己写一句英文仿写</span>
+                </div>
+                <button
+                    type="button"
+                    data-rewrite-exit-button="true"
+                    onClick={onExit}
+                    className="reading-apple-capsule inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold text-stone-500 transition hover:border-stone-200 hover:bg-white hover:text-stone-700"
+                >
+                    <ChevronLeft className="h-3 w-3" strokeWidth={1.8} />
+                    返回
+                </button>
+            </div>
+
+            <div className="mt-2.5 rounded-[16px] border border-stone-200/80 bg-white/92 px-3.5 py-3">
+                <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-500">
+                    <Quote className="h-3.5 w-3.5" strokeWidth={1.8} />
+                    <span>Target Sentence</span>
+                </div>
+                <p className="mt-1.5 text-[14px] font-semibold leading-6 text-stone-800">{sourceSentence}</p>
+            </div>
+
+            <div className="mt-2.5 space-y-2.5">
+                {isGeneratingPrompt ? (
+                    <div className="rounded-[16px] border border-amber-200/80 bg-amber-50/80 px-3.5 py-3 text-[12px] font-medium text-amber-700">
+                        <div className="flex items-center gap-2">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
+                            <span>正在生成当前句的仿写提示...</span>
+                        </div>
+                    </div>
+                ) : prompt ? (
+                    <>
+                        <div className="rounded-[16px] border border-emerald-200/80 bg-emerald-50/70 px-3.5 py-3">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-700">
+                                <Lightbulb className="h-3.5 w-3.5" strokeWidth={1.8} />
+                                <span>Inspiration</span>
+                            </div>
+                            <p className="mt-1.5 text-[13px] leading-6 text-emerald-900">{prompt.imitation_prompt_cn}</p>
+                        </div>
+                        <div className="rounded-[16px] border border-violet-200/80 bg-violet-50/70 px-3.5 py-3">
+                            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-violet-700">
+                                <GitBranch className="h-3.5 w-3.5" strokeWidth={1.8} />
+                                <span>Structure Focus</span>
+                            </div>
+                            <p className="mt-1.5 text-[13px] leading-6 text-violet-900">{prompt.pattern_focus_cn}</p>
+                            {prompt.rewrite_tips_cn.length > 0 ? (
+                                <div className="mt-2 space-y-1.5">
+                                    {prompt.rewrite_tips_cn.map((tip, index) => (
+                                        <p key={`${tip}-${index}`} className="text-[12px] leading-5 text-violet-900/85">
+                                            {index + 1}. {tip}
+                                        </p>
+                                    ))}
+                                </div>
+                            ) : null}
+                        </div>
+                    </>
+                ) : (
+                    <div className="rounded-[16px] border border-stone-200/80 bg-stone-50/80 px-3.5 py-3">
+                        <p className="text-[12px] leading-5 text-stone-600">当前句的仿写提示暂时没拿到。</p>
+                        <button
+                            type="button"
+                            data-rewrite-retry-button="true"
+                            onClick={onRetryPrompt}
+                            className="reading-apple-capsule mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold text-stone-600 transition hover:border-stone-200 hover:bg-white hover:text-stone-800"
+                        >
+                            <RefreshCw className="h-3.5 w-3.5" strokeWidth={1.8} />
+                            重试提示
+                        </button>
+                    </div>
+                )}
+            </div>
+
+            <PretextTextarea
+                data-rewrite-input="true"
+                value={draft}
+                onChange={(event) => onDraftChange(event.target.value)}
+                measurementValue={draft || "试着按这个句式改写成你自己的英文句子"}
+                minRows={4}
+                placeholder="试着按这个句式改写成你自己的英文句子..."
+                autoFocus
+                className="mt-2.5 w-full resize-none rounded-[16px] border border-stone-200/80 bg-white/92 px-3.5 py-3 text-[14px] leading-6 text-stone-700 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+            />
+
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    data-rewrite-score-button="true"
+                    onClick={onScore}
+                    disabled={!canScore || isScoring}
+                    className={cn(
+                        "reading-apple-capsule inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold transition",
+                        canScore && !isScoring
+                            ? "border-emerald-200 bg-emerald-50/80 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100"
+                            : "cursor-not-allowed border-stone-200/80 bg-stone-100/70 text-stone-400",
+                    )}
+                >
+                    {isScoring ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} /> : <Rocket className="h-3.5 w-3.5" strokeWidth={1.8} />}
+                    {isScoring ? "批改中..." : "AI批改"}
+                </button>
+            </div>
+
+            {error ? (
+                <div className="mt-2 rounded-[14px] border border-rose-200 bg-rose-50/90 px-3 py-2 text-[12px] leading-5 text-rose-600">
+                    {error}
+                </div>
+            ) : null}
+
+            {showScoreResult && score ? (
+                <div
+                    data-rewrite-score-result="true"
+                    className="mt-3 space-y-3 rounded-[16px] border border-amber-200/80 bg-amber-50/75 px-3.5 py-3 text-stone-800"
+                >
+                    <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 text-[13px] font-black text-amber-800">
+                            <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.8} />
+                            <span>{score.total_score}/100</span>
+                        </div>
+                        <span className={cn(
+                            "rounded-full px-2.5 py-1 text-[10px] font-bold",
+                            score.copy_penalty_applied
+                                ? "bg-rose-100 text-rose-700"
+                                : "bg-emerald-100 text-emerald-700",
+                        )}>
+                            {score.copy_penalty_applied ? `仿写度降分 ${Math.round(score.copy_similarity * 100)}%` : "仿写通过"}
+                        </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {[
+                            { label: "语法", value: score.dimension_scores.grammar },
+                            { label: "词汇", value: score.dimension_scores.vocabulary },
+                            { label: "内容表达", value: score.dimension_scores.semantics },
+                            { label: "仿写度", value: score.dimension_scores.imitation },
+                        ].map((item) => (
+                            <div key={item.label} className="rounded-[14px] border border-white/80 bg-white/80 px-2.5 py-2 text-center">
+                                <p className="text-[10px] font-bold text-stone-500">{item.label}</p>
+                                <p className="mt-1 text-[14px] font-black text-stone-800">{item.value}</p>
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="rounded-[14px] border border-white/80 bg-white/80 px-3 py-2.5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.12em] text-stone-500">反馈</p>
+                        <p className="mt-1 text-[12px] leading-5 text-stone-700">{score.feedback_cn}</p>
+                    </div>
+
+                    {score.better_version_en ? (
+                        <div className="rounded-[14px] border border-indigo-100/90 bg-indigo-50/75 px-3 py-2.5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-indigo-600">推荐改写</p>
+                            <p className="mt-1 text-[12px] leading-5 text-indigo-900">{score.better_version_en}</p>
+                        </div>
+                    ) : null}
+
+                    {score.improvement_points_cn.length > 0 ? (
+                        <div className="rounded-[14px] border border-white/80 bg-white/80 px-3 py-2.5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-stone-500">提升建议</p>
+                            <div className="mt-1 space-y-1">
+                                {score.improvement_points_cn.map((point, index) => (
+                                    <p key={`${point}-${index}`} className="text-[12px] leading-5 text-stone-700">{index + 1}. {point}</p>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {score.corrections?.length ? (
+                        <div className="rounded-[14px] border border-white/80 bg-white/80 px-3 py-2.5">
+                            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-stone-500">明确修改点</p>
+                            <div className="mt-1 space-y-2">
+                                {score.corrections.map((item, index) => (
+                                    <div key={`${item.segment}-${index}`} className="text-[12px] leading-5 text-stone-700">
+                                        <p className="font-semibold text-stone-800">{item.segment} {"->"} {item.correction}</p>
+                                        <p>{item.reason}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
         </div>
     );
 }
@@ -931,6 +1350,8 @@ export function ParagraphCard({
     const [translationError, setTranslationError] = useState<string | null>(null);
     const [isAnalyzingGrammar, setIsAnalyzingGrammar] = useState(false);
     const [sentenceGrammarUi, setSentenceGrammarUi] = useState<Record<string, SentenceGrammarUiState>>({});
+    const [handwriteSentenceStates, setHandwriteSentenceStates] = useState<Record<string, HandwriteSentenceState>>({});
+    const [rewriteSentenceStates, setRewriteSentenceStates] = useState<Record<string, RewriteSentenceState>>({});
     // Load from DB on mount
     useEffect(() => {
         void loadFromDB(text);
@@ -2455,6 +2876,10 @@ export function ParagraphCard({
                         highlights: [],
                     };
                     const identity = sentenceIdentity(entry.unit.text);
+                    const handwriteSentenceKey = identity || `${entry.cacheKey}::handwrite`;
+                    const handwriteState = handwriteSentenceStates[handwriteSentenceKey] ?? createEmptyHandwriteSentenceState();
+                    const rewriteSentenceKey = identity || `${entry.cacheKey}::rewrite`;
+                    const rewriteState = rewriteSentenceStates[rewriteSentenceKey] ?? createEmptyRewriteSentenceState();
                     const storedTranslationItem = effectiveSentenceTranslationItemLookup.get(identity);
                     const unitTranslation = storedTranslationItem?.translation ?? effectiveSentenceTranslationLookup.get(identity) ?? "";
                     const phraseTranslations = storedTranslationItem?.phraseTranslations ?? [];
@@ -2474,6 +2899,7 @@ export function ParagraphCard({
 
                     const isSentenceActive = isSentencePlaybackActive(entry.unitIndex)
                         || (showTranslation && playMode === "sentence" && activeListenSentenceIndex === entry.unitIndex);
+                    const isCurrentSentencePlaying = isSentencePlaybackActive(entry.unitIndex) && (isSentencePlaying || isSentenceAudioLoading);
 
                     return (
                         <li
@@ -2484,7 +2910,7 @@ export function ParagraphCard({
                             data-translation-row={showTranslation ? "true" : undefined}
                             data-translation-row-active={showTranslation ? String(isSentenceActive) : undefined}
                             className={cn(
-                                "grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3 px-1.5 py-1 transition-colors",
+                                "group/translation-row grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3 px-1.5 py-1 transition-colors",
                                 showTranslation
                                     ? "reading-apple-row px-3.5 py-3"
                                     : cn(
@@ -2581,36 +3007,86 @@ export function ParagraphCard({
                                             ),
                                         )}
                                     </div>
-                                    {showTranslation && !shouldHidePlainTranslation && unitTranslation ? (
-                                        <TranslationAside
-                                            translation={unitTranslation}
-                                            phraseItems={phraseDisplayMode === "capsule" ? phraseTranslations : []}
-                                            onPhraseClick={
-                                                phraseDisplayMode === "capsule"
-                                                    ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
-                                                    : undefined
-                                            }
-                                            textClassName={translationTextClassName}
-                                        />
+                                    {showTranslation && unitTranslation ? (
+                                        handwriteState.isEditing ? (
+                                            <HandwriteTranslationPractice
+                                                draft={handwriteState.draft}
+                                                error={handwriteState.error}
+                                                isRevealed={handwriteState.revealed}
+                                                isScoring={handwriteState.isScoring}
+                                                judgeReasoning={handwriteState.judgeReasoning}
+                                                onDraftChange={(value) => handleHandwriteDraftChange(handwriteSentenceKey, value)}
+                                                onScore={() => {
+                                                    void handleHandwriteScore({
+                                                        sentenceKey: handwriteSentenceKey,
+                                                        referenceEnglish: entry.unit.text,
+                                                        referenceTranslation: unitTranslation,
+                                                    });
+                                                }}
+                                                onToggleReveal={() => handleToggleHandwriteReveal(handwriteSentenceKey)}
+                                                onExit={() => handleExitHandwriteEditing(handwriteSentenceKey)}
+                                                referenceTranslation={unitTranslation}
+                                                showScoreResult={handwriteState.score !== null && handwriteState.scoredDraft === handwriteState.draft.trim()}
+                                                score={handwriteState.score}
+                                                textClassName={translationTextClassName}
+                                            />
+                                        ) : rewriteState.isEditing ? (
+                                            <RewriteSentencePractice
+                                                sourceSentence={entry.unit.text}
+                                                draft={rewriteState.draft}
+                                                prompt={rewriteState.prompt}
+                                                error={rewriteState.error}
+                                                isGeneratingPrompt={rewriteState.isGeneratingPrompt}
+                                                isScoring={rewriteState.isScoring}
+                                                score={rewriteState.score}
+                                                showScoreResult={rewriteState.score !== null && rewriteState.scoredDraft === rewriteState.draft.trim()}
+                                                onDraftChange={(value) => handleRewriteDraftChange(rewriteSentenceKey, value)}
+                                                onRetryPrompt={() => {
+                                                    void handleRequestRewritePrompt(rewriteSentenceKey, entry.unit.text);
+                                                }}
+                                                onScore={() => {
+                                                    void handleRewriteScore({
+                                                        sentenceKey: rewriteSentenceKey,
+                                                        sourceSentence: entry.unit.text,
+                                                    });
+                                                }}
+                                                onExit={() => handleExitRewriteEditing(rewriteSentenceKey)}
+                                            />
+                                        ) : !shouldHidePlainTranslation ? (
+                                            <TranslationAside
+                                                translation={unitTranslation}
+                                                phraseItems={phraseDisplayMode === "capsule" ? phraseTranslations : []}
+                                                onPhraseClick={
+                                                    phraseDisplayMode === "capsule"
+                                                        ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
+                                                        : undefined
+                                                }
+                                                textClassName={translationTextClassName}
+                                            />
+                                        ) : null
                                     ) : null}
                                     </div>
                                     <div
                                         data-sentence-action-rail="true"
                                         className={cn(
                                             "ml-1 flex shrink-0 flex-col items-center gap-1.5 self-start pt-0.5 transition-all duration-200",
-                                            showTranslation && "ml-0 p-1.5 rounded-2xl",
+                                            showTranslation && "ml-0 w-9 rounded-2xl p-1 items-center opacity-0 translate-x-1 pointer-events-none",
+                                            showTranslation && "group-hover/translation-row:opacity-100 group-hover/translation-row:translate-x-0 group-hover/translation-row:pointer-events-auto",
+                                            showTranslation && "group-focus-within/translation-row:opacity-100 group-focus-within/translation-row:translate-x-0 group-focus-within/translation-row:pointer-events-auto",
+                                            showTranslation && (isSentenceActive || handwriteState.isEditing || rewriteState.isEditing) && "opacity-100 translate-x-0 pointer-events-auto",
                                             showTranslation && isSentencePlaybackActive(entry.unitIndex) && "reading-apple-inset shadow-[0_6px_20px_rgba(28,25,23,0.04)]",
                                         )}
                                     >
                                         <button
                                             type="button"
+                                            data-sentence-play-button="true"
                                             aria-label={`播放第 ${index + 1} 句`}
                                             title={`播放第 ${index + 1} 句`}
                                             className={cn(
-                                                "reading-apple-capsule reading-play-button inline-flex h-7 w-7 items-center justify-center bg-white dark:bg-stone-900 transition-colors shadow-sm",
+                                                "reading-apple-capsule group/play inline-flex h-7 w-7 items-center justify-center shadow-sm transition-all duration-300 hover:scale-110 active:scale-90",
                                                 isSentencePlaybackActive(entry.unitIndex)
-                                                    ? "border-amber-300/80 bg-amber-50/40 dark:bg-amber-950/20 dark:border-amber-800/80 text-amber-600 dark:text-amber-400 font-medium"
-                                                    : "border-stone-200 dark:border-stone-800 text-stone-400 dark:text-stone-500 hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50",
+                                                    ? "border-amber-200 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-400 shadow-[0_1px_2px_rgba(217,119,6,0.05)] hover:shadow-[0_4px_12px_rgba(217,119,6,0.1)]"
+                                                    : "border-stone-200/60 bg-stone-50/50 dark:border-stone-800/40 dark:bg-stone-900/20 text-stone-400 dark:text-stone-500 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 dark:hover:bg-stone-800/50 dark:hover:text-stone-300"
                                             )}
                                             onClick={(event) => {
                                                 event.preventDefault();
@@ -2621,11 +3097,43 @@ export function ParagraphCard({
                                             {isSentenceAudioLoading && isSentencePlaybackActive(entry.unitIndex) ? (
                                                 <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
                                             ) : isSentencePlaying && isSentencePlaybackActive(entry.unitIndex) ? (
-                                                <Pause className="h-3.5 w-3.5" strokeWidth={1.8} />
+                                                <Pause className="h-3.5 w-3.5 transition-transform duration-300 group-hover/play:scale-110" strokeWidth={1.8} />
                                             ) : (
-                                                <Play className="h-3.5 w-3.5" strokeWidth={1.8} />
+                                                <Play className="h-3.5 w-3.5 transition-transform duration-300 group-hover/play:scale-110 group-hover/play:translate-x-[0.5px]" strokeWidth={1.8} />
                                             )}
                                         </button>
+                                        {showTranslation && unitTranslation && !handwriteState.isEditing && !isCurrentSentencePlaying ? (
+                                            <button
+                                                type="button"
+                                                data-handwrite-enter-button="true"
+                                                aria-label={`手写第 ${index + 1} 句翻译`}
+                                                title="手写这一句翻译"
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    handleEnterHandwriteEditing(handwriteSentenceKey);
+                                                }}
+                                                className="reading-apple-capsule group/handwrite inline-flex h-7 w-7 items-center justify-center border border-amber-200 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-400 shadow-[0_1px_2px_rgba(217,119,6,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-900 hover:shadow-[0_4px_12px_rgba(217,119,6,0.1)] dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
+                                            >
+                                                <PenTool className="h-3.5 w-3.5 transition-transform duration-300 group-hover/handwrite:-rotate-12" strokeWidth={1.8} />
+                                            </button>
+                                        ) : null}
+                                        {showTranslation && unitTranslation && !rewriteState.isEditing && !isCurrentSentencePlaying ? (
+                                            <button
+                                                type="button"
+                                                data-rewrite-enter-button="true"
+                                                aria-label={`仿写第 ${index + 1} 句`}
+                                                title="仿写这一句"
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    handleEnterRewriteEditing(rewriteSentenceKey, entry.unit.text);
+                                                }}
+                                                className="reading-apple-capsule group/rewrite inline-flex h-7 w-7 items-center justify-center border border-indigo-200 bg-indigo-50/60 dark:border-indigo-800/40 dark:bg-indigo-950/20 text-indigo-800 dark:text-indigo-400 shadow-[0_1px_2px_rgba(79,70,229,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900 hover:shadow-[0_4px_12px_rgba(79,70,229,0.1)] dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300"
+                                            >
+                                                <GitBranch className="h-3.5 w-3.5 transition-transform duration-300 group-hover/rewrite:rotate-12 group-hover/rewrite:scale-110" strokeWidth={1.8} />
+                                            </button>
+                                        ) : null}
                                         {isSentencePlaybackActive(entry.unitIndex) && (isSentencePlaying || sentenceCurrentTimeMs > 0) ? (
                                             <>
                                                 <div className="w-3.5 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
@@ -2700,7 +3208,7 @@ export function ParagraphCard({
                                         </button>
                                     </div>
                                 ) : null}
-                                {!entry.error && entry.hasUsableAnalysis && resolvedAnalysisTranslation && entry.expanded ? (
+                                {!entry.error && !handwriteState.isEditing && entry.hasUsableAnalysis && resolvedAnalysisTranslation && entry.expanded ? (
                                     <SentenceTranslationLine
                                         translation={resolvedAnalysisTranslation}
                                         textClassName={translationTextClassName}
@@ -3550,6 +4058,24 @@ export function ParagraphCard({
     }, [text]);
 
     useEffect(() => {
+        setHandwriteSentenceStates({});
+    }, [text]);
+
+    useEffect(() => {
+        setRewriteSentenceStates({});
+    }, [text]);
+
+    useEffect(() => {
+        if (showTranslation) return;
+        setHandwriteSentenceStates({});
+    }, [showTranslation]);
+
+    useEffect(() => {
+        if (showTranslation) return;
+        setRewriteSentenceStates({});
+    }, [showTranslation]);
+
+    useEffect(() => {
         if (!isRewriteModeOpen) return;
 
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -3677,6 +4203,294 @@ export function ParagraphCard({
             setIsTranslating(false);
         }
     };
+
+    const updateHandwriteSentenceState = useCallback((
+        sentenceKey: string,
+        updater: HandwriteSentenceState | ((current: HandwriteSentenceState) => HandwriteSentenceState),
+    ) => {
+        if (!sentenceKey) return;
+        setHandwriteSentenceStates((prev) => {
+            const current = prev[sentenceKey] ?? createEmptyHandwriteSentenceState();
+            const nextState = typeof updater === "function"
+                ? (updater as (state: HandwriteSentenceState) => HandwriteSentenceState)(current)
+                : updater;
+            return {
+                ...prev,
+                [sentenceKey]: nextState,
+            };
+        });
+    }, []);
+
+    const updateRewriteSentenceState = useCallback((
+        sentenceKey: string,
+        updater: RewriteSentenceState | ((current: RewriteSentenceState) => RewriteSentenceState),
+    ) => {
+        if (!sentenceKey) return;
+        setRewriteSentenceStates((prev) => {
+            const current = prev[sentenceKey] ?? createEmptyRewriteSentenceState();
+            const nextState = typeof updater === "function"
+                ? (updater as (state: RewriteSentenceState) => RewriteSentenceState)(current)
+                : updater;
+            return {
+                ...prev,
+                [sentenceKey]: nextState,
+            };
+        });
+    }, []);
+
+    const handleHandwriteDraftChange = useCallback((sentenceKey: string, value: string) => {
+        updateHandwriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            draft: value,
+            isScoring: false,
+            score: null,
+            scoredDraft: null,
+            judgeReasoning: null,
+            error: null,
+        }));
+    }, [updateHandwriteSentenceState]);
+
+    const handleEnterHandwriteEditing = useCallback((sentenceKey: string) => {
+        updateHandwriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            isEditing: true,
+            error: null,
+        }));
+        updateRewriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            isEditing: false,
+            error: null,
+        }));
+    }, [updateHandwriteSentenceState, updateRewriteSentenceState]);
+
+    const handleExitHandwriteEditing = useCallback((sentenceKey: string) => {
+        updateHandwriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            isEditing: false,
+            error: null,
+        }));
+    }, [updateHandwriteSentenceState]);
+
+    const handleToggleHandwriteReveal = useCallback((sentenceKey: string) => {
+        updateHandwriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            revealed: !current.revealed,
+            error: null,
+        }));
+    }, [updateHandwriteSentenceState]);
+
+    const handleHandwriteScore = useCallback(async ({
+        sentenceKey,
+        referenceEnglish,
+        referenceTranslation,
+    }: {
+        sentenceKey: string;
+        referenceEnglish: string;
+        referenceTranslation: string;
+    }) => {
+        const currentState = handwriteSentenceStates[sentenceKey] ?? createEmptyHandwriteSentenceState();
+        const draft = currentState.draft.trim();
+        if (!draft || !referenceTranslation.trim()) return;
+
+        updateHandwriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            isScoring: true,
+            error: null,
+        }));
+
+        try {
+            const response = await fetch("/api/ai/score_translation", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    mode: "translation",
+                    is_reverse: true,
+                    input_source: "keyboard",
+                    teaching_mode: false,
+                    reference_english: referenceEnglish,
+                    original_chinese: referenceTranslation,
+                    user_translation: draft,
+                    current_elo: Number.isFinite(Number(profile?.translation_elo)) ? Number(profile?.translation_elo) : 1200,
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(typeof payload?.error === "string" ? payload.error : "翻译评分失败");
+            }
+
+            const nextScore = clampHandwriteScoreToTen(payload?.score);
+            const nextReasoning = typeof payload?.judge_reasoning === "string" && payload.judge_reasoning.trim()
+                ? payload.judge_reasoning.trim()
+                : "已完成翻译评分。";
+
+            updateHandwriteSentenceState(sentenceKey, (current) => ({
+                ...current,
+                isScoring: false,
+                score: nextScore,
+                scoredDraft: draft,
+                judgeReasoning: nextReasoning,
+                error: null,
+            }));
+        } catch (error) {
+            updateHandwriteSentenceState(sentenceKey, (current) => ({
+                ...current,
+                isScoring: false,
+                error: error instanceof Error ? error.message : "翻译评分失败",
+            }));
+        }
+    }, [handwriteSentenceStates, profile?.translation_elo, updateHandwriteSentenceState]);
+
+    const requestSentenceRewritePrompt = useCallback(async (sentenceText: string) => {
+        const response = await fetch("/api/ai/rewrite-practice", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                action: "generate",
+                paragraphText: sentenceText,
+                excludedSentences: [],
+            }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(typeof payload?.error === "string" ? payload.error : "仿写提示生成失败");
+        }
+
+        const sourceSentence = typeof payload?.source_sentence_en === "string" ? payload.source_sentence_en.trim() : "";
+        const imitationPrompt = typeof payload?.imitation_prompt_cn === "string" ? payload.imitation_prompt_cn.trim() : "";
+        const patternFocus = typeof payload?.pattern_focus_cn === "string" ? payload.pattern_focus_cn.trim() : "";
+        const rewriteTips = Array.isArray(payload?.rewrite_tips_cn)
+            ? payload.rewrite_tips_cn.filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
+            : [];
+
+        if (!sourceSentence || !imitationPrompt || !patternFocus) {
+            throw new Error("仿写提示为空");
+        }
+
+        return {
+            source_sentence_en: sourceSentence,
+            imitation_prompt_cn: imitationPrompt,
+            rewrite_tips_cn: rewriteTips,
+            pattern_focus_cn: patternFocus,
+        } satisfies RewritePracticePrompt;
+    }, []);
+
+    const handleRequestRewritePrompt = useCallback(async (sentenceKey: string, sentenceText: string) => {
+        if (!sentenceKey || !sentenceText.trim()) return;
+
+        updateRewriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            isEditing: true,
+            isGeneratingPrompt: true,
+            error: null,
+        }));
+
+        try {
+            const prompt = await requestSentenceRewritePrompt(sentenceText);
+            updateRewriteSentenceState(sentenceKey, (current) => ({
+                ...current,
+                isEditing: true,
+                isGeneratingPrompt: false,
+                prompt,
+                error: null,
+            }));
+        } catch (error) {
+            updateRewriteSentenceState(sentenceKey, (current) => ({
+                ...current,
+                isEditing: true,
+                isGeneratingPrompt: false,
+                prompt: null,
+                error: error instanceof Error ? error.message : "仿写提示生成失败",
+            }));
+        }
+    }, [requestSentenceRewritePrompt, updateRewriteSentenceState]);
+
+    const handleRewriteDraftChange = useCallback((sentenceKey: string, value: string) => {
+        updateRewriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            draft: value,
+            isScoring: false,
+            score: null,
+            scoredDraft: null,
+            error: null,
+        }));
+    }, [updateRewriteSentenceState]);
+
+    const handleEnterRewriteEditing = useCallback((sentenceKey: string, sentenceText: string) => {
+        updateHandwriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            isEditing: false,
+            error: null,
+        }));
+        const currentState = rewriteSentenceStates[sentenceKey] ?? createEmptyRewriteSentenceState();
+        if (currentState.prompt) {
+            updateRewriteSentenceState(sentenceKey, (current) => ({
+                ...current,
+                isEditing: true,
+                error: null,
+            }));
+            return;
+        }
+        void handleRequestRewritePrompt(sentenceKey, sentenceText);
+    }, [handleRequestRewritePrompt, rewriteSentenceStates, updateHandwriteSentenceState, updateRewriteSentenceState]);
+
+    const handleExitRewriteEditing = useCallback((sentenceKey: string) => {
+        updateRewriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            isEditing: false,
+            error: null,
+        }));
+    }, [updateRewriteSentenceState]);
+
+    const handleRewriteScore = useCallback(async ({
+        sentenceKey,
+        sourceSentence,
+    }: {
+        sentenceKey: string;
+        sourceSentence: string;
+    }) => {
+        const currentState = rewriteSentenceStates[sentenceKey] ?? createEmptyRewriteSentenceState();
+        const draft = currentState.draft.trim();
+        if (!draft || !currentState.prompt) return;
+
+        updateRewriteSentenceState(sentenceKey, (current) => ({
+            ...current,
+            isScoring: true,
+            error: null,
+        }));
+
+        try {
+            const response = await fetch("/api/ai/rewrite-practice", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    action: "score",
+                    source_sentence_en: sourceSentence,
+                    imitation_prompt_cn: currentState.prompt.imitation_prompt_cn,
+                    user_rewrite_en: draft,
+                    strict_semantic_match: false,
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) {
+                throw new Error(typeof payload?.error === "string" ? payload.error : "仿写评分失败");
+            }
+
+            const nextScore = payload as RewritePracticeScore;
+            updateRewriteSentenceState(sentenceKey, (current) => ({
+                ...current,
+                isScoring: false,
+                score: nextScore,
+                scoredDraft: draft,
+                error: null,
+            }));
+        } catch (error) {
+            updateRewriteSentenceState(sentenceKey, (current) => ({
+                ...current,
+                isScoring: false,
+                error: error instanceof Error ? error.message : "仿写评分失败",
+            }));
+        }
+    }, [rewriteSentenceStates, updateRewriteSentenceState]);
 
     const flushQueuedGrammarSentences = useCallback(async (forceRegenerate = false) => {
         const pendingEntries = grammarSentenceEntries.filter((entry) => grammarSentenceQueueRef.current.has(entry.cacheKey));

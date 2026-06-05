@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deepseek } from "@/lib/deepseek";
+import { createDeepSeekClientForCurrentUserWithoutThinking } from "@/lib/deepseek";
 import {
     hasPunctuationOnlyDictationIssue,
     isDictationPunctuationOnlyDifference,
@@ -268,6 +268,7 @@ ${voiceInstruction}
             : TRANSLATION_MAX_TOKENS;
         let completion: ScoreCompletion | null = null;
         let scoringProvider = "unknown";
+        const scoringClient = await createDeepSeekClientForCurrentUserWithoutThinking();
 
         // ===== CLOUD ONLY: DeepSeek =====
         console.log("[score_translation] ☁️ Calling DeepSeek API...");
@@ -277,7 +278,7 @@ ${voiceInstruction}
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
                 console.log(`[score_translation] API Attempt ${attempt}/${MAX_RETRIES} (Teaching Mode: ${teaching_mode})`);
-                completion = await deepseek.chat.completions.create({
+                completion = await scoringClient.chat.completions.create({
                     messages: [
                         { role: "system", content: "You are a helpful AI tutor. Output JSON only." },
                         { role: "user", content: prompt }

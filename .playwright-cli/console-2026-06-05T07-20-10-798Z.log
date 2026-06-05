@@ -1,0 +1,42 @@
+[    1958ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    2269ms] [LOG] [HMR] connected @ http://localhost:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[    4243ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   13166ms] [LOG] [Fast Refresh] done in 9029ms @ http://localhost:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   27992ms] [LOG] [AI Worker] Upgrading vector engine to Xenova/bge-m3. Wiping obsolete vector dimension cache... @ http://localhost:4000/_next/static/chunks/src_ae9d267f._.js:1488
+[   28683ms] [WARNING] dtype not specified for "model". Using the default dtype (q8) for this device (wasm). @ http://localhost:4000/_next/static/chunks/node_modules_%40huggingface_transformers_dist_transformers_e8fdb9c2.js:25384
+[   33855ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-0.5898589057993013px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33861ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-1.9145322523553268px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33871ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-1.9145322523553268px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33873ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-3.1463284398969567px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33881ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-3.68534930666625px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33893ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-4.153578498458953px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33899ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-4.261178408088517px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33911ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-4.27684188331119px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33923ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-4.27684188331119px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33925ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-4.039927795542331px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33938ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-3.652931628917547px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33943ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-3.474912568269904px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33947ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-3.323980806022922px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33958ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-3.323980806022922px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33960ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-2.7973697951800895px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33967ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-2.5005337970449872px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33972ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-2.286442275669952px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33979ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-1.9869889936408986px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33984ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-1.732935820764145px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33990ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-1.483252213446888px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   33997ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-1.2394692116371782px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   34003ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-1.00284561319768px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   34013ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-1.00284561319768px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   34016ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-0.5549191459344582px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   34024ms] [ERROR] Error: <rect> attribute width: A negative value is not valid. ("-0.24380132291521095px") @ http://localhost:4000/_next/static/chunks/node_modules_motion-dom_dist_es_8b3c32ce._.js:3821
+[   38046ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://localhost:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   38047ms] [WARNING] The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width. @ http://localhost:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[   66309ms] [WARNING] Unable to add response to browser cache: UnknownError: Failed to execute 'put' on 'Cache': Unexpected internal error.. @ http://localhost:4000/_next/static/chunks/node_modules_%40huggingface_transformers_dist_transformers_e8fdb9c2.js:47285
+[  716849ms] [LOG] [Fast Refresh] rebuilding @ http://localhost:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297
+[  716868ms] [LOG] [Fast Refresh] done in 119ms @ http://localhost:4000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:2297

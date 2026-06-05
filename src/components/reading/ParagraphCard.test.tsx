@@ -70,6 +70,7 @@ vi.mock("dexie-react-hooks", () => ({
         deepseek_model: "deepseek-v4-flash",
         deepseek_thinking_mode: "off",
         deepseek_reasoning_effort: "high",
+        translation_elo: 1460,
     }),
 }));
 
@@ -336,6 +337,22 @@ function getPhraseTags(container: HTMLElement) {
     return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-translation-phrase-tag="true"]'));
 }
 
+function getHandwriteInputs(container: HTMLElement) {
+    return Array.from(container.querySelectorAll<HTMLTextAreaElement>('[data-handwrite-input="true"]'));
+}
+
+function getHandwriteEnterButtons(container: HTMLElement) {
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-handwrite-enter-button="true"]'));
+}
+
+function getRewriteInputs(container: HTMLElement) {
+    return Array.from(container.querySelectorAll<HTMLTextAreaElement>('[data-rewrite-input="true"]'));
+}
+
+function getRewriteEnterButtons(container: HTMLElement) {
+    return Array.from(container.querySelectorAll<HTMLButtonElement>('[data-rewrite-enter-button="true"]'));
+}
+
 function getInlinePhraseTriggers(container: HTMLElement) {
     return Array.from(container.querySelectorAll<HTMLElement>('[data-translation-inline-phrase="true"]'));
 }
@@ -529,8 +546,8 @@ afterEach(async () => {
     readingSettingsMock.translationColorClass = "text-stone-500/95";
     readingSettingsMock.isBionicMode = false;
     readingSettingsMock.phraseDisplayMode = "capsule";
-    (readingSettingsMock as any).paperStyle = "brutalist";
-    (readingSettingsMock as any).paperStyleClass = "reading-paper-brutalist";
+    readingSettingsMock.paperStyle = "brutalist";
+    readingSettingsMock.paperStyleClass = "reading-paper-brutalist";
     vi.useRealTimers();
     vi.unstubAllGlobals();
 });
@@ -636,6 +653,521 @@ describe("ParagraphCard", () => {
         expect(getTranslationAsides(container)[0]?.className).toContain("block");
         expect(getTranslationAsides(container)[0]?.className).toContain("w-full");
         expect(getTranslationAsides(container)[0]?.className).toContain("reading-translation-inset");
+    });
+
+    it("enters handwriting practice only for the clicked sentence", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const handwriteEnterButtons = getHandwriteEnterButtons(container);
+        expect(handwriteEnterButtons).toHaveLength(2);
+        expect(getHandwriteInputs(container)).toHaveLength(0);
+        expect(getTranslationAsides(container)).toHaveLength(2);
+        const firstActionRail = container.querySelector<HTMLElement>('[data-speaking-segment-index="0"] [data-sentence-action-rail="true"]');
+        expect(firstActionRail).toBeTruthy();
+        expect(firstActionRail?.className).toContain("opacity-0");
+        expect(firstActionRail?.className).toContain("group-hover/translation-row:opacity-100");
+
+        const playButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-sentence-play-button="true"]'));
+        expect(playButtons).toHaveLength(2);
+
+        await act(async () => {
+            handwriteEnterButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const inputs = getHandwriteInputs(container);
+        expect(inputs).toHaveLength(1);
+        expect(getTranslationAsides(container)).toHaveLength(1);
+        expect(getHandwriteEnterButtons(container)).toHaveLength(1);
+
+        const revealButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-handwrite-reveal-button="true"]'));
+        expect(revealButtons).toHaveLength(1);
+        expect(revealButtons[0]?.disabled).toBe(true);
+        expect(container.querySelector('[data-handwrite-reference="true"]')).toBeNull();
+    });
+
+    it("reveals and scores one handwritten sentence without affecting the others, then clears stale score on edit", async () => {
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                    sentenceTranslations: [
+                        {
+                            sentence: "Plants need sunlight and water to grow.",
+                            translation: "植物需要阳光和水才能生长。",
+                        },
+                        {
+                            sentence: "Water helps roots stay strong.",
+                            translation: "水能帮助根部保持强壮。",
+                        },
+                    ],
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    score: 8.5,
+                    judge_reasoning: "主干意思对了，表达还算完整。",
+                }),
+            });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const handwriteEnterButtons = getHandwriteEnterButtons(container);
+        expect(handwriteEnterButtons).toHaveLength(2);
+
+        await act(async () => {
+            handwriteEnterButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const inputs = getHandwriteInputs(container);
+        expect(inputs).toHaveLength(1);
+
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(inputs[0], "植物需要阳光和水来生长。");
+            inputs[0].dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        const revealButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-handwrite-reveal-button="true"]'));
+        expect(revealButtons[0]?.disabled).toBe(false);
+
+        await act(async () => {
+            revealButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const revealedReferences = Array.from(container.querySelectorAll<HTMLElement>('[data-handwrite-reference="true"]'));
+        expect(revealedReferences).toHaveLength(1);
+        expect(revealedReferences[0]?.textContent).toContain("植物需要阳光和水才能生长。");
+        expect(container.textContent).not.toContain("水能帮助根部保持强壮。AI评分");
+
+        const scoreButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-handwrite-score-button="true"]'));
+        expect(scoreButtons).toHaveLength(1);
+
+        await act(async () => {
+            scoreButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        const [, scoreRequestInit] = fetchMock.mock.calls[1];
+        const scorePayload = JSON.parse(String(scoreRequestInit.body));
+        expect(scorePayload).toMatchObject({
+            mode: "translation",
+            is_reverse: true,
+            input_source: "keyboard",
+            teaching_mode: false,
+            reference_english: "Plants need sunlight and water to grow.",
+            original_chinese: "植物需要阳光和水才能生长。",
+            user_translation: "植物需要阳光和水来生长。",
+            current_elo: 1460,
+        });
+
+        const scoreResult = container.querySelector('[data-handwrite-score-result="true"]');
+        expect(scoreResult?.textContent).toContain("8.5/10");
+        expect(scoreResult?.textContent).toContain("主干意思对了，表达还算完整。");
+
+        const refreshedInputs = getHandwriteInputs(container);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(refreshedInputs[0], "植物得靠阳光和水才能长大。");
+            refreshedInputs[0].dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        expect(container.querySelector('[data-handwrite-score-result="true"]')).toBeNull();
+    });
+
+    it("resets handwriting state after collapsing translation", async () => {
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                    sentenceTranslations: [
+                        {
+                            sentence: "Plants need sunlight and water to grow.",
+                            translation: "植物需要阳光和水才能生长。",
+                        },
+                        {
+                            sentence: "Water helps roots stay strong.",
+                            translation: "水能帮助根部保持强壮。",
+                        },
+                    ],
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    score: 8.5,
+                    judge_reasoning: "主干意思对了，表达还算完整。",
+                }),
+            });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const handwriteEnterButtons = getHandwriteEnterButtons(container);
+        await act(async () => {
+            handwriteEnterButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const input = getHandwriteInputs(container)[0];
+        expect(input).toBeTruthy();
+
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(input, "植物需要阳光和水来生长。");
+            input.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        const revealButton = container.querySelector<HTMLButtonElement>('[data-handwrite-reveal-button="true"]');
+        await act(async () => {
+            revealButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        const scoreButton = container.querySelector<HTMLButtonElement>('[data-handwrite-score-button="true"]');
+        await act(async () => {
+            scoreButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(container.querySelector('[data-handwrite-score-result="true"]')).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(getHandwriteInputs(container)).toHaveLength(0);
+        expect(container.querySelector('[data-handwrite-score-result="true"]')).toBeNull();
+        expect(container.querySelector('[data-handwrite-reference="true"]')).toBeNull();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(getHandwriteInputs(container)).toHaveLength(0);
+        expect(getHandwriteEnterButtons(container)).toHaveLength(2);
+        expect(container.querySelector('[data-handwrite-score-result="true"]')).toBeNull();
+    });
+
+    it("opens rewrite practice only for the clicked sentence and loads prompt details", async () => {
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                    sentenceTranslations: [
+                        {
+                            sentence: "Plants need sunlight and water to grow.",
+                            translation: "植物需要阳光和水才能生长。",
+                        },
+                        {
+                            sentence: "Water helps roots stay strong.",
+                            translation: "水能帮助根部保持强壮。",
+                        },
+                    ],
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    source_sentence_en: "Plants need sunlight and water to grow.",
+                    imitation_prompt_cn: "想象你在照顾阳台上的盆栽。",
+                    rewrite_tips_cn: ["保留 need ... to ... 主干。", "替换主语和场景。"],
+                    pattern_focus_cn: "模仿 need A and B to do 的骨架。",
+                }),
+            });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const rewriteEnterButtons = getRewriteEnterButtons(container);
+        expect(rewriteEnterButtons).toHaveLength(2);
+        expect(getRewriteInputs(container)).toHaveLength(0);
+
+        await act(async () => {
+            rewriteEnterButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        const [, promptRequestInit] = fetchMock.mock.calls[1];
+        const promptPayload = JSON.parse(String(promptRequestInit.body));
+        expect(promptPayload).toMatchObject({
+            action: "generate",
+            paragraphText: "Plants need sunlight and water to grow.",
+        });
+
+        expect(getRewriteInputs(container)).toHaveLength(1);
+        expect(getRewriteEnterButtons(container)).toHaveLength(1);
+        expect(getTranslationAsides(container)).toHaveLength(1);
+        expect(container.textContent).toContain("Plants need sunlight and water to grow.");
+        expect(container.textContent).toContain("想象你在照顾阳台上的盆栽。");
+        expect(container.textContent).toContain("模仿 need A and B to do 的骨架。");
+        expect(container.textContent).toContain("保留 need ... to ... 主干。");
+    });
+
+    it("scores one rewritten sentence and clears stale rewrite score on edit", async () => {
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                    sentenceTranslations: [
+                        {
+                            sentence: "Plants need sunlight and water to grow.",
+                            translation: "植物需要阳光和水才能生长。",
+                        },
+                        {
+                            sentence: "Water helps roots stay strong.",
+                            translation: "水能帮助根部保持强壮。",
+                        },
+                    ],
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    source_sentence_en: "Plants need sunlight and water to grow.",
+                    imitation_prompt_cn: "想象你在照顾阳台上的盆栽。",
+                    rewrite_tips_cn: ["保留 need ... to ... 主干。", "替换主语和场景。"],
+                    pattern_focus_cn: "模仿 need A and B to do 的骨架。",
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    total_score: 86,
+                    dimension_scores: {
+                        grammar: 88,
+                        vocabulary: 84,
+                        semantics: 87,
+                        imitation: 85,
+                    },
+                    feedback_cn: "结构模仿到位，表达基本自然。",
+                    better_version_en: "Small plants need sunlight and steady watering to stay healthy.",
+                    copy_similarity: 0.41,
+                    copy_penalty_applied: false,
+                    improvement_points_cn: ["把 stay healthy 这类结果成分写完整。"],
+                    corrections: [
+                        {
+                            segment: "need sunlight and water",
+                            correction: "need sunlight and steady watering",
+                            reason: "搭配更自然。",
+                            category: "collocation",
+                        },
+                    ],
+                }),
+            });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            getRewriteEnterButtons(container)[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        const rewriteInput = getRewriteInputs(container)[0];
+        expect(rewriteInput).toBeTruthy();
+
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(rewriteInput, "Small plants need sunlight and water to stay healthy.");
+            rewriteInput.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        const scoreButton = container.querySelector<HTMLButtonElement>('[data-rewrite-score-button="true"]');
+        expect(scoreButton?.disabled).toBe(false);
+
+        await act(async () => {
+            scoreButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+        const [, , scoreRequestInit] = fetchMock.mock.calls;
+        const scorePayload = JSON.parse(String(scoreRequestInit[1].body));
+        expect(scorePayload).toMatchObject({
+            action: "score",
+            source_sentence_en: "Plants need sunlight and water to grow.",
+            imitation_prompt_cn: "想象你在照顾阳台上的盆栽。",
+            user_rewrite_en: "Small plants need sunlight and water to stay healthy.",
+            strict_semantic_match: false,
+        });
+
+        const scoreResult = container.querySelector('[data-rewrite-score-result="true"]');
+        expect(scoreResult?.textContent).toContain("86");
+        expect(scoreResult?.textContent).toContain("结构模仿到位，表达基本自然。");
+        expect(scoreResult?.textContent).toContain("Small plants need sunlight and steady watering to stay healthy.");
+        expect(scoreResult?.textContent).toContain("把 stay healthy 这类结果成分写完整。");
+        expect(scoreResult?.textContent).toContain("need sunlight and steady watering");
+
+        const refreshedInput = getRewriteInputs(container)[0];
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set?.call(refreshedInput, "Small plants need sun and regular watering to grow well.");
+            refreshedInput.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+
+        expect(container.querySelector('[data-rewrite-score-result="true"]')).toBeNull();
+    });
+
+    it("switches between rewrite and handwrite panels and resets rewrite state after collapsing translation", async () => {
+        fetchMock
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                    sentenceTranslations: [
+                        {
+                            sentence: "Plants need sunlight and water to grow.",
+                            translation: "植物需要阳光和水才能生长。",
+                        },
+                        {
+                            sentence: "Water helps roots stay strong.",
+                            translation: "水能帮助根部保持强壮。",
+                        },
+                    ],
+                }),
+            })
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    source_sentence_en: "Plants need sunlight and water to grow.",
+                    imitation_prompt_cn: "想象你在照顾阳台上的盆栽。",
+                    rewrite_tips_cn: ["保留 need ... to ... 主干。"],
+                    pattern_focus_cn: "模仿 need A and B to do 的骨架。",
+                }),
+            });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        await act(async () => {
+            getRewriteEnterButtons(container)[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(getRewriteInputs(container)).toHaveLength(1);
+        expect(getHandwriteInputs(container)).toHaveLength(0);
+
+        await act(async () => {
+            getHandwriteEnterButtons(container)[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(getRewriteInputs(container)).toHaveLength(0);
+        expect(getHandwriteInputs(container)).toHaveLength(1);
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        expect(getRewriteInputs(container)).toHaveLength(0);
+        expect(container.querySelector('[data-rewrite-score-result="true"]')).toBeNull();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        expect(getRewriteInputs(container)).toHaveLength(0);
+        expect(getRewriteEnterButtons(container)).toHaveLength(2);
     });
 
     it("blurs translation lines and phrase translations by default and toggles on click", async () => {

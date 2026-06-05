@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
+import {
+    createDeepSeekClientForCurrentUser,
+    createDeepSeekClientForCurrentUserWithoutThinking,
+} from "@/lib/deepseek";
 
 type GenerateRequest = {
     action: "generate";
@@ -466,7 +469,7 @@ async function handleScore(data: ScoreRequest) {
     }
 
     const copySimilarity = computeCopySimilarity(sourceSentence, userRewrite);
-    const deepseek = await createDeepSeekClientForCurrentUser();
+    const deepseek = await createDeepSeekClientForCurrentUserWithoutThinking();
     const completion = await deepseek.chat.completions.create({
         model: "deepseek-chat",
         messages: [

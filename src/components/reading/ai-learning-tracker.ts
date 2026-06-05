@@ -35,6 +35,7 @@ export interface AIGenLearningTrackerModel {
     totalCompleted: number;
     wordsLastWindow: number;
     streakDays: number;
+    windowLabel: string;
     chartData: AIGenLearningDayPoint[];
     mostActiveDayKey: string | null;
     mostActiveDayLabel: string | null;
@@ -102,6 +103,48 @@ function buildWindowDayKeys(now: number, windowDays: number) {
     });
 }
 
+function buildMonthDayKeys(yearMonth: string) {
+    const [yearStr, monthStr] = yearMonth.split("-");
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) {
+        return [];
+    }
+    const lastDay = new Date(year, month, 0).getDate();
+    return Array.from({ length: lastDay }, (_, index) => {
+        const day = index + 1;
+        return `${year}-${pad(month)}-${pad(day)}`;
+    });
+}
+
+export function extractAvailableMonths(
+    articles: AIGenLearningArticleRecord[],
+    readEvents: AIGenLearningReadEvent[],
+    now: number = Date.now()
+): string[] {
+    const months = new Set<string>();
+    const today = new Date(now);
+    months.add(`${today.getFullYear()}-${pad(today.getMonth() + 1)}`);
+
+    for (const article of articles) {
+        const articleTimestamp = resolveArticleTimestamp(article);
+        const dayKey = getLocalDayKey(articleTimestamp);
+        if (dayKey) {
+            months.add(dayKey.substring(0, 7));
+        }
+    }
+
+    for (const event of readEvents) {
+        const readAt = Number.isFinite(event.readAt) ? event.readAt : event.timestamp;
+        const dayKey = getLocalDayKey(readAt);
+        if (dayKey) {
+            months.add(dayKey.substring(0, 7));
+        }
+    }
+
+    return Array.from(months).sort().reverse();
+}
+
 function shiftDayKey(dayKey: string, offsetDays: number) {
     const date = createDateFromDayKey(dayKey);
     if (!date) {
@@ -119,17 +162,33 @@ function resolveArticleTimestamp(article: AIGenLearningArticleRecord) {
     return article.fetchedAt ?? 0;
 }
 
+export interface AIGenLearningTrackerOptions {
+    now?: number;
+    windowDays?: number;
+    targetMonth?: string;
+}
+
 export function buildAIGenLearningTrackerModel(
     articles: AIGenLearningArticleRecord[],
     readEvents: AIGenLearningReadEvent[],
-    options?: {
-        now?: number;
-        windowDays?: number;
-    },
+    options?: AIGenLearningTrackerOptions,
 ): AIGenLearningTrackerModel {
     const now = options?.now ?? Date.now();
-    const windowDays = options?.windowDays ?? AI_GEN_TRACKER_WINDOW_DAYS;
-    const windowDayKeys = buildWindowDayKeys(now, windowDays);
+    const targetMonth = options?.targetMonth;
+
+    let windowDayKeys: string[];
+    let windowLabel = "";
+
+    if (targetMonth) {
+        windowDayKeys = buildMonthDayKeys(targetMonth);
+        const [y, m] = targetMonth.split("-");
+        windowLabel = `${y}年${Number(m)}月`;
+    } else {
+        const windowDays = options?.windowDays ?? AI_GEN_TRACKER_WINDOW_DAYS;
+        windowDayKeys = buildWindowDayKeys(now, windowDays);
+        windowLabel = `近 ${windowDays} 天`;
+    }
+
     const windowDayKeySet = new Set(windowDayKeys);
     const chartPointMap = new Map<string, AIGenLearningDayPoint>(
         windowDayKeys.map((dayKey) => [
@@ -172,6 +231,14 @@ export function buildAIGenLearningTrackerModel(
 
         allActivityDayKeys.add(dayKey);
 
+        const completedAt = resolveAIGenerationArticleCompletedAt(article, readAtByUrl.get(article.link) ?? null);
+        if (completedAt) {
+            const completedDayKey = getLocalDayKey(completedAt);
+            if (completedDayKey) {
+                allActivityDayKeys.add(completedDayKey);
+            }
+        }
+
         if (!windowDayKeySet.has(dayKey)) {
             continue;
         }
@@ -185,29 +252,10 @@ export function buildAIGenLearningTrackerModel(
         point.generatedWords += Math.max(0, article.wordCount ?? 0);
         point.totalActivity += 1;
 
-        const completedAt = resolveAIGenerationArticleCompletedAt(article, readAtByUrl.get(article.link) ?? null);
-        if (!completedAt) {
-            continue;
+        if (completedAt) {
+            point.completedCount += 1;
+            point.totalActivity += 1;
         }
-
-        const completedDayKey = getLocalDayKey(completedAt);
-        if (!completedDayKey) {
-            continue;
-        }
-
-        allActivityDayKeys.add(completedDayKey);
-
-        if (!windowDayKeySet.has(completedDayKey)) {
-            continue;
-        }
-
-        const completedPoint = chartPointMap.get(completedDayKey);
-        if (!completedPoint) {
-            continue;
-        }
-
-        completedPoint.completedCount += 1;
-        completedPoint.totalActivity += 1;
     }
 
     let totalCompleted = 0;
@@ -266,6 +314,7 @@ export function buildAIGenLearningTrackerModel(
         totalCompleted,
         wordsLastWindow: chartData.reduce((sum, point) => sum + point.generatedWords, 0),
         streakDays,
+        windowLabel,
         chartData,
         mostActiveDayKey: mostActiveDay?.dateKey ?? null,
         mostActiveDayLabel: mostActiveDay?.fullLabel ?? null,

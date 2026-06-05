@@ -1,12 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createCompletionMock, createClientMock } = vi.hoisted(() => ({
+const { createCompletionMock, createClientMock, createNoThinkingClientMock } = vi.hoisted(() => ({
     createCompletionMock: vi.fn(),
     createClientMock: vi.fn(),
+    createNoThinkingClientMock: vi.fn(),
 }));
 
 vi.mock("@/lib/deepseek", () => ({
     createDeepSeekClientForCurrentUser: createClientMock,
+    createDeepSeekClientForCurrentUserWithoutThinking: createNoThinkingClientMock,
 }));
 
 import { POST } from "./route";
@@ -33,7 +35,15 @@ describe("rewrite-practice route", () => {
     beforeEach(() => {
         createCompletionMock.mockReset();
         createClientMock.mockReset();
+        createNoThinkingClientMock.mockReset();
         createClientMock.mockResolvedValue({
+            chat: {
+                completions: {
+                    create: createCompletionMock,
+                },
+            },
+        });
+        createNoThinkingClientMock.mockResolvedValue({
             chat: {
                 completions: {
                     create: createCompletionMock,
@@ -303,5 +313,36 @@ describe("rewrite-practice route", () => {
                 category: "grammar",
             },
         ]);
+    });
+
+    it("uses the no-thinking client for rewrite scoring", async () => {
+        createCompletionMock.mockResolvedValueOnce(
+            createCompletionPayload({
+                dimension_scores: {
+                    grammar: 88,
+                    vocabulary: 86,
+                    semantics: 84,
+                    imitation: 87,
+                },
+                feedback_cn: "整体表达自然。",
+                better_version_en: "Small plants need enough sunlight and regular watering to thrive.",
+                improvement_points_cn: ["可以把结果补语写得更明确。"],
+                corrections: [],
+            }),
+        );
+
+        const res = await POST(buildRequest({
+            action: "score",
+            source_sentence_en: "Plants need sunlight and water to grow.",
+            imitation_prompt_cn: "想象你在照顾阳台上的盆栽。",
+            user_rewrite_en: "Small plants need sunlight and water to thrive.",
+            strict_semantic_match: false,
+        }));
+        const data = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(createNoThinkingClientMock).toHaveBeenCalledTimes(1);
+        expect(createClientMock).not.toHaveBeenCalled();
+        expect(data.total_score).toBeGreaterThan(0);
     });
 });
