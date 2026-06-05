@@ -6,7 +6,7 @@ const { createCompletionMock, createClientMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/deepseek", () => ({
-    createAiClientForCurrentUser: createClientMock,
+    createDeepSeekClientForCurrentUser: createClientMock,
 }));
 
 import { POST } from "./route";

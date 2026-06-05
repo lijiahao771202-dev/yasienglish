@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAiClientForCurrentUser } from "@/lib/deepseek";
+import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
 import { parseJsonObjectFromAi } from "@/lib/ai-json";
 import {
     hasPunctuationOnlyDictationIssue,
@@ -269,7 +269,7 @@ ${voiceInstruction}
             : TRANSLATION_MAX_TOKENS;
         let completion: ScoreCompletion | null = null;
         let scoringProvider = "unknown";
-        const scoringClient = await createAiClientForCurrentUser();
+        const scoringClient = await createDeepSeekClientForCurrentUser();
 
         // ===== CLOUD AI PROVIDER =====
         console.log("[score_translation] ☁️ Calling configured AI provider API...");

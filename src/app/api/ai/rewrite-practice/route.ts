@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-    createAiClientForCurrentUser,
+    createDeepSeekClientForCurrentUser,
 } from "@/lib/deepseek";
 import { parseJsonObjectFromAi } from "@/lib/ai-json";
 
@@ -370,7 +370,7 @@ async function handleGenerate(data: GenerateRequest) {
     const available = candidates.filter((item) => !excluded.has(normalizeSentenceIdentity(item)));
     const candidatePool = available.length > 0 ? available : candidates;
 
-    const client = await createAiClientForCurrentUser();
+    const client = await createDeepSeekClientForCurrentUser();
     const requestGeneratePayload = async (strictSceneShift: boolean, previousPrompt?: string) => {
         const completion = await client.chat.completions.create({
             model: "deepseek-chat",
@@ -490,7 +490,7 @@ async function handleScore(data: ScoreRequest) {
     }
 
     const copySimilarity = computeCopySimilarity(sourceSentence, userRewrite);
-    const client = await createAiClientForCurrentUser();
+    const client = await createDeepSeekClientForCurrentUser();
     const completion = await client.chat.completions.create({
         model: "deepseek-chat",
         messages: [

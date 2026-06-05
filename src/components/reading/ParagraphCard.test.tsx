@@ -3700,7 +3700,73 @@ describe("ParagraphCard", () => {
         });
 
         expect(container.querySelector('button[aria-label="取消第 1 句播放"]')).toBeTruthy();
-        expect(container.querySelector('button[aria-label="第 1 句切换倍速"]')).toBeNull();
+        expect(container.querySelector('button[aria-label="第 1 句切换倍速"]')).toBeTruthy();
+    });
+
+    it("keeps playback mode controls active and hides edit/AI actions when sentence playback is paused", async () => {
+        const audioInstances = installFakeAudio(10);
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。水能帮助根部保持强壮。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光 and 水才能生长。",
+                        phraseTranslations: [],
+                    },
+                    {
+                        sentence: "Water helps roots stay strong.",
+                        translation: "水能帮助根部保持强壮。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        const container = await renderCard({
+            text: "Plants need sunlight and water to grow. Water helps roots stay strong.",
+        });
+        const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+        expect(translateButton).toBeTruthy();
+
+        await act(async () => {
+            translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+        await act(async () => {
+            await Promise.resolve();
+        });
+
+        // 1. Initially, not in playback mode, so AI/Handwrite/Rewrite buttons are visible.
+        expect(container.querySelector('[data-inject-context-button="true"]')).toBeTruthy();
+        expect(container.querySelector('[data-handwrite-enter-button="true"]')).toBeTruthy();
+        expect(container.querySelector('[data-rewrite-enter-button="true"]')).toBeTruthy();
+
+        const playButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+        expect(playButton).toBeTruthy();
+
+        // 2. Play the sentence to enter sentence playback mode.
+        await act(async () => {
+            playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
+        // AI/Handwrite/Rewrite buttons should be hidden for the active sentence (index 0) when sentence playback is active.
+        expect(container.querySelector('[data-speaking-segment-index="0"] [data-inject-context-button="true"]')).toBeNull();
+        expect(container.querySelector('[data-speaking-segment-index="0"] [data-handwrite-enter-button="true"]')).toBeNull();
+        expect(container.querySelector('[data-speaking-segment-index="0"] [data-rewrite-enter-button="true"]')).toBeNull();
+
+        // 3. Pause playback.
+        await act(async () => {
+            audioInstances[0]!.paused = true;
+            audioInstances[0]!.onpause?.(new Event("pause"));
+        });
+
+        // They should STILL be hidden for the active sentence after pausing, since sentence playback is still the active mode.
+        expect(container.querySelector('[data-speaking-segment-index="0"] [data-inject-context-button="true"]')).toBeNull();
+        expect(container.querySelector('[data-speaking-segment-index="0"] [data-handwrite-enter-button="true"]')).toBeNull();
+        expect(container.querySelector('[data-speaking-segment-index="0"] [data-rewrite-enter-button="true"]')).toBeNull();
+        expect(container.querySelector('[data-speaking-segment-index="0"] button[aria-label="取消第 1 句播放"]')).toBeTruthy();
     });
 
     it("replays the current sentence from the beginning when space is pressed in sentence mode", async () => {
@@ -4545,6 +4611,179 @@ describe("ParagraphCard", () => {
                 rangeLabel: "第 4 段",
                 text: "Plants need sunlight and water to grow.",
             }));
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it("supports blind listening flow mode with word blurring, hints, and reveal all features", async () => {
+        const audioInstances = installFakeAudio(5);
+        vi.mocked(requestTtsPayload).mockResolvedValue({
+            audio: "data:audio/mpeg;base64,ZmFrZQ==",
+            marks: [
+                { time: 0, type: "word", start: 0, end: 6, value: "Plants" },
+                { time: 500, type: "word", start: 7, end: 11, value: "need" },
+                { time: 1000, type: "word", start: 12, end: 20, value: "sunlight" },
+                { time: 1500, type: "word", start: 21, end: 24, value: "and" },
+                { time: 2000, type: "word", start: 25, end: 30, value: "water" },
+                { time: 2500, type: "word", start: 31, end: 33, value: "to" },
+                { time: 3000, type: "word", start: 34, end: 38, value: "grow" },
+            ],
+        });
+
+        fetchMock.mockResolvedValue({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水分才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水分才能生长。",
+                        phraseTranslations: [],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+
+        try {
+            const container = await renderCard({
+                text: "Plants need sunlight and water to grow.",
+            });
+
+            // Open speaking and translate mode
+            const speakingButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("朗读"));
+            const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+            expect(speakingButton).toBeTruthy();
+            expect(translateButton).toBeTruthy();
+
+            await act(async () => {
+                speakingButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            // Start playing the sentence to enter playMode === "sentence"
+            const sentencePlayButton = container.querySelector<HTMLButtonElement>('button[aria-label="播放第 1 句"]');
+            expect(sentencePlayButton).toBeTruthy();
+
+            await act(async () => {
+                sentencePlayButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            // Verify blind listening control bar is visible
+            const blindToggleButton = Array.from(container.querySelectorAll("button")).find(
+                (btn) => btn.textContent?.includes("开启盲听") || btn.textContent?.includes("已开启盲听")
+            );
+            expect(blindToggleButton).toBeTruthy();
+            expect(blindToggleButton?.textContent).toContain("开启盲听");
+
+            // Word elements are rendered. Since blind listening is off, none should be blurred.
+            const getWordElements = () => Array.from(container.querySelectorAll('[data-ktv-word-index]'));
+            let words = getWordElements();
+            expect(words.length).toBeGreaterThan(0);
+            
+            // None should have blur initially
+            words.forEach((word) => {
+                const style = (word as HTMLElement).style;
+                expect(style.filter).not.toContain("blur");
+            });
+
+            // Toggle blind listening ON
+            await act(async () => {
+                blindToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            const updatedToggleButton = Array.from(container.querySelectorAll("button")).find(
+                (btn) => btn.textContent?.includes("开启盲听") || btn.textContent?.includes("已开启盲听")
+            );
+            expect(updatedToggleButton?.textContent).toContain("已开启盲听");
+
+            // Some words should now be blurred, and some (structural words or first word) unblurred.
+            words = getWordElements();
+            const blurredIndices = words
+                .map((word, idx) => ((word as HTMLElement).style.filter.includes("blur") ? idx : null))
+                .filter((idx) => idx !== null) as number[];
+            
+            const unblurredIndices = words
+                .map((word, idx) => (!(word as HTMLElement).style.filter.includes("blur") ? idx : null))
+                .filter((idx) => idx !== null) as number[];
+
+            expect(blurredIndices.length).toBeGreaterThan(0);
+            expect(unblurredIndices.length).toBeGreaterThan(0);
+
+            // Verify hover reveal behavior
+            const blurredWordElement = words[blurredIndices[0]!] as HTMLElement;
+            expect(blurredWordElement.style.filter).toContain("blur");
+
+            // Mouse enter: should reveal (filter is removed)
+            await act(async () => {
+                blurredWordElement.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+            });
+            await act(async () => {
+                await new Promise((r) => setTimeout(r, 0));
+            });
+            const revealedWordElement = container.querySelector(`[data-ktv-word-index="${blurredIndices[0]}"]`) as HTMLElement;
+            expect(revealedWordElement.style.filter).not.toContain("blur");
+
+            // Mouse leave: should blur again
+            await act(async () => {
+                revealedWordElement.dispatchEvent(new MouseEvent("mouseout", { bubbles: true }));
+            });
+            await act(async () => {
+                await new Promise((r) => setTimeout(r, 0));
+            });
+            const reblurredWordElement = container.querySelector(`[data-ktv-word-index="${blurredIndices[0]}"]`) as HTMLElement;
+            expect(reblurredWordElement.style.filter).toContain("blur");
+
+            // Give Hint Button should be visible now
+            const hintButton = Array.from(container.querySelectorAll("button")).find(
+                (btn) => btn.textContent?.includes("加点提示")
+            );
+            expect(hintButton).toBeTruthy();
+
+            // Click Give Hint to reveal some words
+            const initialBlurredCount = blurredIndices.length;
+            await act(async () => {
+                hintButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            words = getWordElements();
+            const afterHintBlurredCount = words.filter((word) => (word as HTMLElement).style.filter.includes("blur")).length;
+            expect(afterHintBlurredCount).toBeLessThan(initialBlurredCount);
+
+            // Reveal All Button should be visible
+            const revealAllButton = Array.from(container.querySelectorAll("button")).find(
+                (btn) => btn.textContent?.includes("显示全句")
+            );
+            expect(revealAllButton).toBeTruthy();
+
+            // Click Reveal All
+            await act(async () => {
+                revealAllButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            // Now all words should be unblurred
+            words = getWordElements();
+            words.forEach((word) => {
+                const style = (word as HTMLElement).style;
+                expect(style.filter).not.toContain("blur");
+            });
+
+            // Toggle blind listening OFF
+            await act(async () => {
+                blindToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+            expect(blindToggleButton?.textContent).toContain("开启盲听");
+
+            words = getWordElements();
+            words.forEach((word) => {
+                const style = (word as HTMLElement).style;
+                expect(style.filter).not.toContain("blur");
+            });
+
         } finally {
             vi.unstubAllGlobals();
         }

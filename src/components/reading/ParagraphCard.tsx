@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallba
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Play, Pause, BookOpen, BookPlus, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, RefreshCw, MessageSquarePlus } from "lucide-react";
+import { Play, Pause, BookOpen, BookPlus, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, RefreshCw, MessageSquarePlus, Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useReadingSettings, type PhraseDisplayMode } from "@/contexts/ReadingSettingsContext";
@@ -1238,6 +1238,43 @@ function AskReasoningBlock({ content, isStreaming = false }: { content?: string;
     );
 }
 
+const STRUCTURAL_WORDS = new Set([
+    "the", "a", "an", "and", "but", "or", "so", "for", "with", "at", "by", 
+    "from", "to", "in", "on", "of", "about", "as", "if", "that", "this", 
+    "these", "those", "it", "its", "he", "him", "his", "she", "her", "hers", 
+    "they", "them", "their", "theirs", "we", "us", "our", "ours", "you", "your", 
+    "yours", "i", "me", "my", "mine"
+]);
+
+function getDefaultUnblurredIndices(sourceText: string, getWordLayout: (text: string) => WordLayoutToken[]) {
+    const layout = getWordLayout(sourceText);
+    const indices = new Set<number>();
+    
+    // Step 1: Find structural words
+    layout.forEach((token, idx) => {
+        const cleanWord = token.text.toLowerCase().replace(/['’]s$/, "");
+        if (STRUCTURAL_WORDS.has(cleanWord)) {
+            indices.add(idx);
+        }
+    });
+
+    // Step 2: Ensure at least 20% of words are unblurred (or at least 1 word if sentence is non-empty)
+    const totalWords = layout.length;
+    const minUnblurred = Math.max(1, Math.ceil(totalWords * 0.2));
+    
+    if (indices.size < minUnblurred && totalWords > 0) {
+        // First, let's always try to unblur the first word of the sentence as an anchor
+        indices.add(0);
+        
+        // If still not enough, let's add other words deterministically until we reach the threshold
+        for (let i = 0; i < totalWords && indices.size < minUnblurred; i++) {
+            indices.add(i);
+        }
+    }
+    
+    return indices;
+}
+
 export function ParagraphCard({
     text,
     index,
@@ -1392,6 +1429,9 @@ export function ParagraphCard({
     const [sentenceDurationMs, setSentenceDurationMs] = useState(0);
     const [sentenceCacheVersion, setSentenceCacheVersion] = useState(0);
     const [isSegmentListOpen, setIsSegmentListOpen] = useState(false);
+    const [isSemiBlur, setIsSemiBlur] = useState(false);
+    const [revealedWordIndices, setRevealedWordIndices] = useState<Set<number>>(new Set());
+    const [hoveredWordIndex, setHoveredWordIndex] = useState<number | null>(null);
 
     // Phrase Analysis State
     const [selectedText, setSelectedText] = useState<string | null>(null);
@@ -1630,6 +1670,71 @@ export function ParagraphCard({
         wordLayoutCacheRef.current.set(sourceText, tokens);
         return tokens;
     }, []);
+
+    useEffect(() => {
+        if (activeSentenceUnit) {
+            const initialIndices = getDefaultUnblurredIndices(activeSentenceUnit.text, getWordLayout);
+            setRevealedWordIndices(initialIndices);
+        } else {
+            setRevealedWordIndices(new Set());
+        }
+        setHoveredWordIndex(null);
+    }, [activeListenSentenceIndex, activeSentenceUnit, getWordLayout]);
+
+    const playBubbleSound = useCallback(() => {
+        if (typeof window === "undefined") return;
+        try {
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            if (!AudioContextClass) return;
+            const ctx = new AudioContextClass();
+            const now = ctx.currentTime;
+            const osc = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            osc.type = "sine";
+            osc.frequency.setValueAtTime(1100, now);
+            osc.frequency.exponentialRampToValueAtTime(750, now + 0.04);
+            gainNode.gain.setValueAtTime(0.015, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            osc.start(now);
+            osc.stop(now + 0.06);
+        } catch (e) {
+            console.warn("Failed to play bubble sound:", e);
+        }
+    }, []);
+
+    const handleGiveHint = useCallback(() => {
+        if (!activeSentenceUnit) return;
+        const layout = getWordLayout(activeSentenceUnit.text);
+        const hiddenIndices: number[] = [];
+        layout.forEach((_, idx) => {
+            if (!revealedWordIndices.has(idx)) {
+                hiddenIndices.push(idx);
+            }
+        });
+
+        if (hiddenIndices.length === 0) return;
+
+        const countToReveal = Math.min(2, hiddenIndices.length);
+        const nextRevealed = new Set(revealedWordIndices);
+        
+        for (let i = 0; i < countToReveal; i++) {
+            const randomIndex = Math.floor(Math.random() * hiddenIndices.length);
+            const [revealedIndex] = hiddenIndices.splice(randomIndex, 1);
+            nextRevealed.add(revealedIndex);
+        }
+        
+        setRevealedWordIndices(nextRevealed);
+    }, [activeSentenceUnit, getWordLayout, revealedWordIndices]);
+
+    const handleRevealAll = useCallback(() => {
+        if (!activeSentenceUnit) return;
+        const layout = getWordLayout(activeSentenceUnit.text);
+        const nextRevealed = new Set<number>();
+        layout.forEach((_, idx) => nextRevealed.add(idx));
+        setRevealedWordIndices(nextRevealed);
+    }, [activeSentenceUnit, getWordLayout]);
 
     const stopSentenceProgressLoop = useCallback(() => {
         if (sentenceProgressRafRef.current !== null) {
@@ -2319,6 +2424,7 @@ export function ParagraphCard({
         dimInactive?: boolean;
         isSeekEnabled?: boolean;
         onWordSeek: (tokenIndex: number) => Promise<void> | void;
+        enableBlur?: boolean;
     }) => {
         const {
             sourceText,
@@ -2328,6 +2434,7 @@ export function ParagraphCard({
             dimInactive = false,
             isSeekEnabled = false,
             onWordSeek,
+            enableBlur = false,
         } = params;
         const wordLayout = getWordLayout(sourceText);
         const nodes: React.ReactNode[] = [];
@@ -2355,6 +2462,7 @@ export function ParagraphCard({
             const isPlayed = Boolean(linkedMark && currentMs >= activeEndMs);
             const wordText = token.text;
             const currentTokenIndex = tokenIndex;
+            const isWordBlurred = enableBlur && isSemiBlur && !revealedWordIndices.has(currentTokenIndex) && hoveredWordIndex !== currentTokenIndex;
 
             nodes.push(
                 <span
@@ -2366,13 +2474,26 @@ export function ParagraphCard({
                         event.stopPropagation();
                         void onWordSeek(currentTokenIndex);
                     }}
+                    onMouseEnter={() => {
+                        if (enableBlur && isSemiBlur) {
+                            setHoveredWordIndex(currentTokenIndex);
+                        }
+                    }}
+                    onMouseLeave={() => {
+                        if (enableBlur && isSemiBlur) {
+                            setHoveredWordIndex(null);
+                        }
+                    }}
                     className={cn(
-                        "relative inline-block",
+                        "relative inline-block transition-all duration-300",
                         isSeekEnabled ? "cursor-pointer" : "cursor-default",
-                        isCurrent && "text-sky-600",
+                        isCurrent && !isWordBlurred && "text-sky-600",
+                        isCurrent && isWordBlurred && "text-sky-600/80 drop-shadow-[0_0_8px_rgba(2,132,199,0.6)]",
                         !isCurrent && isPlayed && "text-sky-600/90",
                         !isCurrent && !isPlayed && (dimInactive ? "text-stone-400/95" : "text-stone-600/95"),
+                        isWordBlurred && "select-none opacity-60"
                     )}
+                    style={isWordBlurred ? { filter: "blur(5px)" } : undefined}
                     title={isSeekEnabled ? "点击跳转到该单词" : ""}
                 >
                     {wordText}
@@ -2393,7 +2514,7 @@ export function ParagraphCard({
 
         if (nodes.length > 0) return <>{nodes}</>;
         return sourceText;
-    }, [getWordLayout]);
+    }, [getWordLayout, isSemiBlur, revealedWordIndices, hoveredWordIndex]);
 
     const renderCharacterFallback = useCallback((
         sourceText: string,
@@ -2438,12 +2559,87 @@ export function ParagraphCard({
         );
     }, []);
 
+    const renderWordLevelFallbackKtv = useCallback((params: {
+        sourceText: string;
+        currentMs: number;
+        totalMs: number;
+        enableBlur?: boolean;
+    }) => {
+        const { sourceText, currentMs, totalMs, enableBlur = false } = params;
+        const wordLayout = getWordLayout(sourceText);
+        const totalChars = Math.max(1, sourceText.length);
+        const progress = totalMs > 0 ? currentMs / totalMs : 0;
+        const currentProgressChar = progress * totalChars;
+
+        const nodes: React.ReactNode[] = [];
+        let cursor = 0;
+        let tokenIndex = 0;
+
+        for (const token of wordLayout) {
+            const start = token.start;
+            const end = token.end;
+            if (start > cursor) {
+                nodes.push(
+                    <React.Fragment key={`txt-fb-${cursor}-${start}`}>
+                        {sourceText.slice(cursor, start)}
+                    </React.Fragment>
+                );
+            }
+
+            const isCurrent = currentProgressChar >= start && currentProgressChar < end;
+            const isPlayed = currentProgressChar >= end;
+            const wordText = token.text;
+            const currentTokenIndex = tokenIndex;
+            const isWordBlurred = enableBlur && isSemiBlur && !revealedWordIndices.has(currentTokenIndex) && hoveredWordIndex !== currentTokenIndex;
+
+            nodes.push(
+                <span
+                    key={`word-fb-${start}-${end}-${currentTokenIndex}`}
+                    onMouseEnter={() => {
+                        if (enableBlur && isSemiBlur) {
+                            setHoveredWordIndex(currentTokenIndex);
+                        }
+                    }}
+                    onMouseLeave={() => {
+                        if (enableBlur && isSemiBlur) {
+                            setHoveredWordIndex(null);
+                        }
+                    }}
+                    className={cn(
+                        "relative inline-block transition-all duration-300",
+                        isCurrent && !isWordBlurred && "text-sky-600",
+                        isCurrent && isWordBlurred && "text-sky-600/80 drop-shadow-[0_0_8px_rgba(2,132,199,0.6)]",
+                        !isCurrent && isPlayed && "text-sky-600/90",
+                        !isCurrent && !isPlayed && "text-stone-600/95",
+                        isWordBlurred && "select-none opacity-60"
+                    )}
+                    style={isWordBlurred ? { filter: "blur(5px)" } : undefined}
+                >
+                    {wordText}
+                </span>
+            );
+
+            cursor = end;
+            tokenIndex += 1;
+        }
+
+        if (cursor < sourceText.length) {
+            nodes.push(
+                <React.Fragment key={`tail-fb-${cursor}`}>
+                    {sourceText.slice(cursor)}
+                </React.Fragment>
+            );
+        }
+
+        return <>{nodes}</>;
+    }, [getWordLayout, isSemiBlur, revealedWordIndices, hoveredWordIndex]);
+
     const renderSentencePlaybackContent = useCallback((
         sentenceUnit: { text: string },
         sentenceIndex: number,
         fallbackContent: React.ReactNode,
     ) => {
-        const showSentenceKtv = isSentencePlaybackActive(sentenceIndex) && isPlaybackSessionActive;
+        const showSentenceKtv = isSentencePlaybackActive(sentenceIndex);
         if (!showSentenceKtv) return fallbackContent;
 
         if (activeSentenceMarks.length > 0) {
@@ -2454,6 +2650,16 @@ export function ParagraphCard({
                 currentMs: playbackTimeMs,
                 isSeekEnabled: isPlaybackSessionActive,
                 onWordSeek: handleSentenceWordSeek,
+                enableBlur: true,
+            });
+        }
+
+        if (isSemiBlur) {
+            return renderWordLevelFallbackKtv({
+                sourceText: sentenceUnit.text,
+                currentMs: playbackTimeMs,
+                totalMs: playbackDurationMs,
+                enableBlur: true,
             });
         }
 
@@ -2472,6 +2678,8 @@ export function ParagraphCard({
         playbackTimeMs,
         renderCharacterFallback,
         renderWordLevelKtv,
+        renderWordLevelFallbackKtv,
+        isSemiBlur,
     ]);
 
     const renderSegmentedSentenceList = useCallback(() => {
@@ -2899,7 +3107,6 @@ export function ParagraphCard({
 
                     const isSentenceActive = isSentencePlaybackActive(entry.unitIndex)
                         || (showTranslation && playMode === "sentence" && activeListenSentenceIndex === entry.unitIndex);
-                    const isCurrentSentencePlaying = isSentencePlaybackActive(entry.unitIndex) && (isSentencePlaying || isSentenceAudioLoading);
 
                     return (
                         <li
@@ -2961,19 +3168,19 @@ export function ParagraphCard({
 
                             <div className="min-w-0">
                                 <div className={cn("flex items-start", showTranslation ? "gap-3" : "gap-2")}>
-                                <div className={cn("min-w-0 flex-1", showTranslation && "pr-12")}>
-                                <div
-                                    data-translation-sentence-body="true"
-                                    data-speaking-segment-content="true"
-                                    className={cn(
-                                        "min-w-0 text-left text-stone-800 leading-[1.6]",
-                                        showTranslation && "px-0.5",
-                                        fontClass,
-                                        fontSizeClass,
-                                        playMode === "sentence" && "cursor-pointer",
-                                    )}
-                                    style={translationSentenceTextStyle}
-                                >
+                                <div className="min-w-0 flex-1">
+                                    <div
+                                        data-translation-sentence-body="true"
+                                        data-speaking-segment-content="true"
+                                        className={cn(
+                                            "min-w-0 text-left text-stone-800 leading-[1.6]",
+                                            showTranslation && "px-0.5 pr-12 sm:pr-14",
+                                            fontClass,
+                                            fontSizeClass,
+                                            playMode === "sentence" && "cursor-pointer",
+                                        )}
+                                        style={translationSentenceTextStyle}
+                                    >
                                         {renderSentencePlaybackContent(
                                             entry.unit,
                                             entry.unitIndex,
@@ -2995,69 +3202,73 @@ export function ParagraphCard({
                                         )}
                                     </div>
                                     {showTranslation && unitTranslation ? (
-                                        handwriteState.isEditing ? (
-                                            <HandwriteTranslationPractice
-                                                draft={handwriteState.draft}
-                                                error={handwriteState.error}
-                                                isRevealed={handwriteState.revealed}
-                                                isScoring={handwriteState.isScoring}
-                                                judgeReasoning={handwriteState.judgeReasoning}
-                                                onDraftChange={(value) => handleHandwriteDraftChange(handwriteSentenceKey, value)}
-                                                onScore={() => {
-                                                    void handleHandwriteScore({
-                                                        sentenceKey: handwriteSentenceKey,
-                                                        referenceEnglish: entry.unit.text,
-                                                        referenceTranslation: unitTranslation,
-                                                    });
-                                                }}
-                                                onToggleReveal={() => handleToggleHandwriteReveal(handwriteSentenceKey)}
-                                                onExit={() => handleExitHandwriteEditing(handwriteSentenceKey)}
-                                                referenceTranslation={unitTranslation}
-                                                showScoreResult={handwriteState.score !== null && handwriteState.scoredDraft === handwriteState.draft.trim()}
-                                                score={handwriteState.score}
-                                                textClassName={translationTextClassName}
-                                            />
-                                        ) : rewriteState.isEditing ? (
-                                            <RewriteSentencePractice
-                                                sourceSentence={entry.unit.text}
-                                                draft={rewriteState.draft}
-                                                prompt={rewriteState.prompt}
-                                                error={rewriteState.error}
-                                                isGeneratingPrompt={rewriteState.isGeneratingPrompt}
-                                                isScoring={rewriteState.isScoring}
-                                                score={rewriteState.score}
-                                                showScoreResult={rewriteState.score !== null && rewriteState.scoredDraft === rewriteState.draft.trim()}
-                                                onDraftChange={(value) => handleRewriteDraftChange(rewriteSentenceKey, value)}
-                                                onRetryPrompt={() => {
-                                                    void handleRequestRewritePrompt(rewriteSentenceKey, entry.unit.text);
-                                                }}
-                                                onScore={() => {
-                                                    void handleRewriteScore({
-                                                        sentenceKey: rewriteSentenceKey,
-                                                        sourceSentence: entry.unit.text,
-                                                    });
-                                                }}
-                                                onExit={() => handleExitRewriteEditing(rewriteSentenceKey)}
-                                            />
-                                        ) : !shouldHidePlainTranslation ? (
-                                            <TranslationAside
-                                                translation={unitTranslation}
-                                                phraseItems={phraseDisplayMode === "capsule" ? phraseTranslations : []}
-                                                onPhraseClick={
-                                                    phraseDisplayMode === "capsule"
-                                                        ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
-                                                        : undefined
-                                                }
-                                                textClassName={translationTextClassName}
-                                            />
-                                        ) : null
+                                        <div className="pr-12 sm:pr-14">
+                                            {handwriteState.isEditing ? (
+                                                <HandwriteTranslationPractice
+                                                    draft={handwriteState.draft}
+                                                    error={handwriteState.error}
+                                                    isRevealed={handwriteState.revealed}
+                                                    isScoring={handwriteState.isScoring}
+                                                    judgeReasoning={handwriteState.judgeReasoning}
+                                                    onDraftChange={(value) => handleHandwriteDraftChange(handwriteSentenceKey, value)}
+                                                    onScore={() => {
+                                                        void handleHandwriteScore({
+                                                            sentenceKey: handwriteSentenceKey,
+                                                            referenceEnglish: entry.unit.text,
+                                                            referenceTranslation: unitTranslation,
+                                                        });
+                                                    }}
+                                                    onToggleReveal={() => handleToggleHandwriteReveal(handwriteSentenceKey)}
+                                                    onExit={() => handleExitHandwriteEditing(handwriteSentenceKey)}
+                                                    referenceTranslation={unitTranslation}
+                                                    showScoreResult={handwriteState.score !== null && handwriteState.scoredDraft === handwriteState.draft.trim()}
+                                                    score={handwriteState.score}
+                                                    textClassName={translationTextClassName}
+                                                />
+                                            ) : rewriteState.isEditing ? (
+                                                <RewriteSentencePractice
+                                                    sourceSentence={entry.unit.text}
+                                                    draft={rewriteState.draft}
+                                                    prompt={rewriteState.prompt}
+                                                    error={rewriteState.error}
+                                                    isGeneratingPrompt={rewriteState.isGeneratingPrompt}
+                                                    isScoring={rewriteState.isScoring}
+                                                    score={rewriteState.score}
+                                                    showScoreResult={rewriteState.score !== null && rewriteState.scoredDraft === rewriteState.draft.trim()}
+                                                    onDraftChange={(value) => handleRewriteDraftChange(rewriteSentenceKey, value)}
+                                                    onRetryPrompt={() => {
+                                                        void handleRequestRewritePrompt(rewriteSentenceKey, entry.unit.text);
+                                                    }}
+                                                    onScore={() => {
+                                                        void handleRewriteScore({
+                                                            sentenceKey: rewriteSentenceKey,
+                                                            sourceSentence: entry.unit.text,
+                                                        });
+                                                    }}
+                                                    onExit={() => handleExitRewriteEditing(rewriteSentenceKey)}
+                                                />
+                                            ) : !shouldHidePlainTranslation ? (
+                                                <TranslationAside
+                                                    translation={unitTranslation}
+                                                    phraseItems={phraseDisplayMode === "capsule" ? phraseTranslations : []}
+                                                    onPhraseClick={
+                                                        phraseDisplayMode === "capsule"
+                                                            ? (item, event) => handlePhraseTranslationClick(item, event, entry.unit.text)
+                                                            : undefined
+                                                    }
+                                                    textClassName={translationTextClassName}
+                                                />
+                                            ) : null}
+                                        </div>
                                     ) : null}
                                     </div>
                                     <div
                                         data-sentence-action-rail="true"
                                         className={cn(
-                                            "ml-1 flex shrink-0 flex-col items-center gap-1 self-start pt-0.5 transition-all duration-200",
-                                            showTranslation && "ml-0 w-8 rounded-xl p-1 gap-1 items-center opacity-0 translate-x-1 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 bg-theme-card-bg/95 border border-theme-border/30 dark:border-stone-800/80 shadow-sm backdrop-blur-xs z-10",
+                                            "ml-1 flex shrink-0 transition-all duration-200",
+                                            showTranslation
+                                                ? "reading-sentence-action-rail-glass opacity-0 translate-x-1 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 z-10"
+                                                : "flex-col items-center gap-1 self-start pt-0.5",
                                             showTranslation && "group-hover/translation-row:opacity-100 group-hover/translation-row:translate-x-0 group-hover/translation-row:pointer-events-auto",
                                             showTranslation && "group-focus-within/translation-row:opacity-100 group-focus-within/translation-row:translate-x-0 group-focus-within/translation-row:pointer-events-auto",
                                             showTranslation && (isSentenceActive || handwriteState.isEditing || rewriteState.isEditing) && "opacity-100 translate-x-0 pointer-events-auto",
@@ -3066,14 +3277,10 @@ export function ParagraphCard({
                                         <button
                                             type="button"
                                             data-sentence-play-button="true"
+                                            data-active={isSentencePlaybackActive(entry.unitIndex) ? "true" : undefined}
                                             aria-label={`播放第 ${index + 1} 句`}
                                             title={`播放第 ${index + 1} 句`}
-                                            className={cn(
-                                                "reading-apple-capsule group/play inline-flex h-6 w-6 items-center justify-center shadow-sm transition-all duration-300 hover:scale-110 active:scale-90",
-                                                isSentencePlaybackActive(entry.unitIndex)
-                                                    ? "border-amber-200 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-400 shadow-[0_1px_2px_rgba(217,119,6,0.05)] hover:shadow-[0_4px_12px_rgba(217,119,6,0.1)]"
-                                                    : "border-stone-200/60 bg-stone-50/50 dark:border-stone-800/40 dark:bg-stone-900/20 text-stone-400 dark:text-stone-500 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 dark:hover:bg-stone-800/50 dark:hover:text-stone-300"
-                                            )}
+                                            className="reading-toolbar-icon-btn group/play"
                                             onClick={(event) => {
                                                 event.preventDefault();
                                                 event.stopPropagation();
@@ -3081,14 +3288,14 @@ export function ParagraphCard({
                                             }}
                                         >
                                             {isSentenceAudioLoading && isSentencePlaybackActive(entry.unitIndex) ? (
-                                                <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
+                                                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
                                             ) : isSentencePlaying && isSentencePlaybackActive(entry.unitIndex) ? (
-                                                <Pause className="h-3 w-3 transition-transform duration-300 group-hover/play:scale-110" strokeWidth={1.8} />
+                                                <Pause className="h-3.5 w-3.5 transition-transform duration-300 group-hover/play:scale-110" strokeWidth={1.8} />
                                             ) : (
-                                                <Play className="h-3 w-3 transition-transform duration-300 group-hover/play:scale-110 group-hover/play:translate-x-[0.5px]" strokeWidth={1.8} />
+                                                <Play className="h-3.5 w-3.5 transition-transform duration-300 group-hover/play:scale-110 group-hover/play:translate-x-[0.5px]" strokeWidth={1.8} />
                                             )}
                                         </button>
-                                        {showTranslation && !isCurrentSentencePlaying ? (
+                                        {showTranslation && !isSentencePlaybackActive(entry.unitIndex) ? (
                                             <button
                                                 type="button"
                                                 data-inject-context-button="true"
@@ -3099,12 +3306,12 @@ export function ParagraphCard({
                                                     event.stopPropagation();
                                                     handleInjectSentenceAskContext(entry.unitIndex);
                                                 }}
-                                                className="reading-apple-capsule group/ask inline-flex h-6 w-6 items-center justify-center border border-sky-200 bg-sky-50/60 dark:border-sky-800/40 dark:bg-sky-950/20 text-sky-800 dark:text-sky-400 shadow-[0_1px_2px_rgba(14,165,233,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-900 hover:shadow-[0_4px_12px_rgba(14,165,233,0.1)] dark:hover:bg-sky-950/40 dark:hover:text-sky-300 cursor-pointer"
+                                                className="reading-toolbar-icon-btn reading-toolbar-icon-btn-ask group/ask"
                                             >
-                                                <MessageSquarePlus className="h-3 w-3 transition-transform duration-300 group-hover/ask:scale-110 group-hover/ask:rotate-6" strokeWidth={1.8} />
+                                                <MessageSquarePlus className="h-3.5 w-3.5 transition-transform duration-300 group-hover/ask:scale-110 group-hover/ask:rotate-6" strokeWidth={1.8} />
                                             </button>
                                         ) : null}
-                                        {showTranslation && unitTranslation && !handwriteState.isEditing && !isCurrentSentencePlaying ? (
+                                        {showTranslation && unitTranslation && !handwriteState.isEditing && !isSentencePlaybackActive(entry.unitIndex) ? (
                                             <button
                                                 type="button"
                                                 data-handwrite-enter-button="true"
@@ -3115,12 +3322,12 @@ export function ParagraphCard({
                                                     event.stopPropagation();
                                                     handleEnterHandwriteEditing(handwriteSentenceKey);
                                                 }}
-                                                className="reading-apple-capsule group/handwrite inline-flex h-6 w-6 items-center justify-center border border-amber-200 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-400 shadow-[0_1px_2px_rgba(217,119,6,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-900 hover:shadow-[0_4px_12px_rgba(217,119,6,0.1)] dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
+                                                className="reading-toolbar-icon-btn reading-toolbar-icon-btn-handwrite group/handwrite"
                                             >
-                                                <PenTool className="h-3 w-3 transition-transform duration-300 group-hover/handwrite:-rotate-12" strokeWidth={1.8} />
+                                                <PenTool className="h-3.5 w-3.5 transition-transform duration-300 group-hover/handwrite:-rotate-12" strokeWidth={1.8} />
                                             </button>
                                         ) : null}
-                                        {showTranslation && unitTranslation && !rewriteState.isEditing && !isCurrentSentencePlaying ? (
+                                        {showTranslation && unitTranslation && !rewriteState.isEditing && !isSentencePlaybackActive(entry.unitIndex) ? (
                                             <button
                                                 type="button"
                                                 data-rewrite-enter-button="true"
@@ -3131,40 +3338,38 @@ export function ParagraphCard({
                                                     event.stopPropagation();
                                                     handleEnterRewriteEditing(rewriteSentenceKey, entry.unit.text);
                                                 }}
-                                                className="reading-apple-capsule group/rewrite inline-flex h-6 w-6 items-center justify-center border border-indigo-200 bg-indigo-50/60 dark:border-indigo-800/40 dark:bg-indigo-950/20 text-indigo-800 dark:text-indigo-400 shadow-[0_1px_2px_rgba(79,70,229,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900 hover:shadow-[0_4px_12px_rgba(79,70,229,0.1)] dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300"
+                                                className="reading-toolbar-icon-btn reading-toolbar-icon-btn-rewrite group/rewrite"
                                             >
-                                                <GitBranch className="h-3 w-3 transition-transform duration-300 group-hover/rewrite:rotate-12 group-hover/rewrite:scale-110" strokeWidth={1.8} />
+                                                <GitBranch className="h-3.5 w-3.5 transition-transform duration-300 group-hover/rewrite:rotate-12 group-hover/rewrite:scale-110" strokeWidth={1.8} />
                                             </button>
                                         ) : null}
-                                        {isSentencePlaybackActive(entry.unitIndex) && (isSentencePlaying || sentenceCurrentTimeMs > 0) ? (
+                                        {isSentencePlaybackActive(entry.unitIndex) ? (
                                             <>
-                                                <div className="w-3 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
+                                                <div className="w-4 border-t border-theme-border/30 my-0.5" />
                                                 <div
                                                     data-sentence-playback-secondary-controls="true"
-                                                    className="flex flex-col gap-1"
+                                                    className="flex flex-col gap-1.5 items-center"
                                                 >
-                                                    {isSentencePlaying ? (
-                                                        <button
-                                                            type="button"
-                                                            aria-label={`第 ${index + 1} 句切换倍速`}
-                                                            title="切换倍速"
-                                                            className="reading-apple-capsule reading-play-button inline-flex h-6 w-6 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-[9px] font-semibold tracking-tighter text-stone-500 dark:text-stone-400 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
-                                                            onClick={(event) => {
-                                                                event.preventDefault();
-                                                                event.stopPropagation();
-                                                                const rates = [1, 0.75, 0.5];
-                                                                const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
-                                                                setPlaybackRate(nextRate);
-                                                            }}
-                                                        >
-                                                            {playbackRate}x
-                                                        </button>
-                                                    ) : null}
+                                                    <button
+                                                        type="button"
+                                                        aria-label={`第 ${index + 1} 句切换倍速`}
+                                                        title="切换倍速"
+                                                        className="reading-toolbar-speed-btn"
+                                                        onClick={(event) => {
+                                                            event.preventDefault();
+                                                            event.stopPropagation();
+                                                            const rates = [1, 0.75, 0.5];
+                                                            const nextRate = rates[(rates.indexOf(playbackRate) + 1) % rates.length];
+                                                            setPlaybackRate(nextRate);
+                                                        }}
+                                                    >
+                                                        {playbackRate}x
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         aria-label={`取消第 ${index + 1} 句播放`}
                                                         title="取消当前句播放"
-                                                        className="reading-apple-capsule reading-play-button inline-flex h-6 w-6 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-400 dark:text-stone-500 shadow-sm transition-colors hover:border-rose-300 hover:text-rose-500 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
+                                                        className="reading-toolbar-icon-btn reading-toolbar-icon-btn-danger"
                                                         onClick={(event) => {
                                                             event.preventDefault();
                                                             event.stopPropagation();
@@ -3172,20 +3377,24 @@ export function ParagraphCard({
                                                             setPlayMode("full");
                                                         }}
                                                     >
-                                                        <X className="h-3 w-3" strokeWidth={1.8} />
+                                                        <X className="h-3.5 w-3.5" strokeWidth={1.8} />
                                                     </button>
                                                 </div>
                                             </>
                                         ) : null}
                                         {isSentencePlaybackActive(entry.unitIndex) && entry.hasUsableAnalysis && (
-                                            <div className="w-3 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
+                                            showTranslation ? (
+                                                <div className="w-4 border-t border-theme-border/30 my-0.5" />
+                                            ) : (
+                                                <div className="w-3 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
+                                            )
                                         )}
                                         {entry.hasUsableAnalysis ? (
                                             <button
                                                 type="button"
                                                 aria-label={`重新生成第 ${index + 1} 句解析`}
                                                 title="重新生成这一句的解析"
-                                                className="reading-apple-capsule reading-play-button inline-flex h-6 w-6 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-400 dark:text-stone-500 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
+                                                className="reading-toolbar-icon-btn"
                                                 onClick={(event) => {
                                                     event.preventDefault();
                                                     event.stopPropagation();
@@ -4312,7 +4521,7 @@ export function ParagraphCard({
                     reference_english: referenceEnglish,
                     original_chinese: referenceTranslation,
                     user_translation: draft,
-                    current_elo: Number.isFinite(Number(profile?.translation_elo)) ? Number(profile?.translation_elo) : 1200,
+                    current_elo: Number.isFinite(Number(profile?.elo_rating)) ? Number(profile?.elo_rating) : 1200,
                 }),
             });
             const payload = await response.json().catch(() => ({}));
@@ -4340,7 +4549,7 @@ export function ParagraphCard({
                 error: error instanceof Error ? error.message : "翻译评分失败",
             }));
         }
-    }, [handwriteSentenceStates, profile?.translation_elo, updateHandwriteSentenceState]);
+    }, [handwriteSentenceStates, profile?.elo_rating, updateHandwriteSentenceState]);
 
     const requestSentenceRewritePrompt = useCallback(async (sentenceText: string) => {
         const response = await fetch("/api/ai/rewrite-practice", {
@@ -5398,6 +5607,20 @@ export function ParagraphCard({
                                                                         currentMs: playbackTimeMs,
                                                                         isSeekEnabled: isPlaybackSessionActive,
                                                                         onWordSeek: handleSentenceWordSeek,
+                                                                        enableBlur: true,
+                                                                    })}
+                                                                </React.Fragment>
+                                                            );
+                                                        }
+
+                                                        if (isSemiBlur) {
+                                                            return (
+                                                                <React.Fragment key={`sentence-fallback-blur-${unit.start}-${unit.end}`}>
+                                                                    {renderWordLevelFallbackKtv({
+                                                                        sourceText: unit.text,
+                                                                        currentMs: playbackTimeMs,
+                                                                        totalMs: playbackDurationMs,
+                                                                        enableBlur: true,
                                                                     })}
                                                                 </React.Fragment>
                                                             );
@@ -5433,6 +5656,81 @@ export function ParagraphCard({
                             )}
                         </AnimatePresence>
                     )}
+
+                    {/* Semi-blur Listening Control Bar */}
+                    <AnimatePresence>
+                        {playMode === "sentence" && activeSentenceUnit && (
+                            <motion.div
+                                initial={{ opacity: 0, y: 8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 8 }}
+                                transition={{ duration: 0.2 }}
+                                className="mt-3.5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/20 px-4 py-3 backdrop-blur-md shadow-sm dark:border-indigo-950/40 dark:bg-indigo-950/20"
+                            >
+                                <div className="flex items-center gap-2.5">
+                                    <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200 px-2.5 py-0.5 rounded-full">
+                                        盲听专注
+                                    </span>
+                                    <span className="text-[11px] text-stone-500 font-bold dark:text-stone-400">
+                                        第 {activeListenSentenceIndex + 1} 句 / 共 {sentenceUnits.length} 句
+                                    </span>
+                                </div>
+                                
+                                <div className="flex items-center gap-2">
+                                    {/* Toggle Blur Button */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            playBubbleSound();
+                                            setIsSemiBlur(prev => !prev);
+                                        }}
+                                        className={cn(
+                                            "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border outline-none focus:outline-none cursor-pointer active:scale-95",
+                                            isSemiBlur
+                                                ? "bg-indigo-600 border-indigo-600 text-white shadow-sm"
+                                                : "bg-white border-stone-200 text-stone-600 hover:bg-stone-50 dark:bg-stone-900 dark:border-stone-850 dark:text-stone-300 dark:hover:bg-stone-800"
+                                        )}
+                                        title={isSemiBlur ? "关闭盲听模式" : "开启盲听模式（部分单词模糊）"}
+                                    >
+                                        {isSemiBlur ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                        {isSemiBlur ? "已开启盲听" : "开启盲听"}
+                                    </button>
+                                    
+                                    {/* Give Hint Button */}
+                                    {isSemiBlur && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                playBubbleSound();
+                                                handleGiveHint();
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 dark:bg-stone-900 dark:border-stone-850 dark:text-stone-300 dark:hover:bg-stone-800 transition-all cursor-pointer active:scale-95"
+                                            title="提示几个单词"
+                                        >
+                                            <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                                            加点提示
+                                        </button>
+                                    )}
+                                    
+                                    {/* Reveal All Button */}
+                                    {isSemiBlur && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                playBubbleSound();
+                                                handleRevealAll();
+                                            }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-white border border-stone-200 text-stone-600 hover:bg-stone-50 dark:bg-stone-900 dark:border-stone-850 dark:text-stone-300 dark:hover:bg-stone-800 transition-all cursor-pointer active:scale-95"
+                                            title="显示完整句子"
+                                        >
+                                            <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                                            显示全句
+                                        </button>
+                                    )}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                 </div>
 
