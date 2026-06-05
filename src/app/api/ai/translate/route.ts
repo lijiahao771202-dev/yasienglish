@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
+import { createDeepSeekClientForCurrentUserWithoutThinking } from "@/lib/deepseek";
 import { parseJsonObjectFromAi } from "@/lib/ai-json";
 import {
     chargeReadingCoins,
@@ -132,7 +132,7 @@ export async function POST(req: Request) {
             };
         }
 
-        const client = await createDeepSeekClientForCurrentUser();
+        const client = await createDeepSeekClientForCurrentUserWithoutThinking();
         const completion = await client.chat.completions.create({
             model: "deepseek-chat",
             response_format: { type: "json_object" },

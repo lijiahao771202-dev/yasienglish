@@ -311,6 +311,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const reducedMotion = Boolean(prefersReducedMotion);
     const silentImageHydrationRef = useRef<Record<string, boolean>>({});
     const [articles, setArticles] = useState<ArticleItem[]>([]);
+    const articlesRef = useRef(articles);
+    useEffect(() => {
+        articlesRef.current = articles;
+    }, [articles]);
     const searchParams = useSearchParams();
 
     const [category, setCategory] = useState<FeedCategory>(() => {
@@ -765,7 +769,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         },
     ) => {
         const silent = options?.silent ?? false;
-        const baseArticles = options?.baseArticles ?? articles;
+        const baseArticles = options?.baseArticles ?? articlesRef.current;
 
         if (!silent) {
             setIsFetching(true);
@@ -826,7 +830,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 setTimeout(() => setNotification(null), 3000);
             }
         }
-    }, [articles, fetchCount, setFeed, syncVisibleArticles]);
+    }, [fetchCount, setFeed, syncVisibleArticles]);
 
     // Load from DB only (no auto-fetch from API)
     useEffect(() => {

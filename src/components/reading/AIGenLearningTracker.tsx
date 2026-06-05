@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Area, Bar, CartesianGrid, ComposedChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BookOpen, Flame, GraduationCap, Languages, Award, CheckCircle2, ChevronDown } from "lucide-react";
@@ -34,6 +34,14 @@ function getChartMax(points: AIGenLearningDayPoint[]) {
 export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrackerProps) {
     const reducedMotion = useReducedMotion();
     const [selectedRange, setSelectedRange] = useState<string>("last-30-days");
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setMounted(true);
+        }, 400);
+        return () => clearTimeout(timer);
+    }, []);
 
     const availableMonths = useMemo(() => {
         return extractAvailableMonths(articles, readEvents);
@@ -213,19 +221,17 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                     </div>
 
                     <div className="h-[210px] bg-theme-base-bg/40 px-2 pb-2.5 pt-1.5 md:h-[230px] md:px-3">
-                        {!model.hasHistory ? (
+                        {!mounted ? (
+                            <div className="flex h-full items-center justify-center text-xs text-theme-text-muted">
+                                加载图表数据...
+                            </div>
+                        ) : !model.hasHistory ? (
                             <div className="flex h-full items-center justify-center px-6 text-center text-xs font-medium leading-6 text-theme-text-muted">
                                 还没有 AI 生成学习记录。先生成一篇文章，后面这里会开始追踪你的每日节奏。
                             </div>
                         ) : (
-                            <motion.div
-                                key={selectedRange}
-                                initial={reducedMotion ? undefined : { opacity: 0, y: 8 }}
-                                animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
-                                transition={{ duration: 0.4, ease: "easeOut" }}
-                                className="h-full w-full"
-                            >
-                            <ResponsiveContainer width="100%" height="100%">
+                            <div className="relative h-full w-full">
+                            <ResponsiveContainer width="100%" height="100%" debounce={100}>
                                 <ComposedChart data={model.chartData} margin={{ top: 10, right: 8, left: -20, bottom: 0 }}>
                                     <defs>
                                         <linearGradient id="ai-learning-words-fill" x1="0" y1="0" x2="0" y2="1">
@@ -349,7 +355,7 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                                     />
                                 </ComposedChart>
                             </ResponsiveContainer>
-                            </motion.div>
+                            </div>
                         )}
                     </div>
                 </div>

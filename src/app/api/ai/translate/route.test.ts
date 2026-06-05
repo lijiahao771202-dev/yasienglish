@@ -14,6 +14,7 @@ const {
 
 vi.mock("@/lib/deepseek", () => ({
     createDeepSeekClientForCurrentUser: createClientMock,
+    createDeepSeekClientForCurrentUserWithoutThinking: createClientMock,
 }));
 
 vi.mock("@/lib/reading-economy-server", () => ({

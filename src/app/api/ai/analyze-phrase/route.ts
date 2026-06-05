@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createDeepSeekClientForCurrentUser } from "@/lib/deepseek";
+import { createDeepSeekClientForCurrentUserWithoutThinking } from "@/lib/deepseek";
 import {
     chargeReadingCoins,
     insufficientReadingCoinsPayload,
@@ -83,7 +83,7 @@ Selected Text:
 Analyze the selected text.
 `;
 
-        const deepseek = await createDeepSeekClientForCurrentUser();
+        const deepseek = await createDeepSeekClientForCurrentUserWithoutThinking();
         const completion = await deepseek.chat.completions.create({
             model: "deepseek-chat",
             messages: [
