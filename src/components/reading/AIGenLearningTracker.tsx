@@ -12,6 +12,7 @@ import {
     type AIGenLearningArticleRecord,
     type AIGenLearningDayPoint,
     type AIGenLearningReadEvent,
+    type AIGenLearningTrackerOptions,
 } from "./ai-learning-tracker";
 
 interface AIGenLearningTrackerProps {
@@ -33,7 +34,7 @@ function getChartMax(points: AIGenLearningDayPoint[]) {
 
 export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrackerProps) {
     const reducedMotion = useReducedMotion();
-    const [selectedRange, setSelectedRange] = useState<string>("last-30-days");
+    const [selectedRange, setSelectedRange] = useState<string>("last-7-days");
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -47,12 +48,17 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
         return extractAvailableMonths(articles, readEvents);
     }, [articles, readEvents]);
 
-    const model = useMemo(
-        () => buildAIGenLearningTrackerModel(articles, readEvents, {
-            targetMonth: selectedRange === "last-30-days" ? undefined : selectedRange
-        }),
-        [articles, readEvents, selectedRange],
-    );
+    const model = useMemo(() => {
+        const config: AIGenLearningTrackerOptions = {};
+        if (selectedRange === "last-7-days") {
+            config.windowDays = 7;
+        } else if (selectedRange === "last-30-days") {
+            config.windowDays = 30;
+        } else {
+            config.targetMonth = selectedRange;
+        }
+        return buildAIGenLearningTrackerModel(articles, readEvents, config);
+    }, [articles, readEvents, selectedRange]);
 
     const summaryItems = [
         {
@@ -105,11 +111,11 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                             追踪学习
                         </h4>
                         <p className="mt-1.5 max-w-2xl text-xs font-medium leading-5 text-theme-text-muted">
-                            把 AI 生成的学习节奏压成一个轻量总览，直接看近 {AI_GEN_TRACKER_WINDOW_DAYS} 天的生成、完成和字数变化。
+                            把 AI 生成的学习节奏压成一个轻量总览，直接看最近 7 天、30 天或按月统计的生成、完成和字数变化。
                         </p>
                     </div>
                     <div className="relative inline-flex items-center rounded-full border border-theme-border bg-theme-card-bg pl-3 shadow-[0_2px_0_var(--theme-shadow)] focus-within:ring-2 focus-within:ring-theme-border/50">
-                        {selectedRange === "last-30-days" && (
+                        {(selectedRange === "last-7-days" || selectedRange === "last-30-days") && (
                             <span className="relative flex h-2 w-2 shrink-0 mr-1.5">
                                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
@@ -120,9 +126,10 @@ export function AIGenLearningTracker({ articles, readEvents }: AIGenLearningTrac
                             onChange={(e) => setSelectedRange(e.target.value)}
                             className={cn(
                                 "appearance-none cursor-pointer bg-transparent py-1.5 pr-8 text-xs font-black text-theme-text focus:outline-none",
-                                selectedRange === "last-30-days" ? "pl-0.5" : "pl-1.5"
+                                (selectedRange === "last-7-days" || selectedRange === "last-30-days") ? "pl-0.5" : "pl-1.5"
                             )}
                         >
+                            <option value="last-7-days">最近 7 天</option>
                             <option value="last-30-days">最近 30 天</option>
                             {availableMonths.map((m) => {
                                 const [year, month] = m.split("-");

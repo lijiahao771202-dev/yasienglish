@@ -375,6 +375,18 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const canGoToPreviousAiStep = normalizedAiWizardStepIndex > 0;
     const canGoToNextAiStep = normalizedAiWizardStepIndex < aiWizardSteps.length - 1;
 
+    const [lastWizardStepIndex, setLastWizardStepIndex] = useState(0);
+    const [stepDirection, setStepDirection] = useState<"forward" | "backward">("forward");
+
+    useEffect(() => {
+        if (normalizedAiWizardStepIndex > lastWizardStepIndex) {
+            setStepDirection("forward");
+        } else if (normalizedAiWizardStepIndex < lastWizardStepIndex) {
+            setStepDirection("backward");
+        }
+        setLastWizardStepIndex(normalizedAiWizardStepIndex);
+    }, [normalizedAiWizardStepIndex, lastWizardStepIndex]);
+
     useEffect(() => {
         if (!aiWizardSteps.includes(aiWizardStep)) {
             setAiWizardStep(aiWizardSteps[aiWizardSteps.length - 1] ?? "mode");
@@ -1307,6 +1319,28 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         show: { opacity: 1, y: 0, scale: 1, transition: { type: "spring" as const, stiffness: 220, damping: 24, mass: 1 } },
         exit: { opacity: 0, y: -15, scale: 0.98, transition: { duration: 0.2 } }
     };
+    const stepAnimationVariants = {
+        enter: (direction: "forward" | "backward") => prefersReducedMotion ? { opacity: 0 } : {
+            x: direction === "forward" ? 40 : -40,
+            opacity: 0,
+            scale: 0.985,
+        },
+        center: {
+            x: 0,
+            opacity: 1,
+            scale: 1,
+        },
+        exit: (direction: "forward" | "backward") => prefersReducedMotion ? { opacity: 0 } : {
+            x: direction === "forward" ? -40 : 40,
+            opacity: 0,
+            scale: 0.985,
+        },
+    };
+    const stepAnimationTransition = {
+        x: { type: "spring" as const, stiffness: 380, damping: 32 },
+        opacity: { duration: prefersReducedMotion ? 0.16 : 0.22 },
+        scale: { duration: prefersReducedMotion ? 0.16 : 0.22 },
+    };
     const aiWizardStepMeta: Record<AIGenerationWizardStep, { label: string; eyebrow: string; description: string }> = {
         mode: {
             label: "模式选择",
@@ -1652,13 +1686,19 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             <div
                                 data-ai-gen-progress="true"
                                 data-tour-target="hub-ai-progress"
-                                className="flex flex-col gap-2 rounded-xl border border-theme-border/30 bg-theme-card-bg/95 p-2 px-3 md:flex-row md:items-center md:justify-between"
+                                className="relative overflow-hidden flex flex-col gap-3 rounded-2xl border border-theme-border/30 bg-theme-card-bg/95 p-3 px-4 md:flex-row md:items-center md:justify-between shadow-[0_2px_0_var(--theme-shadow)]"
                             >
+                                {/* Bottom Accent Progress Bar Line */}
+                                <div 
+                                    className="absolute bottom-0 left-0 h-0.5 bg-gradient-to-r from-theme-primary-bg via-theme-active-bg to-emerald-400 transition-all duration-500 ease-out" 
+                                    style={{ width: `${((normalizedAiWizardStepIndex + 1) / aiWizardSteps.length) * 100}%` }} 
+                                />
+                                
                                 <div className="flex items-center gap-2 py-0.5">
-                                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-theme-primary-bg text-[10px] font-black text-theme-primary-text border border-theme-border shadow-[0_1px_0_var(--theme-shadow)]">
+                                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-theme-primary-bg font-mono text-[10px] font-bold text-theme-primary-text border border-theme-border shadow-[0_1px_0_var(--theme-shadow)]">
                                         {normalizedAiWizardStepIndex + 1}
                                     </span>
-                                    <span className="text-[11px] font-black text-theme-text">
+                                    <span className="text-[11px] font-extrabold tracking-wide text-theme-text">
                                         第 {normalizedAiWizardStepIndex + 1} / {aiWizardSteps.length} 步
                                     </span>
                                     <span className="h-3 w-[1px] bg-theme-border/20 hidden sm:inline-block" />
@@ -1666,7 +1706,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         {aiWizardStepMeta[activeAiWizardStep].label}
                                     </span>
                                 </div>
-                                <div className="flex flex-wrap items-center gap-1">
+                                <div className="relative flex flex-wrap items-center gap-1.5 z-10">
                                     {aiWizardSteps.map((step, index) => {
                                         const isActive = step === activeAiWizardStep;
                                         const isCompleted = index < normalizedAiWizardStepIndex;
@@ -1676,20 +1716,33 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                 type="button"
                                                 onClick={() => goToAiWizardStep(step)}
                                                 className={cn(
-                                                    "ui-pressable inline-flex h-7 items-center gap-1 rounded-full border px-2 text-[10.5px] font-black transition-all",
+                                                    "ui-pressable relative inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold transition-all border border-transparent",
                                                     isActive
-                                                        ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_1px_0_var(--theme-shadow)]"
+                                                        ? "text-theme-primary-text"
                                                         : isCompleted
-                                                            ? "border-theme-border/15 bg-theme-active-bg/25 text-theme-active-text"
-                                                            : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-base-bg/40 hover:text-theme-text",
+                                                            ? "text-theme-active-text hover:text-theme-text"
+                                                            : "text-theme-text-muted hover:bg-theme-base-bg/30 hover:text-theme-text",
                                                 )}
-                                                style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0)", isActive ? 1.5 : 0)}
                                                 aria-label={`切换到${aiWizardStepMeta[step].label}`}
                                             >
-                                                <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-current/10 text-[8.5px] font-black">
-                                                    {index + 1}
+                                                {isActive && (
+                                                    <motion.span
+                                                        layoutId="ai-wizard-step-pill"
+                                                        className="absolute inset-0 rounded-full bg-theme-primary-bg border border-theme-border shadow-[0_1px_0_var(--theme-shadow)] z-0"
+                                                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                                                    />
+                                                )}
+                                                <span className={cn(
+                                                    "relative z-10 inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold transition-colors font-mono",
+                                                    isActive 
+                                                        ? "bg-theme-card-bg text-theme-primary-text border border-theme-border/10" 
+                                                        : isCompleted
+                                                            ? "bg-theme-active-bg text-theme-active-text"
+                                                            : "bg-theme-base-bg/60 text-theme-text-muted border border-theme-border/10"
+                                                )}>
+                                                    {isCompleted ? "✓" : index + 1}
                                                 </span>
-                                                <span>{aiWizardStepMeta[step].label}</span>
+                                                <span className="relative z-10">{aiWizardStepMeta[step].label}</span>
                                             </button>
                                         );
                                     })}
@@ -1699,39 +1752,41 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                             <div
                                 data-ai-gen-step={activeAiWizardStep}
                                 data-tour-target="hub-ai-step"
-                                className="rounded-2xl border border-theme-border/35 bg-theme-card-bg p-3.5"
+                                className="rounded-2xl border border-theme-border/35 bg-theme-card-bg p-3.5 shadow-[0_2px_0_var(--theme-shadow)]"
                             >
                                 <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                                     <div>
-                                        <p className="text-[9px] font-black uppercase tracking-[0.16em] text-theme-text-muted">
+                                        <p className="font-mono text-[9px] font-bold uppercase tracking-[0.14em] text-theme-text-muted">
                                             {currentAiWizardMeta.eyebrow}
                                         </p>
-                                        <h5 className="mt-0.5 text-sm font-black text-theme-text">
+                                        <h5 className="mt-0.5 text-sm font-extrabold tracking-tight text-theme-text">
                                             {currentAiWizardMeta.label}
                                         </h5>
-                                        <p className="mt-1 max-w-2xl text-[11px] font-semibold leading-relaxed text-theme-text-muted">
+                                        <p className="mt-1 max-w-2xl text-[11px] font-medium leading-relaxed text-theme-text-muted">
                                             {currentAiWizardMeta.description}
                                         </p>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-1.5">
-                                        <span className="rounded-full border border-theme-border/20 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text-muted">
+                                        <span className="rounded-full border border-theme-border/20 bg-theme-base-bg px-2 py-0.5 font-mono text-[9px] font-bold text-theme-text-muted">
                                             {genMode === "standard" ? "标准考试逻辑" : longformTrack === "native" ? "母语者长文" : "纯阅读长文"}
                                         </span>
                                         {activeAiWizardStep !== "mode" ? (
-                                            <span className="rounded-full border border-theme-border/20 bg-theme-card-bg px-2 py-0.5 text-[9px] font-black text-theme-text">
-                                                {longformTrack === "native" ? "母语者" : genDifficulty === "cet4" ? "四级" : genDifficulty === "cet6" ? "六级" : "雅思"}
-                                            </span>
+                                             <span className="rounded-full border border-theme-border/20 bg-theme-card-bg px-2 py-0.5 font-mono text-[9px] font-bold text-theme-text">
+                                                 {longformTrack === "native" ? "母语者" : genDifficulty === "cet4" ? "四级" : genDifficulty === "cet6" ? "六级" : "雅思"}
+                                             </span>
                                         ) : null}
                                     </div>
                                 </div>
 
-                                <AnimatePresence mode="wait" initial={false}>
+                                <AnimatePresence mode="wait" initial={false} custom={stepDirection}>
                                     <motion.div
                                         key={activeAiWizardStep}
-                                        initial={panelEnter}
-                                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        exit={panelExit}
-                                        transition={panelTransition}
+                                        custom={stepDirection}
+                                        variants={stepAnimationVariants}
+                                        initial="enter"
+                                        animate="center"
+                                        exit="exit"
+                                        transition={stepAnimationTransition}
                                         className="space-y-3"
                                     >
                                         {activeAiWizardStep === "mode" ? (
@@ -1771,8 +1826,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                 </div>
                                                                 <div className="flex-1 min-w-0 space-y-1">
                                                                     <div className="flex items-center justify-between gap-2">
-                                                                        <p className="text-xs font-black text-theme-text">{option.label}</p>
-                                                                        <span className="rounded-full bg-theme-base-bg/60 px-2 py-0.5 text-[9px] font-black text-theme-text-muted border border-theme-border/10">
+                                                                        <p className="text-xs font-bold tracking-wide text-theme-text">{option.label}</p>
+                                                                        <span className="rounded-full bg-theme-base-bg/60 px-2 py-0.5 font-mono text-[9px] font-semibold text-theme-text-muted border border-theme-border/10">
                                                                             {option.id === "standard" ? "4 步完成" : "5 步完成"}
                                                                         </span>
                                                                     </div>
@@ -1783,7 +1838,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                     </p>
                                                                     <div className="flex justify-end pt-1">
                                                                         <span className={cn(
-                                                                            "inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 text-[9px] font-black text-theme-text transition-colors",
+                                                                            "inline-flex items-center gap-0.5 rounded-full border px-2 py-0.5 font-mono text-[9px] font-bold text-theme-text transition-colors",
                                                                             isActive ? "border-theme-border bg-theme-active-bg" : "border-theme-border/30 bg-theme-card-bg group-hover:border-theme-border/50"
                                                                         )}>
                                                                             继续 <ChevronRight className="h-2.5 w-2.5" />
@@ -1845,7 +1900,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                 )}>
                                                                     <Icon className="h-4 w-4" />
                                                                 </div>
-                                                                <p className="text-sm font-black text-theme-text leading-tight">{diff.label}</p>
+                                                                <p className="text-sm font-extrabold tracking-tight text-theme-text leading-tight">{diff.label}</p>
                                                                 <p className="mt-1 text-xs font-semibold text-theme-text-muted">{diff.desc}</p>
                                                                 <p className="mt-0.5 text-[10px] font-semibold text-theme-text-muted/80">{diff.detail}</p>
                                                             </div>
@@ -1859,8 +1914,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                             <div className="space-y-3">
                                                 <div className="rounded-xl border border-theme-border/25 bg-theme-base-bg/20 p-3">
                                                     <div className="mb-2 flex items-center justify-between gap-2">
-                                                        <h6 className="text-[11px] font-black tracking-wide text-theme-text">长度档位</h6>
-                                                        <span className="text-[9px] font-bold text-theme-text-muted">±15%</span>
+                                                        <h6 className="text-[11.5px] font-extrabold tracking-wide text-theme-text">长度档位</h6>
+                                                        <span className="font-mono text-[9px] font-semibold text-theme-text-muted">±15%</span>
                                                     </div>
                                                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                                         {LONGFORM_LENGTH_TIERS.map((tier) => {
@@ -1878,8 +1933,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                     )}
                                                                     style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", isActive ? 1.5 : 0)}
                                                                 >
-                                                                    <p className="text-[11px] font-black">{tier.label}</p>
-                                                                    <p className="mt-0.5 text-[9px] font-semibold opacity-80">目标 {tier.targetWordCount} 词</p>
+                                                                    <p className="text-[11px] font-bold">{tier.label}</p>
+                                                                    <p className="mt-0.5 font-mono text-[9px] font-semibold opacity-80">目标 {tier.targetWordCount} 词</p>
                                                                 </button>
                                                             );
                                                         })}
@@ -1889,12 +1944,12 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                 <div className="rounded-xl border border-dashed border-theme-border/35 bg-theme-card-bg/60 p-3">
                                                     <div className="flex flex-wrap items-center justify-between gap-3">
                                                         <div className="flex-1 min-w-0">
-                                                            <p className="text-[11px] font-black text-theme-text">下一步再定风格和主题</p>
+                                                            <p className="text-[11.5px] font-bold text-theme-text">下一步再定风格和主题</p>
                                                             <p className="mt-0.5 text-[9px] font-medium leading-normal text-theme-text-muted">
                                                                 先把篇幅卡住，最后一步再一起确认写作风格、补充要求和具体题材，生成时更顺手。
                                                             </p>
                                                         </div>
-                                                        <span className="rounded-full border border-theme-border/30 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text-muted">
+                                                        <span className="rounded-full border border-theme-border/30 bg-theme-base-bg px-2.5 py-0.5 font-mono text-[9px] font-bold text-theme-text-muted">
                                                             当前长度 · {activeLengthTier.label}
                                                         </span>
                                                     </div>
@@ -1906,8 +1961,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                             <div className="grid gap-3 lg:grid-cols-2">
                                                 <div className="rounded-xl border border-theme-border/25 bg-theme-base-bg/20 p-3">
                                                     <div className="mb-2 flex items-center justify-between gap-2">
-                                                        <h6 className="text-[11px] font-black tracking-wide text-theme-text">RAG 模式</h6>
-                                                        <span className="text-[9px] font-bold text-theme-text-muted">
+                                                        <h6 className="text-[11.5px] font-extrabold tracking-wide text-theme-text">RAG 模式</h6>
+                                                        <span className="font-mono text-[9px] font-semibold text-theme-text-muted">
                                                             {activeRagConfig.mode === "off" ? "完全关闭" : activeRagConfig.mode === "strict" ? "强制命中" : "软参考"}
                                                         </span>
                                                     </div>
@@ -1927,7 +1982,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                     )}
                                                                     style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", isActive ? 1.5 : 0)}
                                                                 >
-                                                                    <p className="text-[11px] font-black">{option.label}</p>
+                                                                    <p className="text-[11px] font-bold">{option.label}</p>
                                                                 </button>
                                                             );
                                                         })}
@@ -1936,8 +1991,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
 
                                                 <div className="rounded-xl border border-theme-border/25 bg-theme-base-bg/20 p-3">
                                                     <div className="mb-2 flex items-center justify-between gap-2">
-                                                        <h6 className="text-[11px] font-black tracking-wide text-theme-text">RAG 来源</h6>
-                                                        <span className="text-[9px] font-bold text-theme-text-muted">
+                                                        <h6 className="text-[11.5px] font-extrabold tracking-wide text-theme-text">RAG 来源</h6>
+                                                        <span className="font-mono text-[9px] font-semibold text-theme-text-muted">
                                                             {activeRagConfig.source === "vocab" ? "生词本" : activeRagConfig.source === "dictionary" ? "词典" : "混合"}
                                                         </span>
                                                     </div>
@@ -1960,7 +2015,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                     )}
                                                                     style={getPressableStyle(activeRagConfig.mode === "off" ? "rgba(0,0,0,0)" : isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", isActive ? 1.5 : 0)}
                                                                 >
-                                                                    <p className="text-[11px] font-black">{option.label}</p>
+                                                                    <p className="text-[11px] font-bold">{option.label}</p>
                                                                 </button>
                                                             );
                                                         })}
@@ -1973,7 +2028,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                             <div className="space-y-3">
                                                 <div className="flex flex-wrap items-center gap-1.5">
                                                     <span className={cn(
-                                                        "rounded-full border px-2 py-0.5 text-[9px] font-black",
+                                                        "rounded-full border px-2 py-0.5 text-[9px] font-bold",
                                                         longformTrack === "native" && "border-amber-200/50 bg-amber-100/60 text-amber-800",
                                                         longformTrack === "exam" && genDifficulty === 'cet4' && "border-emerald-200/50 bg-emerald-100/60 text-emerald-700",
                                                         longformTrack === "exam" && genDifficulty === 'cet6' && "border-sky-200/50 bg-sky-100/60 text-sky-700",
@@ -1982,11 +2037,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                         {longformTrack === "native" ? "母语者" : genDifficulty === 'cet4' ? '四级' : genDifficulty === 'cet6' ? '六级' : '雅思'}
                                                         {genMode === "longform" ? ` · 长文 · ${activeLongformStyle?.name ?? "科普"}` : ""}
                                                     </span>
-                                                    <span className="rounded-full border border-theme-border/30 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text-muted">
+                                                    <span className="rounded-full border border-theme-border/30 bg-theme-base-bg px-2.5 py-0.5 font-mono text-[9px] font-semibold text-theme-text-muted">
                                                         {activeRagConfig.mode === "off" ? "无 RAG 注入" : `${activeRagConfig.mode === "strict" ? "严格" : "参考"} · ${activeRagConfig.source === "vocab" ? "生词本" : activeRagConfig.source === "dictionary" ? "词典" : "混合"}`}
                                                     </span>
                                                     {genTopic.trim() ? (
-                                                        <span className="rounded-full border border-theme-border/30 bg-theme-card-bg px-2 py-0.5 text-[9px] font-black text-theme-text">
+                                                        <span className="rounded-full border border-theme-border/30 bg-theme-card-bg px-2.5 py-0.5 text-[9px] font-bold text-theme-text">
                                                             当前主题 · {genTopic}
                                                         </span>
                                                     ) : null}
@@ -1996,8 +2051,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                     <div className="grid gap-3 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                                                         <div className="rounded-xl border border-theme-border/25 bg-theme-base-bg/20 p-3">
                                                             <div className="mb-2 flex items-center justify-between gap-2">
-                                                                <h6 className="text-[11px] font-black tracking-wide text-theme-text">风格选择</h6>
-                                                                <span className="text-[9px] font-bold text-theme-text-muted">和主题一起定</span>
+                                                                <h6 className="text-[11.5px] font-extrabold tracking-wide text-theme-text">风格选择</h6>
+                                                                <span className="font-mono text-[9px] font-semibold text-theme-text-muted">和主题一起定</span>
                                                             </div>
                                                             <div className="grid grid-cols-2 gap-1.5">
                                                                 {LONGFORM_STYLE_OPTIONS.map((style) => {
@@ -2008,7 +2063,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                             type="button"
                                                                             onClick={() => setLongformStyleId(style.id)}
                                                                             className={cn(
-                                                                                "ui-pressable rounded-lg border px-2.5 py-1.5 text-left text-[11px] font-black transition-all",
+                                                                                "ui-pressable rounded-lg border px-2.5 py-1.5 text-left text-[11px] font-bold transition-all",
                                                                                 isActive
                                                                                     ? "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_1.5px_0_var(--theme-shadow)]"
                                                                                     : "border-theme-border/20 bg-theme-card-bg text-theme-text-muted hover:border-theme-border/40 hover:text-theme-text",
@@ -2026,7 +2081,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                             <div className="flex h-full min-h-[180px] flex-col gap-2.5">
                                                                 <div className="flex flex-wrap items-start justify-between gap-3">
                                                                     <div className="flex-1 min-w-0">
-                                                                        <p className="text-[11px] font-black text-theme-text">
+                                                                        <p className="text-[11px] font-bold text-theme-text">
                                                                             {longformStyleId === "custom" ? "自定义风格" : "长文设置详情"}
                                                                         </p>
                                                                         <p className="mt-0.5 text-[9px] font-medium leading-normal text-theme-text-muted">
@@ -2044,7 +2099,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                             whileTap={isOptimizingCustomStyle || !customStylePrompt.trim() ? undefined : getPressableTap(reducedMotion, 2, 0.985)}
                                                                             style={getPressableStyle(isOptimizingCustomStyle || !customStylePrompt.trim() ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", isOptimizingCustomStyle || !customStylePrompt.trim() ? 0 : 1.5)}
                                                                             className={cn(
-                                                                                "ui-pressable rounded-full border px-2.5 py-0.5 text-[9px] font-black transition-all",
+                                                                                "ui-pressable rounded-full border px-2.5 py-0.5 text-[9px] font-bold transition-all",
                                                                                 isOptimizingCustomStyle || !customStylePrompt.trim()
                                                                                     ? "cursor-not-allowed border-theme-border/30 bg-theme-base-bg text-theme-text-muted opacity-60"
                                                                                     : "border-theme-border bg-theme-primary-bg text-theme-primary-text",
@@ -2059,10 +2114,10 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                                 </div>
 
                                                                 <div className="flex flex-wrap gap-1">
-                                                                    <span className="rounded-full border border-theme-border/35 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text">
+                                                                    <span className="rounded-full border border-theme-border/35 bg-theme-base-bg px-2.5 py-0.5 font-mono text-[9px] font-bold text-theme-text">
                                                                         {activeLengthTier.label} · {activeLengthTier.targetWordCount} 词
                                                                     </span>
-                                                                    <span className="rounded-full border border-theme-border/35 bg-theme-base-bg px-2 py-0.5 text-[9px] font-black text-theme-text">
+                                                                    <span className="rounded-full border border-theme-border/35 bg-theme-base-bg px-2.5 py-0.5 font-mono text-[9px] font-bold text-theme-text">
                                                                         {activeLongformStyle?.name ?? "科普"}
                                                                     </span>
                                                                 </div>
@@ -2097,7 +2152,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                             whileTap={getPressableTap(reducedMotion, 2, 0.98)}
                                                             style={getPressableStyle(genTopic === topic ? "var(--theme-shadow)" : "rgba(0,0,0,0.06)", genTopic === topic ? 1.5 : 0)}
                                                             className={cn(
-                                                                "ui-pressable rounded-full border px-2.5 py-0.5 text-[10px] font-black transition-all duration-200",
+                                                                "ui-pressable rounded-full border px-2.5 py-0.5 text-[10px] font-bold transition-all duration-200",
                                                                 genTopic === topic
                                                                     ? "border-theme-border bg-theme-primary-bg text-theme-primary-text"
                                                                     : "border-theme-border/20 bg-theme-card-bg text-theme-text-muted hover:text-theme-text hover:border-theme-border/40",
@@ -2125,7 +2180,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                         whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 2, 0.985)}
                                                         style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", isGenerating ? 0 : 1.5)}
                                                         className={cn(
-                                                            "ui-pressable group relative overflow-hidden rounded-full h-8 px-3 text-[11px] font-black transition-all duration-300 disabled:shadow-none border",
+                                                            "ui-pressable group relative overflow-hidden rounded-full h-8 px-3 text-[11px] font-bold transition-all duration-300 disabled:shadow-none border",
                                                             isGenerating
                                                                 ? "cursor-not-allowed border-theme-border/30 bg-theme-card-bg text-theme-text-muted"
                                                                 : "border-theme-border bg-theme-card-bg text-theme-text hover:bg-theme-base-bg",
@@ -2146,7 +2201,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                         whileTap={isGenerating ? undefined : getPressableTap(reducedMotion, 2, 0.985)}
                                                         style={getPressableStyle(isGenerating ? "rgba(0,0,0,0.06)" : "var(--theme-shadow)", isGenerating ? 0 : 1.5)}
                                                         className={cn(
-                                                            "ui-pressable group relative overflow-hidden rounded-full h-8 px-3.5 text-[11px] font-black transition-all duration-300 disabled:shadow-none border",
+                                                            "ui-pressable group relative overflow-hidden rounded-full h-8 px-3.5 text-[11px] font-extrabold transition-all duration-300 disabled:shadow-none border",
                                                             isGenerating
                                                                 ? "cursor-not-allowed border-theme-border/30 bg-theme-card-bg text-theme-text-muted"
                                                                 : "border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_1.5px_0_var(--theme-shadow)]",
@@ -2178,7 +2233,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                 type="button"
                                                 data-ai-gen-back="true"
                                                 onClick={goToPreviousAiStep}
-                                                className="ui-pressable inline-flex h-8 items-center gap-1 rounded-full border border-theme-border bg-theme-card-bg px-2.5 text-[11px] font-black text-theme-text"
+                                                className="ui-pressable inline-flex h-8 items-center gap-1 rounded-full border border-theme-border bg-theme-card-bg px-2.5 text-[11px] font-bold text-theme-text"
                                                 style={getPressableStyle("rgba(0,0,0,0.06)", 0)}
                                             >
                                                 <ChevronLeft className="h-3 w-3" />
@@ -2190,7 +2245,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                 type="button"
                                                 data-ai-gen-next="true"
                                                 onClick={goToNextAiStep}
-                                                className="ui-pressable inline-flex h-8 items-center gap-1 rounded-full border border-theme-border bg-theme-primary-bg px-3 text-[11px] font-black text-theme-primary-text shadow-[0_1.5px_0_var(--theme-shadow)]"
+                                                className="ui-pressable inline-flex h-8 items-center gap-1 rounded-full border border-theme-border bg-theme-primary-bg px-3 text-[11px] font-bold text-theme-primary-text shadow-[0_1.5px_0_var(--theme-shadow)]"
                                                 style={getPressableStyle("var(--theme-shadow)", 1.5)}
                                             >
                                                 下一步

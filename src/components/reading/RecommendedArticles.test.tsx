@@ -314,7 +314,7 @@ describe("RecommendedArticles AI Studio wizard", () => {
         expect(container.textContent).not.toContain("RAG 模式");
         expect(container.textContent).not.toContain("RAG 来源");
         expect(container.querySelector('input[placeholder*="Quantum Computing"]')).toBeNull();
-        expect(container.textContent).toContain("还没有 AI 生成学习记录");
+        await waitForCondition(() => container.textContent?.includes("还没有 AI 生成学习记录") ?? false, 1000);
     });
 
     it("switches to longform flow and exposes the longform step", async () => {
@@ -506,10 +506,10 @@ describe("RecommendedArticles AI Studio wizard", () => {
         const tracker = container.querySelector('[data-ai-gen-learning-tracker="true"]');
         const chart = container.querySelector('[data-ai-gen-learning-chart="true"]');
         expect(tracker).toBeTruthy();
-        expect(chart?.getAttribute("data-window-days")).toBe("30");
+        expect(chart?.getAttribute("data-window-days")).toBe("7");
         expect(container.textContent).toContain("总生成");
         expect(container.textContent).toContain("完成学习");
-        expect(container.textContent).toContain("近 30 天字数");
+        expect(container.textContent).toContain("近 7 天字数");
         expect(container.textContent).toContain("连续学习");
         expect(container.textContent).toContain("2,000");
         expect(container.textContent).toContain("0 天");

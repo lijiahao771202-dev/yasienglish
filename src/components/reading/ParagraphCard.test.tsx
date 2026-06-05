@@ -3929,6 +3929,15 @@ describe("ParagraphCard", () => {
             playButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
         });
 
+        // Toggle blind listening OFF to enable character-level fallback rendering
+        const blindToggleButton = Array.from(container.querySelectorAll("button")).find(
+            (btn) => btn.textContent?.includes("已开启盲听")
+        );
+        expect(blindToggleButton).toBeTruthy();
+        await act(async () => {
+            blindToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        });
+
         Object.defineProperty(document, "caretPositionFromPoint", {
             configurable: true,
             value: undefined,
@@ -4674,47 +4683,41 @@ describe("ParagraphCard", () => {
             });
 
             // Verify blind listening control bar is visible
-            const blindToggleButton = Array.from(container.querySelectorAll("button")).find(
+            const getBlindToggleButton = () => Array.from(container.querySelectorAll("button")).find(
                 (btn) => btn.textContent?.includes("开启盲听") || btn.textContent?.includes("已开启盲听")
             );
-            expect(blindToggleButton).toBeTruthy();
-            expect(blindToggleButton?.textContent).toContain("开启盲听");
+            expect(getBlindToggleButton()).toBeTruthy();
+            expect(getBlindToggleButton()?.textContent).toContain("已开启盲听");
 
-            // Word elements are rendered. Since blind listening is off, none should be blurred.
+            // Word elements are rendered. Since blind listening is ON by default, some should be blurred.
             const getWordElements = () => Array.from(container.querySelectorAll('[data-ktv-word-index]'));
             let words = getWordElements();
             expect(words.length).toBeGreaterThan(0);
             
-            // None should have blur initially
-            words.forEach((word) => {
-                const style = (word as HTMLElement).style;
-                expect(style.filter).not.toContain("blur");
-            });
+            const countBlurred = () => getWordElements().filter((word) => (word as HTMLElement).style.filter.includes("blur")).length;
+            expect(countBlurred()).toBeGreaterThan(0);
 
-            // Toggle blind listening ON
+            // Toggle blind listening OFF
             await act(async () => {
-                blindToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                getBlindToggleButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             });
 
-            const updatedToggleButton = Array.from(container.querySelectorAll("button")).find(
-                (btn) => btn.textContent?.includes("开启盲听") || btn.textContent?.includes("已开启盲听")
-            );
-            expect(updatedToggleButton?.textContent).toContain("已开启盲听");
+            expect(getBlindToggleButton()?.textContent).toContain("开启盲听");
+            expect(countBlurred()).toBe(0);
 
-            // Some words should now be blurred, and some (structural words or first word) unblurred.
+            // Toggle blind listening ON again
+            await act(async () => {
+                getBlindToggleButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+            expect(getBlindToggleButton()?.textContent).toContain("已开启盲听");
+            expect(countBlurred()).toBeGreaterThan(0);
+
+            // Verify hover reveal behavior
             words = getWordElements();
             const blurredIndices = words
                 .map((word, idx) => ((word as HTMLElement).style.filter.includes("blur") ? idx : null))
                 .filter((idx) => idx !== null) as number[];
-            
-            const unblurredIndices = words
-                .map((word, idx) => (!(word as HTMLElement).style.filter.includes("blur") ? idx : null))
-                .filter((idx) => idx !== null) as number[];
 
-            expect(blurredIndices.length).toBeGreaterThan(0);
-            expect(unblurredIndices.length).toBeGreaterThan(0);
-
-            // Verify hover reveal behavior
             const blurredWordElement = words[blurredIndices[0]!] as HTMLElement;
             expect(blurredWordElement.style.filter).toContain("blur");
 
@@ -4738,51 +4741,32 @@ describe("ParagraphCard", () => {
             const reblurredWordElement = container.querySelector(`[data-ktv-word-index="${blurredIndices[0]}"]`) as HTMLElement;
             expect(reblurredWordElement.style.filter).toContain("blur");
 
-            // Give Hint Button should be visible now
-            const hintButton = Array.from(container.querySelectorAll("button")).find(
-                (btn) => btn.textContent?.includes("加点提示")
-            );
-            expect(hintButton).toBeTruthy();
-
-            // Click Give Hint to reveal some words
-            const initialBlurredCount = blurredIndices.length;
+            // Test E key: Increase hints (reveals more words)
+            const blurredCountBeforeE = countBlurred();
             await act(async () => {
-                hintButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                window.dispatchEvent(new KeyboardEvent("keydown", { key: "e", bubbles: true }));
             });
+            expect(countBlurred()).toBeLessThan(blurredCountBeforeE);
 
-            words = getWordElements();
-            const afterHintBlurredCount = words.filter((word) => (word as HTMLElement).style.filter.includes("blur")).length;
-            expect(afterHintBlurredCount).toBeLessThan(initialBlurredCount);
-
-            // Reveal All Button should be visible
-            const revealAllButton = Array.from(container.querySelectorAll("button")).find(
-                (btn) => btn.textContent?.includes("显示全句")
-            );
-            expect(revealAllButton).toBeTruthy();
-
-            // Click Reveal All
+            // Test Q key: Decrease hints (hides/blurs words again)
+            const blurredCountBeforeQ = countBlurred();
             await act(async () => {
-                revealAllButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                window.dispatchEvent(new KeyboardEvent("keydown", { key: "q", bubbles: true }));
             });
+            expect(countBlurred()).toBeGreaterThan(blurredCountBeforeQ);
 
-            // Now all words should be unblurred
-            words = getWordElements();
-            words.forEach((word) => {
-                const style = (word as HTMLElement).style;
-                expect(style.filter).not.toContain("blur");
+            // Test W key: Show all hints directly (all unblurred)
+            await act(async () => {
+                window.dispatchEvent(new KeyboardEvent("keydown", { key: "w", bubbles: true }));
             });
+            expect(countBlurred()).toBe(0);
 
             // Toggle blind listening OFF
             await act(async () => {
-                blindToggleButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                getBlindToggleButton()?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
             });
-            expect(blindToggleButton?.textContent).toContain("开启盲听");
-
-            words = getWordElements();
-            words.forEach((word) => {
-                const style = (word as HTMLElement).style;
-                expect(style.filter).not.toContain("blur");
-            });
+            expect(getBlindToggleButton()?.textContent).toContain("开启盲听");
+            expect(countBlurred()).toBe(0);
 
         } finally {
             vi.unstubAllGlobals();

@@ -1429,7 +1429,7 @@ export function ParagraphCard({
     const [sentenceDurationMs, setSentenceDurationMs] = useState(0);
     const [sentenceCacheVersion, setSentenceCacheVersion] = useState(0);
     const [isSegmentListOpen, setIsSegmentListOpen] = useState(false);
-    const [isSemiBlur, setIsSemiBlur] = useState(false);
+    const [isSemiBlur, setIsSemiBlur] = useState(true);
     const [revealedWordIndices, setRevealedWordIndices] = useState<Set<number>>(new Set());
     const [hoveredWordIndex, setHoveredWordIndex] = useState<number | null>(null);
 
@@ -1735,6 +1735,121 @@ export function ParagraphCard({
         layout.forEach((_, idx) => nextRevealed.add(idx));
         setRevealedWordIndices(nextRevealed);
     }, [activeSentenceUnit, getWordLayout]);
+
+    const handleDecreaseHint = useCallback(() => {
+        if (!activeSentenceUnit) return;
+        const defaultIndices = getDefaultUnblurredIndices(activeSentenceUnit.text, getWordLayout);
+        
+        if (!isSemiBlur) {
+            setIsSemiBlur(true);
+        }
+
+        const extraIndices: number[] = [];
+        revealedWordIndices.forEach((idx) => {
+            if (!defaultIndices.has(idx)) {
+                extraIndices.push(idx);
+            }
+        });
+
+        const nextRevealed = new Set(revealedWordIndices);
+
+        if (extraIndices.length > 0) {
+            const countToHide = Math.min(2, extraIndices.length);
+            for (let i = 0; i < countToHide; i++) {
+                const randomIndex = Math.floor(Math.random() * extraIndices.length);
+                const [hiddenIndex] = extraIndices.splice(randomIndex, 1);
+                nextRevealed.delete(hiddenIndex);
+            }
+        } else {
+            const removableDefaults: number[] = [];
+            defaultIndices.forEach((idx) => {
+                if (idx !== 0 && revealedWordIndices.has(idx)) {
+                    removableDefaults.push(idx);
+                }
+            });
+
+            if (removableDefaults.length > 0) {
+                const countToHide = Math.min(2, removableDefaults.length);
+                for (let i = 0; i < countToHide; i++) {
+                    const randomIndex = Math.floor(Math.random() * removableDefaults.length);
+                    const [hiddenIndex] = removableDefaults.splice(randomIndex, 1);
+                    nextRevealed.delete(hiddenIndex);
+                }
+            }
+        }
+
+        setRevealedWordIndices(nextRevealed);
+    }, [activeSentenceUnit, getWordLayout, revealedWordIndices, isSemiBlur]);
+
+    useEffect(() => {
+        if (playMode !== "sentence" || !activeSentenceUnit) return;
+
+        const handleGlobalKeyDown = (event: KeyboardEvent) => {
+            const activeEl = document.activeElement;
+            if (
+                activeEl &&
+                (activeEl.tagName === "INPUT" ||
+                    activeEl.tagName === "TEXTAREA" ||
+                    activeEl.hasAttribute("contenteditable") ||
+                    activeEl.closest("[contenteditable]"))
+            ) {
+                return;
+            }
+
+            const key = event.key.toLowerCase();
+            if (key === "q") {
+                event.preventDefault();
+                playBubbleSound();
+                if (!isSemiBlur) {
+                    setIsSemiBlur(true);
+                    const defaultIndices = getDefaultUnblurredIndices(activeSentenceUnit.text, getWordLayout);
+                    setRevealedWordIndices(defaultIndices);
+                } else {
+                    handleDecreaseHint();
+                }
+            } else if (key === "e") {
+                event.preventDefault();
+                playBubbleSound();
+                if (!isSemiBlur) {
+                    setIsSemiBlur(true);
+                    const defaultIndices = getDefaultUnblurredIndices(activeSentenceUnit.text, getWordLayout);
+                    const layout = getWordLayout(activeSentenceUnit.text);
+                    const hiddenIndices: number[] = [];
+                    layout.forEach((_, idx) => {
+                        if (!defaultIndices.has(idx)) {
+                            hiddenIndices.push(idx);
+                        }
+                    });
+                    if (hiddenIndices.length > 0) {
+                        const countToReveal = Math.min(2, hiddenIndices.length);
+                        const nextRevealed = new Set(defaultIndices);
+                        for (let i = 0; i < countToReveal; i++) {
+                            const randomIndex = Math.floor(Math.random() * hiddenIndices.length);
+                            const [revealedIndex] = hiddenIndices.splice(randomIndex, 1);
+                            nextRevealed.add(revealedIndex);
+                        }
+                        setRevealedWordIndices(nextRevealed);
+                    } else {
+                        setRevealedWordIndices(defaultIndices);
+                    }
+                } else {
+                    handleGiveHint();
+                }
+            } else if (key === "w") {
+                event.preventDefault();
+                playBubbleSound();
+                if (!isSemiBlur) {
+                    setIsSemiBlur(true);
+                }
+                handleRevealAll();
+            }
+        };
+
+        window.addEventListener("keydown", handleGlobalKeyDown);
+        return () => {
+            window.removeEventListener("keydown", handleGlobalKeyDown);
+        };
+    }, [playMode, activeSentenceUnit, handleDecreaseHint, handleGiveHint, handleRevealAll, playBubbleSound, isSemiBlur, getWordLayout]);
 
     const stopSentenceProgressLoop = useCallback(() => {
         if (sentenceProgressRafRef.current !== null) {
@@ -5682,7 +5797,12 @@ export function ParagraphCard({
                                         type="button"
                                         onClick={() => {
                                             playBubbleSound();
-                                            setIsSemiBlur(prev => !prev);
+                                            const nextSemiBlur = !isSemiBlur;
+                                            setIsSemiBlur(nextSemiBlur);
+                                            if (nextSemiBlur && activeSentenceUnit) {
+                                                const initialIndices = getDefaultUnblurredIndices(activeSentenceUnit.text, getWordLayout);
+                                                setRevealedWordIndices(initialIndices);
+                                            }
                                         }}
                                         className={cn(
                                             "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-all border outline-none focus:outline-none cursor-pointer active:scale-95",
