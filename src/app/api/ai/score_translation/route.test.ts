@@ -1,19 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createCompletionMock, createNoThinkingClientMock } = vi.hoisted(() => ({
+const { createCompletionMock, createClientMock } = vi.hoisted(() => ({
     createCompletionMock: vi.fn(),
-    createNoThinkingClientMock: vi.fn(),
+    createClientMock: vi.fn(),
 }));
 
 vi.mock("@/lib/deepseek", () => ({
-    deepseek: {
-        chat: {
-            completions: {
-                create: createCompletionMock,
-            },
-        },
-    },
-    createDeepSeekClientForCurrentUserWithoutThinking: createNoThinkingClientMock,
+    createAiClientForCurrentUser: createClientMock,
 }));
 
 import { POST } from "./route";
@@ -56,8 +49,8 @@ function buildRequest(overrides: Partial<{
 describe("score_translation route", () => {
     beforeEach(() => {
         createCompletionMock.mockReset();
-        createNoThinkingClientMock.mockReset();
-        createNoThinkingClientMock.mockResolvedValue({
+        createClientMock.mockReset();
+        createClientMock.mockResolvedValue({
             chat: {
                 completions: {
                     create: createCompletionMock,
@@ -168,7 +161,7 @@ describe("score_translation route", () => {
         expect(String(data.judge_reasoning)).toContain("需中文翻译");
     });
 
-    it("uses the no-thinking scoring client for fast translation scoring", async () => {
+    it("uses the configured AI client for translation scoring", async () => {
         createCompletionMock.mockResolvedValueOnce(
             createCompletionPayload({
                 score: 8.5,
@@ -186,7 +179,7 @@ describe("score_translation route", () => {
         const data = await response.json();
 
         expect(response.status).toBe(200);
-        expect(createNoThinkingClientMock).toHaveBeenCalledTimes(1);
+        expect(createClientMock).toHaveBeenCalledTimes(1);
         expect(createCompletionMock).toHaveBeenCalledTimes(1);
         expect(data.score).toBe(8.5);
         expect(data.judge_reasoning).toBe("核心语义基本完整。");

@@ -1,14 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createCompletionMock, createClientMock, createNoThinkingClientMock } = vi.hoisted(() => ({
+const { createCompletionMock, createClientMock } = vi.hoisted(() => ({
     createCompletionMock: vi.fn(),
     createClientMock: vi.fn(),
-    createNoThinkingClientMock: vi.fn(),
 }));
 
 vi.mock("@/lib/deepseek", () => ({
-    createDeepSeekClientForCurrentUser: createClientMock,
-    createDeepSeekClientForCurrentUserWithoutThinking: createNoThinkingClientMock,
+    createAiClientForCurrentUser: createClientMock,
 }));
 
 import { POST } from "./route";
@@ -35,15 +33,7 @@ describe("rewrite-practice route", () => {
     beforeEach(() => {
         createCompletionMock.mockReset();
         createClientMock.mockReset();
-        createNoThinkingClientMock.mockReset();
         createClientMock.mockResolvedValue({
-            chat: {
-                completions: {
-                    create: createCompletionMock,
-                },
-            },
-        });
-        createNoThinkingClientMock.mockResolvedValue({
             chat: {
                 completions: {
                     create: createCompletionMock,
@@ -315,7 +305,7 @@ describe("rewrite-practice route", () => {
         ]);
     });
 
-    it("uses the no-thinking client for rewrite scoring", async () => {
+    it("uses the configured AI client for rewrite scoring", async () => {
         createCompletionMock.mockResolvedValueOnce(
             createCompletionPayload({
                 dimension_scores: {
@@ -341,8 +331,7 @@ describe("rewrite-practice route", () => {
         const data = await res.json();
 
         expect(res.status).toBe(200);
-        expect(createNoThinkingClientMock).toHaveBeenCalledTimes(1);
-        expect(createClientMock).not.toHaveBeenCalled();
+        expect(createClientMock).toHaveBeenCalledTimes(1);
         expect(data.total_score).toBeGreaterThan(0);
     });
 });

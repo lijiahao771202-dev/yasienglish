@@ -2,18 +2,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
     createCompletionMock,
-    createNoThinkingClientMock,
+    createClientMock,
     chargeReadingCoinsMock,
     insufficientReadingCoinsPayloadMock,
 } = vi.hoisted(() => ({
     createCompletionMock: vi.fn(),
-    createNoThinkingClientMock: vi.fn(),
+    createClientMock: vi.fn(),
     chargeReadingCoinsMock: vi.fn(),
     insufficientReadingCoinsPayloadMock: vi.fn(),
 }));
 
 vi.mock("@/lib/deepseek", () => ({
-    createDeepSeekClientForCurrentUserWithoutThinking: createNoThinkingClientMock,
+    createAiClientForCurrentUser: createClientMock,
 }));
 
 vi.mock("@/lib/reading-economy-server", () => ({
@@ -37,10 +37,10 @@ function buildRequest(body: Record<string, unknown>) {
 describe("translate route", () => {
     beforeEach(() => {
         createCompletionMock.mockReset();
-        createNoThinkingClientMock.mockReset();
+        createClientMock.mockReset();
         chargeReadingCoinsMock.mockReset();
         insufficientReadingCoinsPayloadMock.mockReset();
-        createNoThinkingClientMock.mockResolvedValue({
+        createClientMock.mockResolvedValue({
             chat: {
                 completions: {
                     create: createCompletionMock,
@@ -130,7 +130,7 @@ describe("translate route", () => {
             model: "deepseek-chat",
             response_format: { type: "json_object" },
         }));
-        expect(createNoThinkingClientMock).toHaveBeenCalledTimes(1);
+        expect(createClientMock).toHaveBeenCalledTimes(1);
     });
 
     it("falls back to joining sentence translations when full translation is missing", async () => {

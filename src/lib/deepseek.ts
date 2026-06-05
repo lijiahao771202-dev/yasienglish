@@ -870,6 +870,10 @@ export async function createDeepSeekClientForCurrentUser(): Promise<OpenAiCompat
     };
 }
 
+export async function createAiClientForCurrentUser(): Promise<OpenAiCompatibleClient> {
+    return createDeepSeekClientForCurrentUser();
+}
+
 function createCompletionWithContext(
     client: OpenAI,
     context: ProviderContext,
@@ -986,6 +990,10 @@ export async function createDeepSeekClientForCurrentUserWithoutThinking(): Promi
             },
         },
     };
+}
+
+export async function createAiClientForCurrentUserWithoutThinking(): Promise<OpenAiCompatibleClient> {
+    return createDeepSeekClientForCurrentUserWithoutThinking();
 }
 
 export async function getCurrentAiProviderLabelForCurrentUser() {

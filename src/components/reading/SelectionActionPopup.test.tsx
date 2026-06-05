@@ -166,7 +166,7 @@ describe("SelectionActionPopup", () => {
         expect(onAsk).toHaveBeenCalledTimes(1);
     });
 
-    it("shows the attached ask context below the composer input in ask mode", async () => {
+    it("shows the attached ask context above the composer input in ask mode", async () => {
         const { container } = await renderPopup({
             popupMode: "ask",
             selectedText: "The first paragraph ends here. The next paragraph starts here.",
@@ -186,7 +186,7 @@ describe("SelectionActionPopup", () => {
         expect(contextCard).toBeTruthy();
         expect(composer).toBeTruthy();
         expect(
-            (composer?.compareDocumentPosition(contextCard!) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
+            (composer?.compareDocumentPosition(contextCard!) ?? 0) & Node.DOCUMENT_POSITION_PRECEDING,
         ).toBeTruthy();
         expect(contextCard?.textContent).toContain("跨段选区");
         expect(contextCard?.textContent).toContain("第 2-3 段");

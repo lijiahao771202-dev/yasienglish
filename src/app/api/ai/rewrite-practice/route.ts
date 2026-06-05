@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import {
-    createDeepSeekClientForCurrentUser,
-    createDeepSeekClientForCurrentUserWithoutThinking,
+    createAiClientForCurrentUser,
 } from "@/lib/deepseek";
+import { parseJsonObjectFromAi } from "@/lib/ai-json";
 
 type GenerateRequest = {
     action: "generate";
@@ -23,6 +23,8 @@ type RewriteGenerateResponse = {
     imitation_prompt_cn: string;
     rewrite_tips_cn: string[];
     pattern_focus_cn: string;
+    sentence_skeleton_en?: string;
+    vocab_hints?: Array<{ word_cn: string; word_en: string }>;
 };
 
 type RewriteScoreResponse = {
@@ -309,6 +311,8 @@ function buildGenerateFallback(sentence: string): RewriteGenerateResponse {
             "优先做同结构迁移，不要逐词翻译。",
         ],
         pattern_focus_cn: "聚焦原句句法框架，做换场景仿写。",
+        sentence_skeleton_en: sentence.replace(/[a-zA-Z]+/g, "..."),
+        vocab_hints: [],
     };
 }
 
@@ -366,15 +370,15 @@ async function handleGenerate(data: GenerateRequest) {
     const available = candidates.filter((item) => !excluded.has(normalizeSentenceIdentity(item)));
     const candidatePool = available.length > 0 ? available : candidates;
 
-    const deepseek = await createDeepSeekClientForCurrentUser();
+    const client = await createAiClientForCurrentUser();
     const requestGeneratePayload = async (strictSceneShift: boolean, previousPrompt?: string) => {
-        const completion = await deepseek.chat.completions.create({
+        const completion = await client.chat.completions.create({
             model: "deepseek-chat",
             messages: [
                 {
                     role: "system",
                     content: `你是一名英语仿写教练。请从候选句中选一句，并输出严格 JSON。\n
-输出格式：\n{\n  "source_sentence_en": "必须完全等于候选中的某一句",\n  "imitation_prompt_cn": "中文灵感句（用于仿写启发）",\n  "rewrite_tips_cn": ["2-3条可执行仿写建议"],\n  "pattern_focus_cn": "本句最值得模仿的结构焦点",\n  "literal_translation": true/false,\n  "scene_shifted": true/false\n}\n\n强约束：\n1) source_sentence_en 必须逐字匹配候选句，不可改写。\n2) imitation_prompt_cn 必须是“同结构、换场景/换主语”的中文灵感句，不要逐词翻译原句。\n3) imitation_prompt_cn 禁止出现“原句/翻译/对应”这类元说明。\n4) rewrite_tips_cn 每条 8~28 字，最多 3 条。\n5) literal_translation: 若 imitation_prompt_cn 仍接近原句对应翻译则填 true。\n6) scene_shifted: 若已更换场景或主语则填 true。\n7) 所有中文请用简体中文。${strictSceneShift ? "\n8) 本次必须显式换场景，不能沿用原句语义主题。" : ""}`,
+输出格式：\n{\n  "source_sentence_en": "必须完全等于候选中的某一句",\n  "imitation_prompt_cn": "中文灵感句（用于仿写启发）",\n  "rewrite_tips_cn": ["2-3条可执行仿写建议"],\n  "pattern_focus_cn": "本句最值得模仿的结构焦点",\n  "sentence_skeleton_en": "原句的句型公式/骨架，用[占位符]标出变化部分（如: At its heart, [A] is built on a [B] but [C] [D]: [E]）",\n  "vocab_hints": [\n    { "word_cn": "中文灵感句中对应的新场景词汇", "word_en": "该新场景词汇的英文翻译（如: { \\"word_cn\\": \\"管理学理论\\", \\"word_en\\": \\"management theory\\" }）" }\n  ],\n  "literal_translation": true/false,\n  "scene_shifted": true/false\n}\n\n强约束：\n1) source_sentence_en 必须逐字匹配候选句，不可改写。\n2) imitation_prompt_cn 必须是“同结构、换场景/换主语”的中文灵感句，不要逐词翻译原句。\n3) imitation_prompt_cn 禁止出现“原句/翻译/对应”这类元说明。\n4) sentence_skeleton_en 必须只保留原句的骨架连接词，其他多变词用方括号字母如 [A], [B], [C] 占位。\n5) vocab_hints 必须提供 2-3 个对翻译“中文灵感句”非常有帮助的关键场景词汇，中文短语必须是“imitation_prompt_cn”里的原词，长度为2-4个字，且必须给出对应地道的英文词汇/短语，数量最多为3个。\n6) rewrite_tips_cn 每条 8~28 字，最多 3 条。\n7) literal_translation: 若 imitation_prompt_cn 仍接近原句对应翻译则填 true。\n8) scene_shifted: 若已更换场景或主语则填 true。\n9) 所有中文请用简体中文。${strictSceneShift ? "\n10) 本次必须显式换场景，不能沿用原句语义主题。" : ""}`,
                 },
                 {
                     role: "user",
@@ -385,12 +389,8 @@ async function handleGenerate(data: GenerateRequest) {
             temperature: 0.35,
         });
 
-        const content = completion.choices[0]?.message?.content;
-        try {
-            return content ? JSON.parse(content) as Record<string, unknown> : {};
-        } catch {
-            return {} as Record<string, unknown>;
-        }
+        const content = completion.choices[0]?.message?.content ?? "";
+        return parseJsonObjectFromAi(content) ?? {};
     };
 
     const firstParsed = await requestGeneratePayload(false);
@@ -437,6 +437,23 @@ async function handleGenerate(data: GenerateRequest) {
         : finalPromptRaw;
 
     const tips = normalizeTips(finalParsed.rewrite_tips_cn);
+    
+    // Parse vocab hints safely
+    const rawVocabHints = Array.isArray(finalParsed.vocab_hints) ? finalParsed.vocab_hints : [];
+    const vocabHints = rawVocabHints
+        .map((item) => {
+            if (typeof item === "object" && item !== null) {
+                const row = item as Record<string, unknown>;
+                const wordCn = typeof row.word_cn === "string" ? normalizeWhitespace(row.word_cn) : "";
+                const wordEn = typeof row.word_en === "string" ? normalizeWhitespace(row.word_en) : "";
+                if (wordCn && wordEn) {
+                    return { word_cn: wordCn, word_en: wordEn };
+                }
+            }
+            return null;
+        })
+        .filter(Boolean) as Array<{ word_cn: string; word_en: string }>;
+
     const result: RewriteGenerateResponse = {
         source_sentence_en: finalSentence,
         imitation_prompt_cn: finalPrompt || finalFallback.imitation_prompt_cn,
@@ -444,6 +461,10 @@ async function handleGenerate(data: GenerateRequest) {
         pattern_focus_cn: typeof finalParsed.pattern_focus_cn === "string" && normalizeWhitespace(finalParsed.pattern_focus_cn)
             ? normalizeWhitespace(finalParsed.pattern_focus_cn)
             : finalFallback.pattern_focus_cn,
+        sentence_skeleton_en: typeof finalParsed.sentence_skeleton_en === "string" && normalizeWhitespace(finalParsed.sentence_skeleton_en)
+            ? normalizeWhitespace(finalParsed.sentence_skeleton_en)
+            : finalFallback.sentence_skeleton_en,
+        vocab_hints: vocabHints,
     };
 
     return NextResponse.json(result);
@@ -469,8 +490,8 @@ async function handleScore(data: ScoreRequest) {
     }
 
     const copySimilarity = computeCopySimilarity(sourceSentence, userRewrite);
-    const deepseek = await createDeepSeekClientForCurrentUserWithoutThinking();
-    const completion = await deepseek.chat.completions.create({
+    const client = await createAiClientForCurrentUser();
+    const completion = await client.chat.completions.create({
         model: "deepseek-chat",
         messages: [
             {
@@ -486,14 +507,8 @@ async function handleScore(data: ScoreRequest) {
         temperature: 0.2,
     });
 
-    const content = completion.choices[0]?.message?.content;
-    let parsed: Record<string, unknown> = {};
-
-    try {
-        parsed = content ? JSON.parse(content) : {};
-    } catch {
-        parsed = {};
-    }
+    const content = completion.choices[0]?.message?.content ?? "";
+    const parsed = parseJsonObjectFromAi(content) ?? {};
 
     const parsedDimension = typeof parsed.dimension_scores === "object" && parsed.dimension_scores !== null
         ? parsed.dimension_scores as Record<string, unknown>

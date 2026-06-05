@@ -71,6 +71,7 @@ vi.mock("dexie-react-hooks", () => ({
         deepseek_thinking_mode: "off",
         deepseek_reasoning_effort: "high",
         translation_elo: 1460,
+        elo_rating: 1460,
     }),
 }));
 
@@ -4492,5 +4493,60 @@ describe("ParagraphCard", () => {
         expect(audioInstances[0]?.currentTime).toBe(0);
         expect(useTtsMock.seekToMs).toHaveBeenCalledTimes(1);
         expect(useTtsMock.seekToMs.mock.calls[0]?.[0]).toBe(2000);
+    });
+
+    it("renders relocated sentence-level Ask AI button inside right action rail and triggers handleInjectSentenceAskContext on click", async () => {
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                translation: "植物需要阳光和水才能生长。",
+                sentenceTranslations: [
+                    {
+                        sentence: "Plants need sunlight and water to grow.",
+                        translation: "植物需要阳光和水才能生长。",
+                        phraseTranslations: [
+                            { source: "sunlight and water", translation: "阳光和水分" },
+                        ],
+                    },
+                ],
+            }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        try {
+            const onOpenAskWithContext = vi.fn((attachment) => attachment);
+            const container = await renderCard({
+                text: "Plants need sunlight and water to grow.",
+                paragraphOrder: 4,
+                hasActiveAskDock: true,
+                onOpenAskWithContext,
+            });
+
+            const translateButton = Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("翻译"));
+            expect(translateButton).toBeTruthy();
+
+            await act(async () => {
+                translateButton?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+            await act(async () => {
+                await Promise.resolve();
+            });
+
+            // The relocated button should be rendered in the right action rail
+            const injectButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('[data-inject-context-button="true"]'));
+            expect(injectButtons).toHaveLength(1);
+
+            await act(async () => {
+                injectButtons[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            });
+
+            expect(onOpenAskWithContext).toHaveBeenCalledWith(expect.objectContaining({
+                kind: "sentence",
+                label: "句子上下文",
+                rangeLabel: "第 4 段",
+                text: "Plants need sunlight and water to grow.",
+            }));
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 });

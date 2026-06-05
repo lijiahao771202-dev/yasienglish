@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createDeepSeekClientForCurrentUserWithoutThinking } from "@/lib/deepseek";
+import { createAiClientForCurrentUser } from "@/lib/deepseek";
+import { parseJsonObjectFromAi } from "@/lib/ai-json";
 import {
     hasPunctuationOnlyDictationIssue,
     isDictationPunctuationOnlyDifference,
@@ -268,10 +269,10 @@ ${voiceInstruction}
             : TRANSLATION_MAX_TOKENS;
         let completion: ScoreCompletion | null = null;
         let scoringProvider = "unknown";
-        const scoringClient = await createDeepSeekClientForCurrentUserWithoutThinking();
+        const scoringClient = await createAiClientForCurrentUser();
 
-        // ===== CLOUD ONLY: DeepSeek =====
-        console.log("[score_translation] ☁️ Calling DeepSeek API...");
+        // ===== CLOUD AI PROVIDER =====
+        console.log("[score_translation] ☁️ Calling configured AI provider API...");
         const MAX_RETRIES = 3;
         let lastError: Error | null = null;
 
@@ -288,7 +289,7 @@ ${voiceInstruction}
                     temperature: SCORING_TEMPERATURE,
                     max_tokens: maxTokens,
                 });
-                scoringProvider = "deepseek-cloud";
+                scoringProvider = "configured-ai-provider";
                 break;
             } catch (error) {
                 lastError = error as Error;
@@ -309,9 +310,10 @@ ${voiceInstruction}
         const rawContent = completion.choices[0].message.content;
         if (!rawContent) throw new Error("No content generated");
 
-        // Strip markdown code fences that local models (Gemma) sometimes wrap around JSON
-        const content = rawContent.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/i, "").trim();
-        const data = JSON.parse(content) as Record<string, unknown>;
+        const data = parseJsonObjectFromAi(rawContent);
+        if (!data) {
+            throw new Error("No valid JSON generated");
+        }
 
         if (mode === "dictation") {
             const punctuationOnlyIssue = hasPunctuationOnlyDictationIssue(data);

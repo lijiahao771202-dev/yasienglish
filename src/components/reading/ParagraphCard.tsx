@@ -2,7 +2,7 @@ import React, { useLayoutEffect, useMemo, useState, useRef, useEffect, useCallba
 import { createPortal } from "react-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
-import { Play, Pause, BookOpen, BookPlus, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, RefreshCw } from "lucide-react";
+import { Play, Pause, BookOpen, BookPlus, Mic, Languages, Loader2, MessageCircleQuestion, Send, PenTool, GripVertical, RotateCcw, X, Sparkles, Globe, Highlighter, Underline, List, Lightbulb, GitBranch, Quote, CheckCircle2, Rocket, ChevronLeft, RefreshCw, MessageSquarePlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useReadingSettings, type PhraseDisplayMode } from "@/contexts/ReadingSettingsContext";
@@ -2910,9 +2910,9 @@ export function ParagraphCard({
                             data-translation-row={showTranslation ? "true" : undefined}
                             data-translation-row-active={showTranslation ? String(isSentenceActive) : undefined}
                             className={cn(
-                                "group/translation-row grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3 px-1.5 py-1 transition-colors",
+                                "group/translation-row grid grid-cols-[2rem_minmax(0,1fr)] items-start gap-x-3 px-1.5 py-1 transition-colors relative",
                                 showTranslation
-                                    ? "reading-apple-row px-3.5 py-3"
+                                    ? "reading-apple-row px-3.5 py-3 min-h-[120px]"
                                     : cn(
                                         "rounded-lg",
                                         isSentencePlaybackActive(entry.unitIndex)
@@ -2949,32 +2949,19 @@ export function ParagraphCard({
                                     }}
                                     className={cn(
                                         "mt-[2px] inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold transition-colors",
-                                        entry.loading
-                                            ? "border-teal-200 bg-teal-50 text-teal-600"
-                                            : entry.hasUsableAnalysis
-                                                ? "border-amber-200 bg-amber-50 text-amber-700"
-                                                : "border-theme-border/30 bg-theme-surface text-theme-text-muted hover:border-teal-300 hover:text-teal-700",
+                                        entry.hasUsableAnalysis
+                                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                                            : "border-theme-border/30 bg-theme-surface text-theme-text-muted hover:border-teal-300 hover:text-teal-700",
                                     )}
                                     title={entry.hasUsableAnalysis ? "展开或收起该句解析" : "点击分析该句"}
                                 >
                                     {entry.loading ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.6} /> : (index + 1)}
                                 </button>
-                                {showTranslation ? (
-                                    <button
-                                        type="button"
-                                        aria-label={`把第 ${index + 1} 句植入 Ask AI 上下文`}
-                                        title="植入上下文"
-                                        onClick={() => handleInjectSentenceAskContext(entry.unitIndex)}
-                                        className="reading-apple-capsule inline-flex h-5 w-5 items-center justify-center border-indigo-100 bg-white text-indigo-400 shadow-sm transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600"
-                                    >
-                                        <MessageCircleQuestion className="h-3 w-3" strokeWidth={1.6} />
-                                    </button>
-                                ) : null}
                             </div>
 
                             <div className="min-w-0">
                                 <div className={cn("flex items-start", showTranslation ? "gap-3" : "gap-2")}>
-                                <div className="min-w-0 flex-1">
+                                <div className={cn("min-w-0 flex-1", showTranslation && "pr-12")}>
                                 <div
                                     data-translation-sentence-body="true"
                                     data-speaking-segment-content="true"
@@ -3069,12 +3056,11 @@ export function ParagraphCard({
                                     <div
                                         data-sentence-action-rail="true"
                                         className={cn(
-                                            "ml-1 flex shrink-0 flex-col items-center gap-1.5 self-start pt-0.5 transition-all duration-200",
-                                            showTranslation && "ml-0 w-9 rounded-2xl p-1 items-center opacity-0 translate-x-1 pointer-events-none",
+                                            "ml-1 flex shrink-0 flex-col items-center gap-1 self-start pt-0.5 transition-all duration-200",
+                                            showTranslation && "ml-0 w-8 rounded-xl p-1 gap-1 items-center opacity-0 translate-x-1 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 bg-theme-card-bg/95 border border-theme-border/30 dark:border-stone-800/80 shadow-sm backdrop-blur-xs z-10",
                                             showTranslation && "group-hover/translation-row:opacity-100 group-hover/translation-row:translate-x-0 group-hover/translation-row:pointer-events-auto",
                                             showTranslation && "group-focus-within/translation-row:opacity-100 group-focus-within/translation-row:translate-x-0 group-focus-within/translation-row:pointer-events-auto",
                                             showTranslation && (isSentenceActive || handwriteState.isEditing || rewriteState.isEditing) && "opacity-100 translate-x-0 pointer-events-auto",
-                                            showTranslation && isSentencePlaybackActive(entry.unitIndex) && "reading-apple-inset shadow-[0_6px_20px_rgba(28,25,23,0.04)]",
                                         )}
                                     >
                                         <button
@@ -3083,7 +3069,7 @@ export function ParagraphCard({
                                             aria-label={`播放第 ${index + 1} 句`}
                                             title={`播放第 ${index + 1} 句`}
                                             className={cn(
-                                                "reading-apple-capsule group/play inline-flex h-7 w-7 items-center justify-center shadow-sm transition-all duration-300 hover:scale-110 active:scale-90",
+                                                "reading-apple-capsule group/play inline-flex h-6 w-6 items-center justify-center shadow-sm transition-all duration-300 hover:scale-110 active:scale-90",
                                                 isSentencePlaybackActive(entry.unitIndex)
                                                     ? "border-amber-200 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-400 shadow-[0_1px_2px_rgba(217,119,6,0.05)] hover:shadow-[0_4px_12px_rgba(217,119,6,0.1)]"
                                                     : "border-stone-200/60 bg-stone-50/50 dark:border-stone-800/40 dark:bg-stone-900/20 text-stone-400 dark:text-stone-500 hover:border-stone-300 hover:bg-stone-50 hover:text-stone-600 dark:hover:bg-stone-800/50 dark:hover:text-stone-300"
@@ -3095,13 +3081,29 @@ export function ParagraphCard({
                                             }}
                                         >
                                             {isSentenceAudioLoading && isSentencePlaybackActive(entry.unitIndex) ? (
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.8} />
+                                                <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.8} />
                                             ) : isSentencePlaying && isSentencePlaybackActive(entry.unitIndex) ? (
-                                                <Pause className="h-3.5 w-3.5 transition-transform duration-300 group-hover/play:scale-110" strokeWidth={1.8} />
+                                                <Pause className="h-3 w-3 transition-transform duration-300 group-hover/play:scale-110" strokeWidth={1.8} />
                                             ) : (
-                                                <Play className="h-3.5 w-3.5 transition-transform duration-300 group-hover/play:scale-110 group-hover/play:translate-x-[0.5px]" strokeWidth={1.8} />
+                                                <Play className="h-3 w-3 transition-transform duration-300 group-hover/play:scale-110 group-hover/play:translate-x-[0.5px]" strokeWidth={1.8} />
                                             )}
                                         </button>
+                                        {showTranslation && !isCurrentSentencePlaying ? (
+                                            <button
+                                                type="button"
+                                                data-inject-context-button="true"
+                                                aria-label={`把第 ${index + 1} 句植入 Ask AI 上下文`}
+                                                title="植入上下文"
+                                                onClick={(event) => {
+                                                    event.preventDefault();
+                                                    event.stopPropagation();
+                                                    handleInjectSentenceAskContext(entry.unitIndex);
+                                                }}
+                                                className="reading-apple-capsule group/ask inline-flex h-6 w-6 items-center justify-center border border-sky-200 bg-sky-50/60 dark:border-sky-800/40 dark:bg-sky-950/20 text-sky-800 dark:text-sky-400 shadow-[0_1px_2px_rgba(14,165,233,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-sky-300 hover:bg-sky-50 hover:text-sky-900 hover:shadow-[0_4px_12px_rgba(14,165,233,0.1)] dark:hover:bg-sky-950/40 dark:hover:text-sky-300 cursor-pointer"
+                                            >
+                                                <MessageSquarePlus className="h-3 w-3 transition-transform duration-300 group-hover/ask:scale-110 group-hover/ask:rotate-6" strokeWidth={1.8} />
+                                            </button>
+                                        ) : null}
                                         {showTranslation && unitTranslation && !handwriteState.isEditing && !isCurrentSentencePlaying ? (
                                             <button
                                                 type="button"
@@ -3113,9 +3115,9 @@ export function ParagraphCard({
                                                     event.stopPropagation();
                                                     handleEnterHandwriteEditing(handwriteSentenceKey);
                                                 }}
-                                                className="reading-apple-capsule group/handwrite inline-flex h-7 w-7 items-center justify-center border border-amber-200 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-400 shadow-[0_1px_2px_rgba(217,119,6,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-900 hover:shadow-[0_4px_12px_rgba(217,119,6,0.1)] dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
+                                                className="reading-apple-capsule group/handwrite inline-flex h-6 w-6 items-center justify-center border border-amber-200 bg-amber-50/60 dark:border-amber-800/40 dark:bg-amber-950/20 text-amber-800 dark:text-amber-400 shadow-[0_1px_2px_rgba(217,119,6,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-900 hover:shadow-[0_4px_12px_rgba(217,119,6,0.1)] dark:hover:bg-amber-950/40 dark:hover:text-amber-300"
                                             >
-                                                <PenTool className="h-3.5 w-3.5 transition-transform duration-300 group-hover/handwrite:-rotate-12" strokeWidth={1.8} />
+                                                <PenTool className="h-3 w-3 transition-transform duration-300 group-hover/handwrite:-rotate-12" strokeWidth={1.8} />
                                             </button>
                                         ) : null}
                                         {showTranslation && unitTranslation && !rewriteState.isEditing && !isCurrentSentencePlaying ? (
@@ -3129,24 +3131,24 @@ export function ParagraphCard({
                                                     event.stopPropagation();
                                                     handleEnterRewriteEditing(rewriteSentenceKey, entry.unit.text);
                                                 }}
-                                                className="reading-apple-capsule group/rewrite inline-flex h-7 w-7 items-center justify-center border border-indigo-200 bg-indigo-50/60 dark:border-indigo-800/40 dark:bg-indigo-950/20 text-indigo-800 dark:text-indigo-400 shadow-[0_1px_2px_rgba(79,70,229,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900 hover:shadow-[0_4px_12px_rgba(79,70,229,0.1)] dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300"
+                                                className="reading-apple-capsule group/rewrite inline-flex h-6 w-6 items-center justify-center border border-indigo-200 bg-indigo-50/60 dark:border-indigo-800/40 dark:bg-indigo-950/20 text-indigo-800 dark:text-indigo-400 shadow-[0_1px_2px_rgba(79,70,229,0.05)] transition-all duration-300 hover:scale-110 active:scale-90 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-900 hover:shadow-[0_4px_12px_rgba(79,70,229,0.1)] dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300"
                                             >
-                                                <GitBranch className="h-3.5 w-3.5 transition-transform duration-300 group-hover/rewrite:rotate-12 group-hover/rewrite:scale-110" strokeWidth={1.8} />
+                                                <GitBranch className="h-3 w-3 transition-transform duration-300 group-hover/rewrite:rotate-12 group-hover/rewrite:scale-110" strokeWidth={1.8} />
                                             </button>
                                         ) : null}
                                         {isSentencePlaybackActive(entry.unitIndex) && (isSentencePlaying || sentenceCurrentTimeMs > 0) ? (
                                             <>
-                                                <div className="w-3.5 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
+                                                <div className="w-3 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
                                                 <div
                                                     data-sentence-playback-secondary-controls="true"
-                                                    className="flex flex-col gap-1.5"
+                                                    className="flex flex-col gap-1"
                                                 >
                                                     {isSentencePlaying ? (
                                                         <button
                                                             type="button"
                                                             aria-label={`第 ${index + 1} 句切换倍速`}
                                                             title="切换倍速"
-                                                            className="reading-apple-capsule reading-play-button inline-flex h-7 w-7 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-[9px] font-semibold tracking-tighter text-stone-500 dark:text-stone-400 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
+                                                            className="reading-apple-capsule reading-play-button inline-flex h-6 w-6 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-[9px] font-semibold tracking-tighter text-stone-500 dark:text-stone-400 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
                                                             onClick={(event) => {
                                                                 event.preventDefault();
                                                                 event.stopPropagation();
@@ -3162,7 +3164,7 @@ export function ParagraphCard({
                                                         type="button"
                                                         aria-label={`取消第 ${index + 1} 句播放`}
                                                         title="取消当前句播放"
-                                                        className="reading-apple-capsule reading-play-button inline-flex h-7 w-7 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-400 dark:text-stone-500 shadow-sm transition-colors hover:border-rose-300 hover:text-rose-500 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
+                                                        className="reading-apple-capsule reading-play-button inline-flex h-6 w-6 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-400 dark:text-stone-500 shadow-sm transition-colors hover:border-rose-300 hover:text-rose-500 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
                                                         onClick={(event) => {
                                                             event.preventDefault();
                                                             event.stopPropagation();
@@ -3170,20 +3172,20 @@ export function ParagraphCard({
                                                             setPlayMode("full");
                                                         }}
                                                     >
-                                                        <X className="h-3.5 w-3.5" strokeWidth={1.8} />
+                                                        <X className="h-3 w-3" strokeWidth={1.8} />
                                                     </button>
                                                 </div>
                                             </>
                                         ) : null}
                                         {isSentencePlaybackActive(entry.unitIndex) && entry.hasUsableAnalysis && (
-                                            <div className="w-3.5 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
+                                            <div className="w-3 border-t border-stone-200/50 dark:border-stone-800/50 my-0.5" />
                                         )}
                                         {entry.hasUsableAnalysis ? (
                                             <button
                                                 type="button"
                                                 aria-label={`重新生成第 ${index + 1} 句解析`}
                                                 title="重新生成这一句的解析"
-                                                className="reading-apple-capsule reading-play-button inline-flex h-7 w-7 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-400 dark:text-stone-500 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
+                                                className="reading-apple-capsule reading-play-button inline-flex h-6 w-6 items-center justify-center border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-400 dark:text-stone-500 shadow-sm transition-colors hover:border-amber-300 hover:text-amber-600 hover:bg-stone-50/50 dark:hover:bg-stone-800/50"
                                                 onClick={(event) => {
                                                     event.preventDefault();
                                                     event.stopPropagation();
@@ -6418,19 +6420,25 @@ export function SelectionActionPopup({
     const askContextText = askContextAttachment?.text || "";
     const askContextPreview = askContextAttachment?.excerpt || askContextText;
     const canExpandAskContext = askContextText.length > askContextPreview.length || askContextText.length > 180;
-    const renderAskContextCard = () => (
-        askContextAttachment ? (
+    const renderAskContextCard = () => {
+        if (!askContextAttachment) return null;
+        
+        return (
             <div
                 data-ask-context-card="true"
-                className="rounded-[16px] border border-indigo-200/70 bg-indigo-50/80 px-3 py-2.5 text-left shadow-sm"
+                className={cn(
+                    "rounded-xl border border-sky-500/15 bg-gradient-to-r from-sky-500/[0.04] to-indigo-500/[0.02] dark:from-sky-500/[0.02] dark:to-indigo-500/[0.01] px-3 py-2 text-left shadow-2xs transition-all duration-300",
+                    isAskReplayMode ? "mb-2" : "mb-3"
+                )}
             >
-                <div className="mb-1 flex items-start justify-between gap-2">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
                     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                        <span className="inline-flex items-center gap-1 rounded-full bg-sky-500/10 px-2.5 py-0.5 text-[9.5px] font-black text-sky-600 dark:text-sky-400 border border-sky-500/10">
+                            <MessageSquarePlus className="h-2.5 w-2.5" />
                             {askContextAttachment.label}
                         </span>
                         {askContextAttachment.rangeLabel ? (
-                            <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-bold text-indigo-500">
+                            <span className="rounded-full bg-theme-surface/60 border border-theme-border/10 px-2 py-0.5 text-[9.5px] font-bold text-theme-text-muted">
                                 {askContextAttachment.rangeLabel}
                             </span>
                         ) : null}
@@ -6442,14 +6450,14 @@ export function SelectionActionPopup({
                             aria-label="取消上下文附件"
                             title="取消上下文附件"
                             onClick={onClearAskContext}
-                            className="-mr-1 -mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-indigo-400 transition-colors hover:bg-white/80 hover:text-indigo-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/70"
+                            className="-mr-1 -mt-1 inline-flex h-5.5 w-5.5 shrink-0 items-center justify-center rounded-full text-theme-text-muted transition-all duration-300 hover:bg-theme-active-bg hover:text-theme-text hover:rotate-90 focus:outline-none focus-visible:ring-1 focus-visible:ring-theme-border"
                         >
-                            <X className="h-3.5 w-3.5" />
+                            <X className="h-3 w-3" />
                         </button>
                     ) : null}
                 </div>
                 <p className={cn(
-                    "text-[12px] leading-5 text-indigo-950/75",
+                    "text-[11.5px] leading-relaxed text-theme-text opacity-85 break-words font-medium",
                     !isAskContextExpanded && "line-clamp-3",
                 )}>
                     {isAskContextExpanded ? askContextText : askContextPreview}
@@ -6459,14 +6467,14 @@ export function SelectionActionPopup({
                         type="button"
                         data-ask-context-toggle="true"
                         onClick={() => setIsAskContextExpanded((current) => !current)}
-                        className="mt-1.5 text-[10px] font-black text-indigo-500 transition-colors hover:text-indigo-700"
+                        className="mt-1 text-[9.5px] font-bold text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 transition-colors"
                     >
                         {isAskContextExpanded ? "收起上下文" : "展开全文"}
                     </button>
                 ) : null}
             </div>
-        ) : null
-    );
+        );
+    };
 
     return (
         <div
@@ -6699,6 +6707,7 @@ export function SelectionActionPopup({
 
                         {!isAskReplayMode && (
                             <div className="mt-2 border-t border-theme-border/15 pt-3">
+                                {renderAskContextCard()}
                                 <div className="mb-2 flex items-center justify-between gap-2 px-1">
                                     <span className="text-[10px] font-bold tracking-[0.1em] text-theme-text-muted">回答模式</span>
                                     <div className="inline-flex items-center rounded-full bg-theme-surface p-0.5 border border-theme-border/10">
@@ -6788,7 +6797,6 @@ export function SelectionActionPopup({
                                         {isAskLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                                     </motion.button>
                                 </div>
-                                {renderAskContextCard()}
                             </div>
                         )}
                     </div>
