@@ -18,6 +18,7 @@ interface ReadingSettings {
     translationColor: TranslationColorId;
     isFocusMode: boolean;
     isBionicMode: boolean;
+    isFlowMode: boolean;
     phraseDisplayMode: PhraseDisplayMode;
     paperStyle: PaperStyleId;
 }
@@ -33,6 +34,7 @@ interface ReadingSettingsContextType extends ReadingSettings {
     setPaperStyle: (style: PaperStyleId) => void;
     toggleFocusMode: () => void;
     toggleBionicMode: () => void;
+    toggleFlowMode: () => void;
     // Computed classes
     fontClass: string;
     fontSizeClass: string;
@@ -211,6 +213,10 @@ function readStoredBionicMode() {
     return localStorage.getItem('reading_bionic_mode') === 'true';
 }
 
+function readStoredFlowMode() {
+    return localStorage.getItem('reading_flow_mode') === 'true';
+}
+
 function readStoredPhraseDisplayMode(): PhraseDisplayMode {
     const storedMode = localStorage.getItem('reading_phrase_display_mode');
     return storedMode === 'inline_wavy' || storedMode === 'capsule'
@@ -254,6 +260,7 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
     const translationColor = useSyncExternalStore(subscribeReadingSettings, readStoredTranslationColor, () => DEFAULT_TRANSLATION_COLOR);
     const isFocusMode = useSyncExternalStore(subscribeReadingSettings, readStoredFocusMode, () => false);
     const isBionicMode = useSyncExternalStore(subscribeReadingSettings, readStoredBionicMode, () => false);
+    const isFlowMode = useSyncExternalStore(subscribeReadingSettings, readStoredFlowMode, () => false);
     const phraseDisplayMode = useSyncExternalStore(subscribeReadingSettings, readStoredPhraseDisplayMode, () => DEFAULT_PHRASE_DISPLAY_MODE);
     const paperStyle = useSyncExternalStore(subscribeReadingSettings, readStoredPaperStyle, () => DEFAULT_PAPER_STYLE);
 
@@ -309,6 +316,12 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
         emitReadingSettingsChange();
     };
 
+    const toggleFlowMode = () => {
+        const newVal = !isFlowMode;
+        localStorage.setItem('reading_flow_mode', String(newVal));
+        emitReadingSettingsChange();
+    };
+
     return (
         <ReadingSettingsContext.Provider value={{
             theme,
@@ -331,6 +344,8 @@ export function ReadingSettingsProvider({ children }: { children: React.ReactNod
             toggleFocusMode,
             isBionicMode,
             toggleBionicMode,
+            isFlowMode,
+            toggleFlowMode,
             fontClass: FONTS[font],
             fontSizeClass: fontSize,
             translationFontClass: FONTS[translationFont],

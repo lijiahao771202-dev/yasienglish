@@ -17,6 +17,7 @@ function Consumer() {
         translationColor,
         isFocusMode,
         isBionicMode,
+        isFlowMode,
         phraseDisplayMode,
         paperStyle,
     } = useReadingSettings();
@@ -30,6 +31,7 @@ function Consumer() {
             data-translation-color={translationColor}
             data-focus={String(isFocusMode)}
             data-bionic={String(isBionicMode)}
+            data-flow={String(isFlowMode)}
             data-phrase-display-mode={phraseDisplayMode}
             data-paper-style={paperStyle}
         />
@@ -69,6 +71,7 @@ describe("ReadingSettingsProvider", () => {
         expect(html).toContain('data-translation-color="muted"');
         expect(html).toContain('data-focus="false"');
         expect(html).toContain('data-bionic="false"');
+        expect(html).toContain('data-flow="false"');
         expect(html).toContain('data-phrase-display-mode="capsule"');
         expect(html).toContain('data-paper-style="brutalist"');
     });
@@ -83,6 +86,7 @@ describe("ReadingSettingsProvider", () => {
         window.localStorage.setItem("reading_translation_color", "stone");
         window.localStorage.setItem("reading_focus_mode", "true");
         window.localStorage.setItem("reading_bionic_mode", "true");
+        window.localStorage.setItem("reading_flow_mode", "true");
         window.localStorage.setItem("reading_phrase_display_mode", "inline_wavy");
         window.localStorage.setItem("reading_paper_style", "grid");
 
@@ -107,6 +111,7 @@ describe("ReadingSettingsProvider", () => {
         expect(node?.getAttribute("data-translation-color")).toBe("stone");
         expect(node?.getAttribute("data-focus")).toBe("true");
         expect(node?.getAttribute("data-bionic")).toBe("true");
+        expect(node?.getAttribute("data-flow")).toBe("true");
         expect(node?.getAttribute("data-phrase-display-mode")).toBe("inline_wavy");
         expect(node?.getAttribute("data-paper-style")).toBe("grid");
 

@@ -35,6 +35,45 @@ vi.mock("./WordPopup", () => ({
     },
 }));
 
+vi.mock("framer-motion", async () => {
+    const ReactModule = await import("react");
+
+    const passthrough = (tag: string) => {
+        return ({ children, ...props }: Record<string, unknown> & { children?: React.ReactNode }) => {
+            const {
+                animate,
+                exit,
+                initial,
+                layout,
+                layoutId,
+                transition,
+                variants,
+                whileHover,
+                whileTap,
+                ...rest
+            } = props;
+            void animate;
+            void exit;
+            void initial;
+            void layout;
+            void layoutId;
+            void transition;
+            void variants;
+            void whileHover;
+            void whileTap;
+            return ReactModule.createElement(tag, rest, children);
+        };
+    };
+
+    return {
+        AnimatePresence: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+        motion: new Proxy({}, {
+            get: (_target, key) => passthrough(typeof key === "string" ? key : "div"),
+        }),
+        useReducedMotion: () => false,
+    };
+});
+
 vi.mock("./TEDVideoPlayer", () => ({
     __esModule: true,
     default: React.forwardRef(function MockTedVideoPlayer() {
@@ -537,4 +576,108 @@ describe("ArticleDisplay", () => {
             root.unmount();
         });
     });
+
+    it("renders Flow Mode view when isFlowMode is active", async () => {
+        markReactActEnvironment();
+        window.localStorage.setItem("reading_flow_mode", "true");
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        await act(async () => {
+            root.render(
+                <ReadingSettingsProvider>
+                    <ArticleDisplay
+                        title="Immersive Flow"
+                        content="<p>Para 1</p><p>Para 2</p>"
+                        blocks={[
+                            { type: "paragraph", content: "Para 1" },
+                            { type: "paragraph", content: "Para 2" },
+                        ]}
+                    />
+                </ReadingSettingsProvider>,
+            );
+        });
+
+        // Verify Flow Mode Header is present
+        expect(container.textContent).toContain("心流专注模式");
+        expect(container.textContent).toContain("退出心流");
+
+        // Click on the stopwatch option card to start reading
+        const upModeBtn = container.querySelector<HTMLElement>('[data-testid="timer-mode-up"]');
+        expect(upModeBtn).toBeTruthy();
+        await act(async () => {
+            upModeBtn?.click();
+        });
+        const visibleParagraphs = container.querySelectorAll('[data-paragraph-text="true"]');
+        expect(visibleParagraphs.length).toBe(1);
+        expect(visibleParagraphs[0].textContent).toBe("Para 1");
+        await act(async () => {
+            root.unmount();
+        });
+    });
+
+    it("configures countdown mode and counts down to overtime with chime trigger", async () => {
+        markReactActEnvironment();
+        window.localStorage.setItem("reading_flow_mode", "true");
+        const container = document.createElement("div");
+        document.body.appendChild(container);
+        const root = createRoot(container);
+
+        vi.useFakeTimers();
+
+        await act(async () => {
+            root.render(
+                <ReadingSettingsProvider>
+                    <ArticleDisplay
+                        title="Immersive Flow"
+                        content="<p>Para 1</p>"
+                        blocks={[{ type: "paragraph", content: "Para 1" }]}
+                    />
+                </ReadingSettingsProvider>,
+            );
+        });
+
+        // Click on the countdown option card
+        const downModeCard = container.querySelector<HTMLElement>('[data-testid="timer-mode-down"]');
+        expect(downModeCard).toBeTruthy();
+        await act(async () => {
+            downModeCard?.click();
+        });
+
+        // Select the 1-minute duration
+        const durationBtn = container.querySelector<HTMLElement>('[data-testid="duration-option-60"]');
+        expect(durationBtn).toBeTruthy();
+        await act(async () => {
+            durationBtn?.click();
+        });
+
+        // Start Countdown
+        const startBtn = container.querySelector<HTMLElement>('[data-testid="start-countdown-btn"]');
+        expect(startBtn).toBeTruthy();
+        await act(async () => {
+            startBtn?.click();
+        });
+
+        // Verify that the first paragraph card is rendered after timer is configured
+        const visibleParagraphs = container.querySelectorAll('[data-paragraph-text="true"]');
+        expect(visibleParagraphs.length).toBe(1);
+        expect(visibleParagraphs[0].textContent).toBe("Para 1");
+
+        // Advance timers by 60 seconds
+        await act(async () => {
+            vi.advanceTimersByTime(60000);
+        });
+
+        // Should enter overtime mode, display the + prefix and toast notification
+        expect(container.textContent).toContain("专注目标时间已到");
+        expect(container.textContent).toContain("+00:00");
+
+        // Clean up
+        vi.useRealTimers();
+        await act(async () => {
+            root.unmount();
+        });
+    });
 });
+

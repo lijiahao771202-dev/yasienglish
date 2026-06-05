@@ -11,8 +11,9 @@ import { RecommendedArticles } from "@/components/reading/RecommendedArticles";
 import { ReadingQuizPanel, QuizQuestion, type QuizSubmitPayload } from "@/components/reading/ReadingQuizPanel";
 import { CatSelfAssessmentDialog } from "@/components/reading/CatSelfAssessmentDialog";
 import { ReadPretestOverlay } from "@/components/reading/ReadPretestOverlay";
-import { ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical, Compass } from "lucide-react";
+import { ArrowLeft, House, Palette, Edit3, Flashlight, Eye, ClipboardCheck, GripVertical, Compass, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ReadingCoinIsland } from "@/components/reading/ReadingCoinIsland";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import axios from "axios";
 import { useUserStore } from "@/lib/store";
@@ -484,7 +485,7 @@ function ReadingPageContent() {
     }, [activeArticleKey]) ?? [];
 
     // Context Settings
-    const { theme, fontClass, isFocusMode, toggleFocusMode, isBionicMode, toggleBionicMode } = useReadingSettings();
+    const { theme, fontClass, isFocusMode, toggleFocusMode, isBionicMode, toggleBionicMode, isFlowMode, toggleFlowMode } = useReadingSettings();
     const [isThemeMenuOpen, setIsThemeMenuOpen] = useState(false);
     const [isDockVisible, setIsDockVisible] = useState(true);
     const [isDockHovered, setIsDockHovered] = useState(false);
@@ -1149,6 +1150,50 @@ function ReadingPageContent() {
         }
         return payload?.result ?? null;
     }, []);
+
+    const handleFlowCompleteArticle = useCallback(() => {
+        if (!article?.url) return;
+        const articleUrl = article.url;
+        const completedAt = Date.now();
+        
+        if (article.readingCompletedAt) return;
+
+        void (async () => {
+            try {
+                const { db } = await import("@/lib/db");
+                await db.articles.update(articleUrl, {
+                    readingCompletedAt: completedAt,
+                    timestamp: Date.now(),
+                });
+                setArticle((prev) => {
+                    if (!prev || prev.url !== articleUrl || prev.readingCompletedAt) {
+                        return prev;
+                    }
+                    return {
+                        ...prev,
+                        readingCompletedAt: completedAt,
+                    };
+                });
+                markArticleSnapshotDirty();
+                window.dispatchEvent(new CustomEvent('yasi:sync_smart_goals'));
+                
+                if (sessionUser?.id) {
+                    const dedupeKey = buildReadCompleteDedupeKey({ userId: sessionUser.id, articleUrl });
+                    const result = await applyReadingEconomy({
+                        action: "read_complete",
+                        dedupeKey,
+                        articleUrl,
+                        meta: { source: article.isCatMode ? "cat_open" : "ai_gen_open" },
+                    });
+                    if (result && Number(result.readingCoins?.delta ?? 0) > 0) {
+                        pushReadingCoinFx(result);
+                    }
+                }
+            } catch (error) {
+                console.error("Failed to mark article completed in flow mode:", error);
+            }
+        })();
+    }, [article, markArticleSnapshotDirty, sessionUser?.id, pushReadingCoinFx, applyReadingEconomy]);
 
     const handleCreateReadingNote = useCallback(async (payload: {
         paragraphOrder: number;
@@ -2349,6 +2394,20 @@ function ReadingPageContent() {
                                 <Eye className={cn("h-4 w-4", isBionicMode && "fill-current")} />
                             </button>
 
+                            <button
+                                onClick={toggleFlowMode}
+                                className={cn(
+                                    "ui-pressable flex h-10 w-10 items-center justify-center rounded-full border-[3px] border-theme-border transition-all duration-300",
+                                    isFlowMode
+                                        ? "bg-theme-active-text text-theme-base-bg"
+                                        : "bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
+                                )}
+                                style={getPressableStyle("var(--theme-shadow)", 4)}
+                                title="心流模式"
+                            >
+                                <Flame className={cn("h-4 w-4", isFlowMode && "fill-current")} />
+                            </button>
+
                             <div className="relative">
                                 <button
                                     onClick={() => setIsThemeMenuOpen(!isThemeMenuOpen)}
@@ -2559,6 +2618,7 @@ function ReadingPageContent() {
                                 onDeleteReadingMarks={handleDeleteReadingMarks}
                                 onArticleSnapshotDirty={markArticleSnapshotDirty}
                                 topActionNode={quizEligibleForArticle ? renderQuizToggleButton() : undefined}
+                                onCompleteArticle={handleFlowCompleteArticle}
                             />
 
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">
@@ -2616,6 +2676,9 @@ function ReadingPageContent() {
                         steps={readTourSteps} 
                     />
                 )}
+
+                {/* Coin Reward float animation */}
+                <ReadingCoinIsland event={activeReadingCoinFx} />
 
                 {/* 阅读页手动唤起引导触发器 */}
                 {article && !isPretestOverlayOpen && (
