@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     "ws",
     "bufferutil",
     "utf-8-validate",
+    "undici",
   ],
   outputFileTracingIncludes: {
     "/api/ai/transcribe": [
@@ -24,6 +25,15 @@ const nextConfig: NextConfig = {
         destination: '/models/:modelId/:path*',
       },
     ];
+  },
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        undici: false,
+      };
+    }
+    return config;
   },
 };
 

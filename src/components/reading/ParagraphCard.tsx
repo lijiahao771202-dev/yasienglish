@@ -104,6 +104,7 @@ interface ParagraphCardProps {
     onSetFocusLock?: () => void;
     onClearFocusLock?: () => void;
     highlightSnippet?: string;
+    autoTranslate?: boolean;
 }
 
 interface GrammarBasicCachePayload {
@@ -1305,6 +1306,7 @@ export function ParagraphCard({
     onSetFocusLock,
     onClearFocusLock,
     highlightSnippet,
+    autoTranslate,
 }: ParagraphCardProps) {
     const router = useRouter();
     const sessionUser = useAuthSessionUser();
@@ -1377,12 +1379,14 @@ export function ParagraphCard({
     } = useAnalysisStore();
 
     // Local visibility state
-    const [showTranslation, setShowTranslation] = useState(false);
+    const [showTranslation, setShowTranslation] = useState(
+        Boolean(isFocusMode || autoTranslate) && Boolean(translations[text])
+    );
     const [showGrammar, setShowGrammar] = useState(false);
     const [grammarDisplayMode, setGrammarDisplayMode] = useState<GrammarDisplayMode>("core");
     const [isReadingLayoutMode, setIsReadingLayoutMode] = useState(false);
     const [activeListenSentenceIndex, setActiveListenSentenceIndex] = useState(0);
-
+ 
     const [isTranslating, setIsTranslating] = useState(false);
     const [translationError, setTranslationError] = useState<string | null>(null);
     const [isAnalyzingGrammar, setIsAnalyzingGrammar] = useState(false);
@@ -1393,6 +1397,28 @@ export function ParagraphCard({
     useEffect(() => {
         void loadFromDB(text);
     }, [text, loadFromDB]);
+ 
+    // Automatically enable translation mode in Flow Mode
+    const autoTranslatedRef = useRef<string | null>(null);
+    useEffect(() => {
+        const shouldAutoTranslate = isFocusMode || autoTranslate;
+        if (shouldAutoTranslate && !showTranslation && !isTranslating && autoTranslatedRef.current !== text) {
+            autoTranslatedRef.current = text;
+            
+            const isAlreadyInMemory = Boolean(translations[text]);
+            if (isAlreadyInMemory) {
+                // If already in memory, toggle it immediately (though it should already be initialized to true, this is a fallback)
+                void handleTranslate(false);
+            } else {
+                // If not in memory, delay auto-translation toggle to let the paragraph card entry animation complete smoothly
+                const timer = setTimeout(() => {
+                    void handleTranslate(false);
+                }, 450);
+                
+                return () => clearTimeout(timer);
+            }
+        }
+    }, [isFocusMode, autoTranslate, showTranslation, isTranslating, text, translations]);
 
     // Derived data from store
     const translationEntry = translations[text];
@@ -5965,29 +5991,33 @@ export function ParagraphCard({
                     )}
                 </AnimatePresence>
 
-                {
-                    showTranslation && translation && sentenceUnits.length === 0 && (
-                        <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            data-paragraph-translation-block="true"
-                            className="relative group/trans pt-1"
-                        >
-                            <TranslationAside
-                                translation={translation}
-                                phraseItems={[]}
-                                textClassName={translationTextClassName}
-                            />
-                            <button
-                                onClick={() => handleTranslate(true)}
-                                className="absolute right-0 top-0 rounded-full bg-white/85 p-1.5 text-stone-400 opacity-0 shadow-sm transition-all hover:bg-white hover:text-stone-700 group-hover/trans:opacity-100"
-                                title="Regenerate Translation"
+                <AnimatePresence initial={false}>
+                    {
+                        showTranslation && translation && sentenceUnits.length === 0 && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: "auto" }}
+                                exit={{ opacity: 0, height: 0 }}
+                                transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] as const }}
+                                data-paragraph-translation-block="true"
+                                className="relative group/trans pt-1 overflow-hidden"
                             >
-                                <RotateCcw className="w-3 h-3" />
-                            </button>
-                        </motion.div>
-                    )
-                }
+                                <TranslationAside
+                                    translation={translation}
+                                    phraseItems={[]}
+                                    textClassName={translationTextClassName}
+                                />
+                                <button
+                                    onClick={() => handleTranslate(true)}
+                                    className="absolute right-0 top-0 rounded-full bg-white/85 p-1.5 text-stone-400 opacity-0 shadow-sm transition-all hover:bg-white hover:text-stone-700 group-hover/trans:opacity-100"
+                                    title="Regenerate Translation"
+                                >
+                                    <RotateCcw className="w-3 h-3" />
+                                </button>
+                            </motion.div>
+                        )
+                    }
+                </AnimatePresence>
 
                 <AnimatePresence>
                     {showGrammar && (

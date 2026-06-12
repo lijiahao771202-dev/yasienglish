@@ -137,6 +137,28 @@ describe("drill-generation-plan", () => {
         });
     });
 
+    it("includes rebuild content mode in rebuild generation payloads", () => {
+        const body = buildDrillGenerationRequestBody({
+            articleContent: "",
+            difficulty: "Level 3",
+            eloRating: 920,
+            mode: "rebuild",
+            rebuildVariant: "sentence",
+            rebuildContentMode: "blog",
+            sourceMode: "ai",
+            timestamp: 456,
+            topicLine: "Random Scenario",
+            topicPrompt: "Use a personal blog style.",
+        });
+
+        expect(body).toMatchObject({
+            mode: "rebuild",
+            rebuildVariant: "sentence",
+            rebuildContentMode: "blog",
+            topicPrompt: "Use a personal blog style.",
+        });
+    });
+
     it("checks prefetched drill compatibility before instant consumption", () => {
         expect(
             canConsumePrefetchedDrill({

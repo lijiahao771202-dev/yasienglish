@@ -4,7 +4,7 @@ import { useCallback, useEffect, type Dispatch, type MutableRefObject, type SetS
 import { resolveBattleScenarioContext } from "@/lib/battle-quickmatch-topics";
 import { queryRebuildSystemVocabulary } from "@/lib/rebuild-rag";
 import { calculateRebuildBattleElo } from "@/lib/rebuild-battle-elo";
-import type { AiProvider } from "@/lib/profile-settings";
+import type { RebuildContentMode } from "@/lib/rebuild-content-mode";
 import {
     buildDrillGenerationRequestBody,
     type DrillGenerationMode,
@@ -52,6 +52,7 @@ type RebuildContextShape = {
     articleTitle?: string;
     topic?: string;
     topicPrompt?: string;
+    rebuildContentMode?: RebuildContentMode;
 };
 
 type RebuildPassageSessionShape = {
@@ -69,7 +70,6 @@ type EconomyFxPayload = RebuildRewardFx;
 
 type UseDrillRebuildSettlementArgs<TPrefetchedDrill extends PrefetchedRebuildChoice> = {
     activeDrillSourceMode: "ai" | "bank";
-    aiProvider: AiProvider;
     applyEconomyPatch: (patch: { coinsDelta?: number; itemDelta?: EconomyItemDelta }) => EconomyPatchResult;
     clearRebuildChoicePrefetch: () => void;
     consumeNextDrill: (drill: TPrefetchedDrill) => void;
@@ -116,7 +116,6 @@ type UseDrillRebuildSettlementArgs<TPrefetchedDrill extends PrefetchedRebuildCho
     setRebuildPassageResults: (value: RebuildPassageSegmentResultState[]) => void;
     setRebuildPassageScores: (value: RebuildPassageSegmentScore[]) => void;
     setRebuildPassageSummary: (value: RebuildPassageSummaryState | null) => void;
-    nvidiaModel?: string;
 };
 
 const REBUILD_GACHA_SFX = "https://assets.mixkit.co/sfx/preview/mixkit-ethereal-fairy-win-sound-2019.mp3";
@@ -127,7 +126,6 @@ const playRebuildGachaSfx = () => {
 
 export function useDrillRebuildSettlement<TPrefetchedDrill extends PrefetchedRebuildChoice>({
     activeDrillSourceMode,
-    aiProvider,
     applyEconomyPatch,
     clearRebuildChoicePrefetch,
     consumeNextDrill,
@@ -174,7 +172,6 @@ export function useDrillRebuildSettlement<TPrefetchedDrill extends PrefetchedReb
     setRebuildPassageResults,
     setRebuildPassageScores,
     setRebuildPassageSummary,
-    nvidiaModel,
 }: UseDrillRebuildSettlementArgs<TPrefetchedDrill>) {
     const handleRebuildSelfEvaluate = useCallback((evaluation: RebuildSelfEvaluation) => {
         if (!isRebuildPassage) {
@@ -464,12 +461,11 @@ export function useDrillRebuildSettlement<TPrefetchedDrill extends PrefetchedReb
                     excludeBankIds: Array.from(usedExcludeIds),
                     injectedVocabulary: ragResult.vocabulary.length > 0 ? ragResult.vocabulary : undefined,
                     mode: generationMode,
+                    rebuildContentMode: context.rebuildContentMode,
                     sourceMode: activeDrillSourceMode,
                     timestamp: Date.now() + Math.random(),
                     topicLine: targetScenario.topicLine,
                     topicPrompt,
-                    provider: aiProvider,
-                    nvidiaModel,
                 });
 
                 const response = await fetch("/api/drill/next", {
@@ -526,10 +522,10 @@ export function useDrillRebuildSettlement<TPrefetchedDrill extends PrefetchedReb
         };
     }, [
         activeDrillSourceMode,
-        aiProvider,
         clearRebuildChoicePrefetch,
         context.articleContent,
         context.articleTitle,
+        context.rebuildContentMode,
         context.topic,
         context.topicPrompt,
         ensureAudioCached,
@@ -540,7 +536,6 @@ export function useDrillRebuildSettlement<TPrefetchedDrill extends PrefetchedReb
         isRebuildPassage,
         listeningBankExcludeIdsKey,
         mode,
-        nvidiaModel,
         prefetchedRebuildChoicesRef,
         rebuildChoicePrefetchAbortRef,
         rebuildFeedback,

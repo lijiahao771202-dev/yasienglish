@@ -7,6 +7,11 @@ import {
     selectListeningBankItem,
 } from "@/lib/listening-drill-bank";
 import { generateRebuildAiDrill, generateRebuildPassageAiDrill } from "@/lib/rebuild-ai";
+import {
+    DEFAULT_REBUILD_CONTENT_MODE,
+    normalizeRebuildContentMode,
+    type RebuildContentMode,
+} from "@/lib/rebuild-content-mode";
 
 type DrillRouteBody = {
     articleTitle?: string;
@@ -20,10 +25,9 @@ type DrillRouteBody = {
     sourceMode?: DrillSourceMode;
     excludeBankIds?: string[];
     rebuildVariant?: "sentence" | "passage";
+    rebuildContentMode?: RebuildContentMode;
     translationVariant?: "sentence" | "passage";
     segmentCount?: 2 | 3 | 5;
-    provider?: "deepseek" | "glm" | "nvidia" | "github";
-    nvidiaModel?: string;
 };
 
 async function generateRebuildDrillDirect(args: {
@@ -32,9 +36,8 @@ async function generateRebuildDrillDirect(args: {
     injectedVocabulary?: string[];
     effectiveElo: number;
     rebuildVariant: "sentence" | "passage";
+    contentMode: RebuildContentMode;
     segmentCount: 2 | 3 | 5;
-    provider?: "deepseek" | "glm" | "nvidia" | "github";
-    nvidiaModel?: string;
 }) {
     return args.rebuildVariant === "passage"
         ? await generateRebuildPassageAiDrill({
@@ -42,17 +45,15 @@ async function generateRebuildDrillDirect(args: {
             topicPrompt: args.topicPrompt,
             injectedVocabulary: args.injectedVocabulary,
             effectiveElo: args.effectiveElo,
+            contentMode: args.contentMode,
             segmentCount: args.segmentCount,
-            provider: args.provider,
-            nvidiaModel: args.nvidiaModel,
         })
         : await generateRebuildAiDrill({
             topic: args.topic,
             topicPrompt: args.topicPrompt,
             injectedVocabulary: args.injectedVocabulary,
             effectiveElo: args.effectiveElo,
-            provider: args.provider,
-            nvidiaModel: args.nvidiaModel,
+            contentMode: args.contentMode,
         });
 }
 
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
             ? body.topicPrompt.trim()
             : undefined;
         const rebuildVariant = body.rebuildVariant === "passage" ? "passage" : "sentence";
+        const contentMode = normalizeRebuildContentMode(body.rebuildContentMode ?? DEFAULT_REBUILD_CONTENT_MODE);
         const segmentCount = body.segmentCount === 2 || body.segmentCount === 5 ? body.segmentCount : 3;
         try {
             const drill = await generateRebuildDrillDirect({
@@ -100,9 +102,8 @@ export async function POST(req: NextRequest) {
                 injectedVocabulary: Array.isArray(body.injectedVocabulary) ? body.injectedVocabulary : undefined,
                 effectiveElo: eloRating,
                 rebuildVariant,
+                contentMode,
                 segmentCount,
-                provider: body.provider,
-                nvidiaModel: body.nvidiaModel,
             });
             return NextResponse.json(drill);
         } catch (error) {
@@ -137,8 +138,6 @@ export async function POST(req: NextRequest) {
                     topicPrompt,
                     effectiveElo: eloRating,
                     segmentCount,
-                    provider: body.provider,
-                    nvidiaModel: body.nvidiaModel,
                 });
                 return NextResponse.json(drill);
             } catch (error) {
@@ -155,8 +154,8 @@ export async function POST(req: NextRequest) {
         json: async () => ({
             ...body,
             mode,
-            provider: body.provider,
-            nvidiaModel: body.nvidiaModel,
+            provider: undefined,
+            nvidiaModel: undefined,
         }),
     } as NextRequest);
 }

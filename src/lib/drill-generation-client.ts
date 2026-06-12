@@ -1,4 +1,4 @@
-import type { AiProvider } from "@/lib/profile-settings";
+import type { RebuildContentMode } from "@/lib/rebuild-content-mode";
 
 export type DrillGenerationRequestBody = {
     articleTitle: string;
@@ -11,10 +11,9 @@ export type DrillGenerationRequestBody = {
     sourceMode: string;
     excludeBankIds?: string[];
     rebuildVariant?: "sentence" | "passage";
+    rebuildContentMode?: RebuildContentMode;
     translationVariant?: "sentence" | "passage";
     segmentCount?: 2 | 3 | 5;
-    provider?: AiProvider;
-    nvidiaModel?: string;
     bossType?: string;
     _t: number;
 };

@@ -32,6 +32,7 @@ function buildRequest(overrides: Partial<{
     eloRating: number;
     mode: "rebuild" | "translation" | "listening";
     rebuildVariant: "sentence" | "passage";
+    rebuildContentMode: "dialogue" | "blog" | "article";
     segmentCount: 2 | 3 | 5;
     provider: "deepseek" | "glm" | "nvidia" | "github";
     nvidiaModel: string;
@@ -43,6 +44,7 @@ function buildRequest(overrides: Partial<{
             eloRating: 900,
             mode: "rebuild",
             rebuildVariant: "sentence",
+            rebuildContentMode: "blog",
             segmentCount: 3,
             provider: "nvidia",
             nvidiaModel: "minimaxai/minimax-m2.7",
@@ -71,9 +73,9 @@ describe("drill next route", () => {
         expect(generateRebuildAiDrillMock).toHaveBeenLastCalledWith({
             topic: "test topic",
             topicPrompt: "brief",
+            injectedVocabulary: undefined,
             effectiveElo: 900,
-            provider: "nvidia",
-            nvidiaModel: "minimaxai/minimax-m2.7",
+            contentMode: "blog",
         });
         expect(response.status).toBe(200);
         expect(data).toMatchObject({
@@ -95,16 +97,16 @@ describe("drill next route", () => {
         expect(generateRebuildPassageAiDrillMock).toHaveBeenLastCalledWith({
             topic: "test topic",
             topicPrompt: "brief",
+            injectedVocabulary: undefined,
             effectiveElo: 900,
+            contentMode: "blog",
             segmentCount: 5,
-            provider: "nvidia",
-            nvidiaModel: "minimaxai/minimax-m2.7",
         });
         expect(response.status).toBe(500);
         expect(data).toEqual({ error: "Failed to generate rebuild drill." });
     });
 
-    it("forwards translation requests without forcing DeepSeek when provider is unset", async () => {
+    it("forwards translation requests without client-side provider overrides", async () => {
         generateAiDrillMock.mockResolvedValue(new Response(JSON.stringify({ ok: true }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
@@ -112,13 +114,15 @@ describe("drill next route", () => {
 
         await POST(buildRequest({
             mode: "translation",
-            provider: undefined,
+            provider: "nvidia",
+            nvidiaModel: "minimaxai/minimax-m2.7",
         }));
 
         expect(generateAiDrillMock).toHaveBeenCalledTimes(1);
         const forwardedRequest = generateAiDrillMock.mock.calls[0][0];
         const forwardedBody = await forwardedRequest.json();
         expect(forwardedBody.provider).toBeUndefined();
+        expect(forwardedBody.nvidiaModel).toBeUndefined();
         expect(forwardedBody.mode).toBe("translation");
     });
 });

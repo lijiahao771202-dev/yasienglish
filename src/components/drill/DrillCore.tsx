@@ -76,7 +76,8 @@ import {
 import { playRebuildSfx } from "@/lib/rebuild-sfx";
 import { getTranslationSelfEvaluationEloDelta } from "@/lib/translation-self-eval";
 import { DEFAULT_TRANSLATION_ELO } from "@/lib/translation-elo-reset";
-import { normalizeLearningPreferences, type AiProvider } from "@/lib/profile-settings";
+import { normalizeLearningPreferences } from "@/lib/profile-settings";
+import type { RebuildContentMode } from "@/lib/rebuild-content-mode";
 import { getTranslationDifficultyTier } from "@/lib/translationDifficulty";
 import {
     shouldExpandShopInventoryDock,
@@ -123,6 +124,7 @@ export interface DrillCoreProps {
         articleContent?: string;
         topic?: string; // For scenario mode
         rebuildVariant?: "sentence" | "passage";
+        rebuildContentMode?: RebuildContentMode;
         translationVariant?: "sentence" | "passage";
         segmentCount?: 2 | 3 | 5;
         isQuickMatch?: boolean;
@@ -130,8 +132,6 @@ export interface DrillCoreProps {
     initialMode?: DrillMode;
     listeningSourceMode?: "ai" | "bank";
     onClose?: () => void;
-    aiProvider?: AiProvider;
-    nvidiaModel?: string;
 }
 
 interface DrillData {
@@ -1022,8 +1022,6 @@ export function DrillCore({
     initialMode = "translation",
     listeningSourceMode = "ai",
     onClose,
-    aiProvider = "deepseek",
-    nvidiaModel,
 }: DrillCoreProps) {
     // Mode State
     const [mode, setMode] = useState<DrillMode>(initialMode);
@@ -3288,7 +3286,6 @@ export function DrillCore({
     }, [hydratePassageSegmentDrill]);
 
     const { consumeNextDrill, prefetchNextDrill, handleGenerateDrill } = useDrillGenerationFlow<PrefetchedDrillData, DrillScenarioContext>({
-        aiProvider,
         activeDrillSourceMode,
         activeTopicPromptRef,
         abortControllerRef,
@@ -3332,12 +3329,10 @@ export function DrillCore({
         translationVariant,
         triggerSurpriseDrop,
         updatePendingEventState,
-        nvidiaModel,
     });
 
     const { handleRebuildSelfEvaluate } = useDrillRebuildSettlement({
         activeDrillSourceMode,
-        aiProvider,
         applyEconomyPatch,
         clearRebuildChoicePrefetch,
         consumeNextDrill,
@@ -3384,7 +3379,6 @@ export function DrillCore({
         setRebuildPassageResults,
         setRebuildPassageScores,
         setRebuildPassageSummary,
-        nvidiaModel,
     });
 
     const handleRebuildPassageRedo = useCallback(() => {

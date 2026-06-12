@@ -1,6 +1,5 @@
 import OpenAI from "openai";
 import { cookies } from "next/headers";
-import { Agent, fetch as undiciFetch } from "undici";
 import type {
     ChatCompletion,
     ChatCompletionChunk,
@@ -145,11 +144,20 @@ export type { GlmModelSummary } from "@/lib/glm-model-catalog";
 
 const cachedProfiles = new Map<string, CachedProfileEntry>();
 const cachedClientsByProviderKey = new Map<string, OpenAI>();
-const mimoDirectDispatcher = new Agent();
-const mimoDirectFetch: typeof fetch = ((input, init) => undiciFetch(input as never, {
-    ...(init as Record<string, unknown>),
-    dispatcher: mimoDirectDispatcher,
-}) as never) as typeof fetch;
+let mimoDirectDispatcher: any = null;
+const mimoDirectFetch: typeof fetch = (async (input, init) => {
+    if (typeof window === "undefined") {
+        const { Agent, fetch: undiciFetch } = await import("undici");
+        if (!mimoDirectDispatcher) {
+            mimoDirectDispatcher = new Agent();
+        }
+        return undiciFetch(input as never, {
+            ...(init as Record<string, unknown>),
+            dispatcher: mimoDirectDispatcher,
+        }) as never;
+    }
+    return fetch(input, init);
+}) as never;
 let githubCompletionTail: Promise<void> = Promise.resolve();
 const GITHUB_MODEL_ID_ALIASES: Record<string, string> = {
     "gpt-4.1": "openai/gpt-4.1",

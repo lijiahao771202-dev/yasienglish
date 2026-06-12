@@ -3,19 +3,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 import { motion, AnimatePresence } from "framer-motion";
-import { ExternalLink, Flame, Check, ChevronLeft, Trophy, Clock, BookOpen, RotateCcw, Hourglass } from "lucide-react";
+import { ExternalLink, Flame, Check, ChevronLeft, Trophy, Clock, BookOpen, RotateCcw, Hourglass, ArrowLeft } from "lucide-react";
 import { ParagraphCard } from "./ParagraphCard";
 import { WordPopup, type PopupState } from "./WordPopup";
 import TEDVideoPlayer, { TEDVideoPlayerRef } from "./TEDVideoPlayer";
 import { useReadingSettings } from "@/contexts/ReadingSettingsContext";
 import { cn } from "@/lib/utils";
-import type { ReadingMarkType, ReadingNoteItem } from "@/lib/db";
+import { db, type ReadingMarkType, type ReadingNoteItem } from "@/lib/db";
+import { useAnalysisStore } from "@/lib/analysis-store";
 import type { AskContextAttachment } from "@/lib/ask-thread";
 import {
     buildAskContextAttachmentFromRanges,
     type ReadSelectionParagraphRangeInput,
 } from "@/lib/read-selection-context";
 import { getPressableStyle } from "@/lib/pressable";
+import { launchCelebration } from "@/lib/celebration-engine";
 
 interface Block {
     type: 'paragraph' | 'header' | 'list' | 'image' | 'blockquote';
@@ -64,8 +66,9 @@ interface ArticleDisplayProps {
         endOffset: number;
     }) => Promise<void> | void;
     onArticleSnapshotDirty?: () => void;
-    topActionNode?: React.ReactNode;
     onCompleteArticle?: () => void;
+    hasQuiz?: boolean;
+    onExitReading?: () => void;
 }
 
 export function ArticleDisplay({
@@ -85,9 +88,12 @@ export function ArticleDisplay({
     onArticleSnapshotDirty,
     topActionNode,
     onCompleteArticle,
+    hasQuiz = false,
+    onExitReading,
 }: ArticleDisplayProps) {
     const contentRef = useRef<HTMLDivElement>(null);
     const videoPlayerRef = useRef<TEDVideoPlayerRef>(null);
+    const paperContainerRef = useRef<HTMLDivElement>(null);
     // Generate IDs if missing (migration)
     const [activeBlocks, setActiveBlocks] = useState<Block[]>(() => {
         const initial = blocks || [];
@@ -157,7 +163,36 @@ export function ArticleDisplay({
     const isFlowActive = isFlowMode && flowSegments.length > 0;
 
     const [activeFlowIndex, setActiveFlowIndex] = useState(0);
-    const [particles, setParticles] = useState<Array<{ id: number; x: number; y: number; color: string }>>([]);
+    const [transitionMinHeight, setTransitionMinHeight] = useState<number | null>(null);
+
+    const updateFlowIndex = (updater: number | ((prev: number) => number)) => {
+        if (paperContainerRef.current) {
+            setTransitionMinHeight(paperContainerRef.current.offsetHeight);
+        }
+        if (typeof updater === "function") {
+            setActiveFlowIndex(prev => updater(prev));
+        } else {
+            setActiveFlowIndex(updater);
+        }
+    };
+    const [activeParticles, setActiveParticles] = useState<Array<{
+        id: number;
+        startX: number;
+        startY: number;
+        targetX: number;
+        peakY: number;
+        endY: number;
+        color: string;
+        size: number;
+        type: string;
+    }>>([]);
+    const [activeRipples, setActiveRipples] = useState<Array<{
+        id: number;
+        startX: number;
+        startY: number;
+        color: string;
+    }>>([]);
+    const [isFlowTransitioning, setIsFlowTransitioning] = useState(false);
     const [isShaking, setIsShaking] = useState(false);
     const [isFlashing, setIsFlashing] = useState(false);
     const [timerMode, setTimerMode] = useState<'up' | 'down'>('up');
@@ -189,6 +224,156 @@ export function ArticleDisplay({
         setCountdownDuration(secs);
         setTimeRemaining(secs);
     }, [activeBlocks, estimatedReadMinutes]);
+
+    // Background preloader for flow segment translations (preload next 2 paragraphs)
+    useEffect(() => {
+        if (!isFlowActive || activeFlowIndex >= flowSegments.length) return;
+
+        // Prefetch translations for the next 2 paragraphs
+        const prefetchIndices = [activeFlowIndex + 1, activeFlowIndex + 2];
+        prefetchIndices.forEach(async (idx) => {
+            if (idx >= flowSegments.length) return;
+            const block = flowSegments[idx].paragraphBlock;
+            if (block.type !== "paragraph" || !block.content) return;
+
+            const text = block.content;
+            try {
+                // Check if it already exists in Dexie (db.ai_cache)
+                const existing = await db.ai_cache.where("[key+type]").equals([text, "translation"]).first();
+                if (existing) {
+                    // Make sure it is also in the Zustand store memory for instant synchronous access on mount
+                    const currentTranslations = useAnalysisStore.getState().translations;
+                    if (!currentTranslations[text]) {
+                        useAnalysisStore.setState({
+                            translations: { ...currentTranslations, [text]: existing.data }
+                        });
+                    }
+                    return; // Already cached
+                }
+
+                console.log(`[Flow Prefetcher] Preloading translation for paragraph ${idx + 1}...`);
+                const res = await fetch("/api/ai/translate", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        text: text,
+                        context: text,
+                        economyContext: {
+                            action: "translate",
+                            dedupeKey: `translate-${text}`,
+                            articleUrl: articleUrl || null,
+                        },
+                    }),
+                });
+                if (!res.ok) {
+                    throw new Error("Prefetch request failed");
+                }
+                const data = await res.json();
+                
+                // Save to Zustand store (which also updates Dexie cache)
+                await useAnalysisStore.getState().setTranslation(text, data);
+                console.log(`[Flow Prefetcher] Prefetched and cached paragraph ${idx + 1} translation.`);
+            } catch (err) {
+                console.warn(`[Flow Prefetcher] Failed to prefetch paragraph ${idx + 1} translation:`, err);
+            }
+        });
+    }, [isFlowActive, activeFlowIndex, flowSegments, articleUrl]);
+
+    // Scroll the active card container into view when changing flow paragraphs
+    useEffect(() => {
+        if (!isFlowActive) return;
+
+        const performPerspectiveScroll = () => {
+            if (typeof window === "undefined") return;
+            const container = paperContainerRef.current;
+            if (!container) return;
+
+            const scrollContainer = document.querySelector('[data-reading-scroll-container="true"]') as HTMLElement;
+            const isScrollable = scrollContainer && (
+                window.getComputedStyle(scrollContainer).overflowY === "auto" ||
+                window.getComputedStyle(scrollContainer).overflowY === "scroll"
+            );
+
+            let startY = 0;
+            let targetY = 0;
+            // Define top scroll margin offset (avoid floating header overlay)
+            const scrollMargin = window.innerWidth < 768 ? 80 : 112;
+
+            if (isScrollable) {
+                startY = scrollContainer.scrollTop;
+                const containerRect = container.getBoundingClientRect();
+                const scrollContainerRect = scrollContainer.getBoundingClientRect();
+                targetY = startY + (containerRect.top - scrollContainerRect.top) - 24;
+            } else {
+                startY = window.scrollY;
+                const containerRect = container.getBoundingClientRect();
+                targetY = startY + containerRect.top - scrollMargin;
+            }
+
+            const maxScroll = isScrollable 
+                ? scrollContainer.scrollHeight - scrollContainer.clientHeight 
+                : document.documentElement.scrollHeight - window.innerHeight;
+            
+            targetY = Math.max(0, Math.min(targetY, maxScroll));
+            
+            const diff = targetY - startY;
+            if (Math.abs(diff) < 2) return;
+
+            // Prevent requestAnimationFrame loops from locking up the Node.js event loop in JSDOM/Vitest test environment
+            const isTestEnv = (typeof navigator !== "undefined" && navigator.userAgent.toLowerCase().includes("jsdom")) ||
+                              (typeof process !== "undefined" && process.env.NODE_ENV === "test");
+            if (isTestEnv) {
+                if (isScrollable) {
+                    scrollContainer.scrollTop = targetY;
+                } else {
+                    window.scrollTo(0, targetY);
+                }
+                return;
+            }
+
+            // Symmetrical easeInOutCubic easing curve for smooth acceleration and deceleration
+            const easeInOutCubic = (t: number) => {
+                return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+            };
+
+            const duration = 550; // Perfectly matched to the spring transition and settling time
+            const startTime = performance.now();
+
+            const animateScroll = (currentTime: number) => {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const easeProgress = easeInOutCubic(progress);
+                const currentY = startY + diff * easeProgress;
+
+                if (isScrollable) {
+                    scrollContainer.scrollTop = currentY;
+                } else {
+                    window.scrollTo(0, currentY);
+                }
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateScroll);
+                }
+            };
+
+            requestAnimationFrame(animateScroll);
+        };
+
+        // Use a tiny 1-frame timeout to let React update the DOM layout instantly
+        const timer = setTimeout(() => {
+            performPerspectiveScroll();
+        }, 15);
+
+        // Clear the transition min height lock after the exit animation completes (600ms)
+        const minHeightTimer = setTimeout(() => {
+            setTransitionMinHeight(null);
+        }, 600);
+
+        return () => {
+            clearTimeout(timer);
+            clearTimeout(minHeightTimer);
+        };
+    }, [activeFlowIndex, isFlowActive]);
 
     const playFlowAlarmSound = () => {
         if (typeof window === "undefined") return;
@@ -258,61 +443,49 @@ export function ArticleDisplay({
         return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
-    const playFlowSuccessSound = (isLast: boolean) => {
+    const playSegmentCompleteChime = () => {
         if (typeof window === "undefined") return;
         try {
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
             if (!AudioContextClass) return;
             const ctx = new AudioContextClass();
             const now = ctx.currentTime;
-
-            if (isLast) {
-                const freqs = [523.25, 659.25, 783.99, 1046.50];
-                freqs.forEach((freq, idx) => {
-                    const osc = ctx.createOscillator();
-                    const gainNode = ctx.createGain();
-                    
-                    osc.type = "sine";
-                    osc.frequency.setValueAtTime(freq, now + idx * 0.07);
-                    
-                    gainNode.gain.setValueAtTime(0, now);
-                    gainNode.gain.linearRampToValueAtTime(0.08, now + idx * 0.07 + 0.02);
-                    gainNode.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.07 + 0.6);
-                    
-                    osc.connect(gainNode);
-                    gainNode.connect(ctx.destination);
-                    osc.start(now + idx * 0.07);
-                    osc.stop(now + idx * 0.07 + 0.65);
-                });
-            } else {
+            
+            // 4 randomized premium musical motifs to keep the feedback feeling alive and fresh
+            const MOTIFS = [
+                [523.25, 659.25, 783.99, 1046.50], // Bright Major (C5-E5-G5-C6)
+                [587.33, 739.99, 880.00, 1174.66], // Mystical Pentatonic (D5-F#5-A5-D6)
+                [698.46, 880.00, 1046.50, 1318.51], // Sweet Lydian (F5-A5-C6-E6)
+                [783.99, 987.77, 1174.66, 1567.98], // Golden Sparkle (G5-B5-D6-G6)
+            ];
+            const freqs = MOTIFS[Math.floor(Math.random() * MOTIFS.length)];
+            
+            // Randomize interval spacing slightly (50ms - 75ms) to add natural variety
+            const interval = 0.05 + Math.random() * 0.025;
+            
+            freqs.forEach((freq, idx) => {
                 const osc = ctx.createOscillator();
                 const gainNode = ctx.createGain();
                 
                 osc.type = "sine";
-                osc.frequency.setValueAtTime(987.77, now);
-                osc.frequency.exponentialRampToValueAtTime(1318.51, now + 0.08);
+                const startTime = now + idx * interval;
+                osc.frequency.setValueAtTime(freq, startTime);
                 
-                gainNode.gain.setValueAtTime(0.08, now);
-                gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+                // Rich, premium volume envelope
+                gainNode.gain.setValueAtTime(0, startTime);
+                // Crisp quick rise (0.06 volume is rich yet clean)
+                gainNode.gain.linearRampToValueAtTime(0.06, startTime + 0.01);
+                // Smooth exponential ring out
+                gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.38);
                 
                 osc.connect(gainNode);
                 gainNode.connect(ctx.destination);
-                osc.start(now);
-                osc.stop(now + 0.4);
-
-                const osc2 = ctx.createOscillator();
-                const gainNode2 = ctx.createGain();
-                osc2.type = "triangle";
-                osc2.frequency.setValueAtTime(329.63, now);
-                gainNode2.gain.setValueAtTime(0.04, now);
-                gainNode2.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
-                osc2.connect(gainNode2);
-                gainNode2.connect(ctx.destination);
-                osc2.start(now);
-                osc2.stop(now + 0.3);
-            }
+                
+                osc.start(startTime);
+                osc.stop(startTime + 0.45);
+            });
         } catch (e) {
-            console.warn("Failed to play flow sound:", e);
+            console.warn("Failed to play segment chime:", e);
         }
     };
 
@@ -345,12 +518,15 @@ export function ArticleDisplay({
 
     const handleSegmentClick = (idx: number) => {
         playFlowNavSound();
-        setActiveFlowIndex(idx);
+        updateFlowIndex(idx);
     };
 
 
 
     const handleDoneClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+        if (isFlowTransitioning) return;
+        setIsFlowTransitioning(true);
+
         setIsShaking(true);
         setTimeout(() => setIsShaking(false), 300);
 
@@ -358,22 +534,100 @@ export function ArticleDisplay({
         setTimeout(() => setIsFlashing(false), 350);
 
         const isLastSegment = activeFlowIndex === flowSegments.length - 1;
-        playFlowSuccessSound(isLastSegment);
 
-        const newParticles = Array.from({ length: 32 }).map((_, i) => {
-            const angle = (i / 32) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
-            const distance = 50 + Math.random() * 80;
-            const colors = ["#10b981", "#f59e0b", "#06b6d4", "#ec4899", "#8b5cf6"];
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            return {
-                id: Date.now() + i,
-                x: Math.cos(angle) * distance,
-                y: Math.sin(angle) * distance,
-                color,
-            };
-        });
-        setParticles(newParticles);
-        setTimeout(() => setParticles([]), 800);
+        // Visual and audio feedback using our premium celebration engine
+        const rect = e.currentTarget.getBoundingClientRect();
+        
+        if (isLastSegment) {
+            // Massive celebration!
+            // First, trigger a legendary celebration at the button
+            // Theme IDs 81-100 are Epic and Legendary themes. We choose one randomly every time.
+            const themePool = Array.from({ length: 20 }, (_, idx) => 81 + idx); // [81, ..., 100]
+            const randomThemeId = themePool[Math.floor(Math.random() * themePool.length)];
+            launchCelebration(false, rect, randomThemeId);
+
+            // Followed by a series of random celebrations across the screen to create a grand, unpredictable finale!
+            const explosionCount = 4 + Math.floor(Math.random() * 4); // 4 to 7 explosions
+            for (let i = 1; i <= explosionCount; i++) {
+                setTimeout(() => {
+                    const randomX = 0.1 + Math.random() * 0.8;
+                    const randomY = 0.15 + Math.random() * 0.6;
+                    const dummyRect = {
+                        left: randomX * window.innerWidth,
+                        top: randomY * window.innerHeight,
+                        width: 0,
+                        height: 0,
+                    } as DOMRect;
+                    // Trigger a completely random celebration theme (Common, Rare, Epic, or Legendary)
+                    launchCelebration(false, dummyRect);
+                }, i * (120 + Math.random() * 150));
+            }
+        } else {
+            // New custom feedback for regular segments: satisfying local particle fountain + tactile ripples
+            // 1. Play the randomized ascending arpeggio sweep chime
+            playSegmentCompleteChime();
+
+            // Calculate absolute center of the button relative to the viewport
+            const buttonCenterX = rect.left + rect.width / 2;
+            const buttonCenterY = rect.top + rect.height / 2;
+
+            // 2. Trigger 2 expanding ripples with a randomized primary color
+            const rippleColors = ["#10b981", "#34d399", "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#fbbf24"];
+            const chosenRippleColor = rippleColors[Math.floor(Math.random() * rippleColors.length)];
+            const newRipples = [
+                { id: Date.now() + Math.random(), startX: buttonCenterX, startY: buttonCenterY, color: chosenRippleColor },
+                { id: Date.now() + Math.random() + 1, startX: buttonCenterX, startY: buttonCenterY, color: chosenRippleColor }
+            ];
+            setActiveRipples(prev => [...prev, ...newRipples]);
+            setTimeout(() => {
+                setActiveRipples(prev => prev.filter(r => !newRipples.some(nr => nr.id === r.id)));
+            }, 800);
+
+            // 3. Spawn a satisfying local particle fountain (26 particles) with high palette and shape randomness
+            const PALETTES = [
+                ["#10b981", "#34d399", "#fbbf24", "#f59e0b", "#38bdf8"], // Emerald & Gold
+                ["#ec4899", "#f472b6", "#a855f7", "#c084fc", "#6366f1"], // Cyberpunk
+                ["#06b6d4", "#22d3ee", "#3b82f6", "#60a5fa", "#34d399"], // Ocean Sparkle
+                ["#ff007f", "#ffdd00", "#00e5ff", "#9d00ff", "#00ff66"]  // Neon Rainbow
+            ];
+            const chosenPalette = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+            const SHAPES = ["circle", "star", "sparkle"];
+            
+            const newParticles = Array.from({ length: 26 }).map((_, i) => {
+                // Wide upward angle spread from -160 deg to -20 deg with random noise
+                const angle = -Math.PI * (0.1 + (i / 25) * 0.8) + (Math.random() - 0.5) * 0.1;
+                // High variance in horizontal and vertical distances
+                const horizontalDistance = 50 + Math.random() * 80;
+                const targetX = Math.cos(angle) * horizontalDistance;
+                
+                // Peak Y is negative (upwards), high variance
+                const peakY = -40 - Math.random() * 60;
+                // End Y is positive or negative (downwards)
+                const endY = peakY + 40 + Math.random() * 65;
+                
+                const color = chosenPalette[Math.floor(Math.random() * chosenPalette.length)];
+                const type = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+                
+                // Particle size: 4px to 7px
+                const size = 4 + Math.random() * 3;
+                
+                return {
+                    id: Date.now() + i + Math.random(),
+                    startX: buttonCenterX,
+                    startY: buttonCenterY,
+                    targetX,
+                    peakY,
+                    endY,
+                    color,
+                    size,
+                    type,
+                };
+            });
+            setActiveParticles(prev => [...prev, ...newParticles]);
+            setTimeout(() => {
+                setActiveParticles(prev => prev.filter(p => !newParticles.some(np => np.id === p.id)));
+            }, 750);
+        }
 
         if (activeFlowIndex < flowSegments.length - 1) {
             const coinEvent = {
@@ -384,10 +638,29 @@ export function ArticleDisplay({
                 timestamp: Date.now(),
             };
             window.dispatchEvent(new CustomEvent("reading:coin-fx", { detail: coinEvent }));
-            setActiveFlowIndex(prev => prev + 1);
+            
+            // Delay paragraph transition by 600ms to let the feedback ripples/particles complete in place
+            setTimeout(() => {
+                updateFlowIndex(prev => prev + 1);
+                setIsFlowTransitioning(false);
+            }, 600);
         } else {
-            onCompleteArticle?.();
-            setActiveFlowIndex(flowSegments.length);
+            // Dispatch a large coin burst event for the whole article
+            const finalCoinEvent = {
+                id: `flow-complete-final-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+                delta: flowSegments.length + 4,
+                action: "read_complete" as const,
+                label: `读完文章《${title}》`,
+                timestamp: Date.now(),
+            };
+            window.dispatchEvent(new CustomEvent("reading:coin-fx", { detail: finalCoinEvent }));
+
+            // Delay showing the final completion card by 1200ms to enjoy the grand celebration multi-explosions
+            setTimeout(() => {
+                onCompleteArticle?.();
+                updateFlowIndex(flowSegments.length);
+                setIsFlowTransitioning(false);
+            }, 1200);
         }
     };
 
@@ -446,6 +719,7 @@ export function ArticleDisplay({
                         onSetFocusLock={() => setLockedFocusIndex(index)}
                         onClearFocusLock={() => setLockedFocusIndex(null)}
                         highlightSnippet={isLocatedParagraph ? (highlightedSnippet || undefined) : undefined}
+                        autoTranslate={isFlowActive}
                     />
                 </div>
             );
@@ -946,16 +1220,16 @@ export function ArticleDisplay({
                     </div>
                 )}
 
-                <div className="mb-4 flex items-center justify-between px-1">
-                    <span className="text-xs font-bold uppercase tracking-widest text-theme-text-muted">
+                <div className="mb-4 flex items-center justify-between gap-4 px-1 w-full overflow-hidden">
+                    <span className="text-xs font-bold uppercase tracking-widest text-theme-text-muted truncate min-w-0 flex-1">
                         心流专注模式 · {title}
                     </span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 shrink-0 flex-row whitespace-nowrap">
                         {/* Flow Timer */}
                         {timerConfigured && (
                             <div
                                 onClick={toggleTimerMode}
-                                className="flex items-center gap-1.5 rounded-full border border-theme-border bg-theme-card-bg px-3 py-1 text-xs font-black text-theme-text shadow-sm hover:bg-theme-active-bg/20 cursor-pointer select-none transition"
+                                className="flex items-center gap-1.5 rounded-full border border-theme-border bg-theme-card-bg px-3 py-1 text-xs font-black text-theme-text shadow-sm hover:bg-theme-active-bg/20 cursor-pointer select-none transition whitespace-nowrap shrink-0 flex-row"
                                 title={timerMode === "up" ? "正在进行正计时（点击切换为倒计时）" : "正在进行倒计时（点击切换为正计时）"}
                             >
                                 {timerMode === "up" ? (
@@ -980,20 +1254,69 @@ export function ArticleDisplay({
                             </div>
                         )}
 
-                        <button
+                        <motion.button
+                            initial="initial"
+                            whileHover="hover"
+                            whileTap="tap"
                             onClick={toggleFlowMode}
-                            className="flex items-center gap-1.5 rounded-full border border-theme-border bg-theme-card-bg px-2.5 py-1 text-xs font-bold text-theme-text shadow-sm hover:bg-theme-active-bg/20 active:translate-y-[1px]"
+                            className="group relative flex items-center gap-1.5 rounded-full border border-theme-border/60 bg-theme-card-bg/75 backdrop-blur-md px-3.5 py-1.5 text-xs font-semibold text-theme-text-muted hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-200 dark:hover:border-rose-950/80 hover:bg-rose-50/30 dark:hover:bg-rose-950/10 transition-all duration-300 shadow-sm hover:shadow-[0_4px_12px_rgba(244,63,94,0.06)] dark:hover:shadow-[0_4px_12px_rgba(244,63,94,0.12)] cursor-pointer select-none whitespace-nowrap shrink-0 flex-row"
+                            variants={{
+                                initial: { scale: 1 },
+                                hover: { scale: 1.025 },
+                                tap: { scale: 0.975 }
+                            }}
                         >
-                            <Flame className="h-3.5 w-3.5 text-orange-500 animate-pulse" />
-                            退出心流
-                        </button>
+                            {/* Ambient Glow */}
+                            <div className="absolute inset-0 -z-10 rounded-full bg-gradient-to-r from-rose-400/5 to-pink-500/5 dark:from-rose-500/10 dark:to-pink-500/0 opacity-0 group-hover:opacity-100 blur-md transition-opacity duration-500" />
+                            
+                            {/* Custom animated logout SVG */}
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="h-3.5 w-3.5 transition-colors duration-300"
+                            >
+                                {/* Door path - shifts slightly left on hover */}
+                                <motion.path
+                                    d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"
+                                    variants={{
+                                        initial: { x: 0, opacity: 0.7 },
+                                        hover: { x: -0.75, opacity: 0.9 }
+                                    }}
+                                    transition={{ type: "spring", stiffness: 350, damping: 15 }}
+                                    className="stroke-theme-text-muted/70 group-hover:stroke-rose-500/80 dark:group-hover:stroke-rose-400/80 transition-colors duration-300"
+                                />
+                                {/* Arrow paths - shift right on hover */}
+                                <motion.g
+                                    variants={{
+                                        initial: { x: 0, opacity: 0.8 },
+                                        hover: { x: 1.5, opacity: 1 }
+                                    }}
+                                    transition={{ type: "spring", stiffness: 350, damping: 15 }}
+                                    className="stroke-theme-text-muted/90 group-hover:stroke-rose-600 dark:group-hover:stroke-rose-400 transition-colors duration-300"
+                                >
+                                    <polyline points="16 17 21 12 16 7" />
+                                    <line x1="21" y1="12" x2="9" y2="12" />
+                                </motion.g>
+                            </svg>
+                            
+                            <span className="tracking-wide">退出心流</span>
+                        </motion.button>
                     </div>
                 </div>
 
                 <motion.div
+                    ref={paperContainerRef}
+                    style={{ minHeight: transitionMinHeight ? `${transitionMinHeight}px` : undefined }}
                     animate={isShaking ? { x: [0, -10, 10, -10, 10, -5, 5, 0] } : { x: 0 }}
                     transition={{ duration: 0.3 }}
-                    className={cn("relative mb-24 rounded-[2rem] p-6 border border-theme-border/50 shadow-[0_12px_40px_rgba(0,0,0,0.08)] transition-all duration-500 md:p-8 xl:p-8 min-h-[200px] flex flex-col justify-start overflow-hidden", paperStyleClass)}
+                    className={cn("relative mb-24 rounded-[2rem] p-6 border border-theme-border/50 shadow-[0_12px_40px_rgba(0,0,0,0.08)] transition-all duration-500 md:p-8 xl:p-8 min-h-[200px] flex flex-col justify-start overflow-hidden scroll-mt-28 md:scroll-mt-32", paperStyleClass)}
                 >
                     {/* Screen energy flash overlay on paragraph completion */}
                     <AnimatePresence>
@@ -1043,7 +1366,7 @@ export function ArticleDisplay({
                         )}
                     </AnimatePresence>
 
-                    <AnimatePresence mode="wait">
+                    <AnimatePresence mode="popLayout">
                         {!timerConfigured ? (
                             <motion.div
                                 key="timer-setup"
@@ -1199,10 +1522,15 @@ export function ArticleDisplay({
                         ) : activeFlowIndex < flowSegments.length ? (
                             <motion.div
                                 key={activeFlowIndex}
-                                initial={{ opacity: 0, x: 80, scale: 0.96 }}
-                                animate={{ opacity: 1, x: 0, scale: 1 }}
-                                exit={{ opacity: 0, x: -80, scale: 0.96 }}
-                                transition={{ type: "spring", stiffness: 350, damping: 26 }}
+                                initial={{ opacity: 0, y: 18, scale: 0.95 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                exit={{ opacity: 0, y: -18, scale: 0.95 }}
+                                transition={{ 
+                                    type: "spring", 
+                                    stiffness: 240, 
+                                    damping: 16, 
+                                    mass: 0.8 
+                                }}
                                 className="flex-1 flex flex-col justify-start"
                             >
                                 <div className={cn("space-y-5 text-theme-text leading-loose group/article", fontClass)}>
@@ -1221,7 +1549,7 @@ export function ArticleDisplay({
                                         <motion.button
                                             whileHover={{ scale: 1.03 }}
                                             whileTap={{ scale: 0.96 }}
-                                            onClick={() => { playFlowNavSound(); setActiveFlowIndex(prev => prev - 1); }}
+                                            onClick={() => { playFlowNavSound(); updateFlowIndex(prev => prev - 1); }}
                                             className="inline-flex items-center gap-1.5 rounded-md border-[2px] border-theme-border bg-theme-card-bg px-4 py-2 text-sm font-black text-theme-text shadow-[2px_3px_0_var(--theme-shadow)] transition hover:bg-theme-active-bg/50 active:translate-y-[2px] active:shadow-none"
                                         >
                                             <ChevronLeft className="h-4 w-4" />
@@ -1230,27 +1558,6 @@ export function ArticleDisplay({
                                     )}
 
                                     <div className="relative">
-                                        {/* Particle explosion elements using Framer Motion */}
-                                        {particles.map((p) => (
-                                            <motion.span
-                                                key={p.id}
-                                                initial={{ x: 0, y: 0, scale: 1, opacity: 1 }}
-                                                animate={{ x: p.x, y: p.y, scale: 0, opacity: 0 }}
-                                                transition={{ duration: 0.8, ease: "easeOut" }}
-                                                style={{
-                                                    position: "absolute",
-                                                    left: "50%",
-                                                    top: "50%",
-                                                    backgroundColor: p.color,
-                                                    width: "8px",
-                                                    height: "8px",
-                                                    borderRadius: "50%",
-                                                    pointerEvents: "none",
-                                                    zIndex: 100,
-                                                }}
-                                            />
-                                        ))}
-                                        
                                         <motion.button
                                             whileHover={{ scale: 1.03 }}
                                             whileTap={{ scale: 0.96 }}
@@ -1309,24 +1616,39 @@ export function ArticleDisplay({
                                 </div>
 
                                 <div className="flex flex-wrap items-center justify-center gap-4">
+                                    {hasQuiz ? (
+                                        <motion.button
+                                            whileHover={{ scale: 1.03 }}
+                                            whileTap={{ scale: 0.96 }}
+                                            onClick={() => {
+                                                toggleFlowMode();
+                                                setTimeout(() => {
+                                                    document.querySelector<HTMLElement>('[data-tour-target="read-quiz-toggle"]')?.click();
+                                                }, 100);
+                                            }}
+                                            className="inline-flex items-center gap-2 rounded-md border-[2px] border-theme-border bg-indigo-500 px-6 py-3 text-sm font-black text-white shadow-[3px_4px_0_var(--theme-shadow)] transition hover:bg-indigo-400 active:translate-y-[2px] active:shadow-none"
+                                        >
+                                            <Check className="h-4 w-4" />
+                                            开始答题
+                                        </motion.button>
+                                    ) : (
+                                        <motion.button
+                                            whileHover={{ scale: 1.03 }}
+                                            whileTap={{ scale: 0.96 }}
+                                            onClick={() => {
+                                                toggleFlowMode();
+                                                onExitReading?.();
+                                            }}
+                                            className="inline-flex items-center gap-2 rounded-md border-[2px] border-theme-border bg-indigo-500 px-6 py-3 text-sm font-black text-white shadow-[3px_4px_0_var(--theme-shadow)] transition hover:bg-indigo-400 active:translate-y-[2px] active:shadow-none"
+                                        >
+                                            <ArrowLeft className="h-4 w-4" />
+                                            返回
+                                        </motion.button>
+                                    )}
                                     <motion.button
                                         whileHover={{ scale: 1.03 }}
                                         whileTap={{ scale: 0.96 }}
-                                        onClick={() => {
-                                            toggleFlowMode();
-                                            setTimeout(() => {
-                                                document.querySelector<HTMLElement>('[data-tour-target="read-quiz-toggle"]')?.click();
-                                            }, 100);
-                                        }}
-                                        className="inline-flex items-center gap-2 rounded-md border-[2px] border-theme-border bg-indigo-500 px-6 py-3 text-sm font-black text-white shadow-[3px_4px_0_var(--theme-shadow)] transition hover:bg-indigo-400 active:translate-y-[2px] active:shadow-none"
-                                    >
-                                        <Check className="h-4 w-4" />
-                                        开始答题
-                                    </motion.button>
-                                    <motion.button
-                                        whileHover={{ scale: 1.03 }}
-                                        whileTap={{ scale: 0.96 }}
-                                        onClick={() => { playFlowNavSound(); setActiveFlowIndex(0); }}
+                                        onClick={() => { playFlowNavSound(); updateFlowIndex(0); }}
                                         className="inline-flex items-center gap-2 rounded-md border-[2px] border-theme-border bg-theme-card-bg px-6 py-3 text-sm font-black text-theme-text shadow-[3px_4px_0_var(--theme-shadow)] transition hover:bg-theme-active-bg/50 active:translate-y-[2px] active:shadow-none"
                                     >
                                         <RotateCcw className="h-4 w-4" />
@@ -1337,6 +1659,81 @@ export function ArticleDisplay({
                         )}
                     </AnimatePresence>
                 </motion.div>
+
+                {/* Viewport-fixed non-interruptible feedback container */}
+                <div className="fixed inset-0 pointer-events-none z-[9999] overflow-hidden">
+                    {/* Concentric ripples */}
+                    {activeRipples.map((rip, idx) => (
+                        <motion.div
+                            key={rip.id}
+                            initial={{ 
+                                scale: 0.6, 
+                                opacity: 0.4,
+                                x: rip.startX - 50,
+                                y: rip.startY - 25,
+                            }}
+                            animate={{ 
+                                scale: [0.6, 2.0, 2.5], 
+                                opacity: [0.4, 0.2, 0],
+                            }}
+                            transition={{ duration: 0.7, ease: "easeOut" }}
+                            className="absolute rounded-xl pointer-events-none"
+                            style={{
+                                width: "100px",
+                                height: "50px",
+                                border: `2.5px solid ${rip.color}`,
+                                boxShadow: `0 0 15px ${rip.color}, inset 0 0 10px ${rip.color}`,
+                                background: idx === 0 ? `radial-gradient(circle, ${rip.color}22 0%, transparent 70%)` : 'transparent',
+                            }}
+                        />
+                    ))}
+
+                    {/* Sparkling particles and shapes */}
+                    {activeParticles.map((p) => {
+                        const isCircle = p.type === "circle";
+                        return (
+                            <motion.span
+                                key={p.id}
+                                initial={{ 
+                                    x: p.startX - (isCircle ? p.size / 2 : 10), 
+                                    y: p.startY - (isCircle ? p.size / 2 : 10), 
+                                    scale: 0.2, 
+                                    opacity: 1,
+                                    rotate: 0,
+                                }}
+                                animate={{
+                                    x: p.startX + p.targetX - (isCircle ? p.size / 2 : 10),
+                                    y: [
+                                        p.startY - (isCircle ? p.size / 2 : 10), 
+                                        p.startY + p.peakY - (isCircle ? p.size / 2 : 10), 
+                                        p.startY + p.endY - (isCircle ? p.size / 2 : 10)
+                                    ],
+                                    scale: [0.2, 1.4, 0],
+                                    opacity: [1, 1, 0],
+                                    rotate: !isCircle ? [0, 180, 360] : 0,
+                                }}
+                                transition={{ duration: 0.75, ease: "easeOut" }}
+                                className="absolute pointer-events-none flex items-center justify-center"
+                                style={{
+                                    left: 0,
+                                    top: 0,
+                                    color: p.color,
+                                    backgroundColor: isCircle ? p.color : "transparent",
+                                    width: isCircle ? `${p.size}px` : "20px",
+                                    height: isCircle ? `${p.size}px` : "20px",
+                                    borderRadius: isCircle ? "50%" : "none",
+                                    fontSize: !isCircle ? `${p.size * 2}px` : "inherit",
+                                    textShadow: !isCircle ? `0 0 5px ${p.color}` : "none",
+                                    boxShadow: isCircle ? `0 0 6px ${p.color}` : "none",
+                                    zIndex: 100,
+                                }}
+                            >
+                                {p.type === "star" && "✦"}
+                                {p.type === "sparkle" && "★"}
+                            </motion.span>
+                        );
+                    })}
+                </div>
 
                 <AnimatePresence>
                     {popup && (
@@ -1477,6 +1874,7 @@ export function ArticleDisplay({
                                             onSetFocusLock={() => setLockedFocusIndex(index)}
                                             onClearFocusLock={() => setLockedFocusIndex(null)}
                                             highlightSnippet={isLocatedParagraph ? (highlightedSnippet || undefined) : undefined}
+                                            autoTranslate={isFlowActive}
                                         />
                                     </motion.div>
                                 );

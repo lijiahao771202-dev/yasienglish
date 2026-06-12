@@ -32,6 +32,7 @@ export function useListeningCabin() {
         response: ListeningCabinGenerationResponse;
         request: ListeningCabinGenerationRequest;
         showChineseSubtitle: boolean;
+        practiceMode?: "listen" | "rebuild";
     }) => {
         const session = createListeningCabinSession(params);
         await saveListeningCabinSession(session);

@@ -5,14 +5,16 @@
  * when HTTPS_PROXY is configured.
  */
 export async function register() {
-    const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
-    if (proxyUrl) {
-        try {
-            const { ProxyAgent, setGlobalDispatcher } = await import("undici");
-            setGlobalDispatcher(new ProxyAgent(proxyUrl));
-            console.log(`[instrumentation] Global proxy set → ${proxyUrl}`);
-        } catch (error) {
-            console.warn("[instrumentation] Failed to set up proxy:", error);
+    if (process.env.NEXT_RUNTIME === "nodejs") {
+        const proxyUrl = process.env.HTTPS_PROXY || process.env.https_proxy;
+        if (proxyUrl) {
+            try {
+                const { ProxyAgent, setGlobalDispatcher } = eval('require')("undici");
+                setGlobalDispatcher(new ProxyAgent(proxyUrl));
+                console.log(`[instrumentation] Global proxy set → ${proxyUrl}`);
+            } catch (error) {
+                console.warn("[instrumentation] Failed to set up proxy:", error);
+            }
         }
     }
 }

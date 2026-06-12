@@ -131,6 +131,7 @@ export type RebuildAiPayload = {
     referenceEnglish: string;
     theme: string;
     scene: string;
+    contentMode?: string;
     answerTokens?: string[];
     distractorTokens?: string[];
     candidateId?: string;
@@ -415,6 +416,7 @@ export function buildRebuildAiDrill(payload: RebuildAiPayload, effectiveElo: num
             topic: payload.theme,
             subTopic: payload.scene,
             isScenario: true,
+            rebuildContentMode: payload.contentMode,
         },
         _sourceMeta: {
             sourceMode: "ai" as DrillSourceMode,

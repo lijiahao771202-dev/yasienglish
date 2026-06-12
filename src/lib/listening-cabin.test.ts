@@ -517,4 +517,53 @@ describe("listening cabin helpers", () => {
 
         expect(lint.issues).toContain("sentence count is too low for the selected script length");
     });
+
+    it("strips monologue speaker labels and allows standard colons without flagging them", () => {
+        const request = normalizeListeningCabinRequest({
+            prompt: "monologue testing",
+            topicMode: "manual",
+            scriptMode: "monologue",
+            scriptLength: "short",
+            sentenceLength: "medium",
+            speakerPlan: {
+                strategy: "fixed",
+                primaryVoice: "en-US-JennyNeural",
+                assignments: [{ speaker: "Jenny", voice: "en-US-JennyNeural" }],
+            },
+        });
+        const profile = resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength);
+
+        // Test stripping of genuine speaker labels
+        const rawSentences = [
+            { index: 1, english: "Jenny: Personally, I believe this is critical.", chinese: "Jenny：个人而言，我认为这很关键。", emotion: "calm" as const, pace: "normal" as const },
+            { index: 2, english: "Narrator: However: that's not always true.", chinese: "旁白：然而：那不总是对的。", emotion: "calm" as const, pace: "normal" as const },
+            { index: 3, english: "Speaker 1: Remember: practice makes perfect.", chinese: "讲述者：记住：熟能生巧。", emotion: "calm" as const, pace: "normal" as const },
+        ];
+
+        const processed = canonicalizeListeningCabinSentenceSpeakers({
+            scriptMode: request.scriptMode,
+            speakerPlan: request.speakerPlan,
+            sentences: rawSentences,
+        });
+
+        // Genuine prefixes must be stripped, but colons inside the sentence (like "However:") should stay
+        expect(processed[0]?.english).toBe("Personally, I believe this is critical.");
+        expect(processed[0]?.chinese).toBe("个人而言，我认为这很关键。");
+        expect(processed[1]?.english).toBe("However: that's not always true.");
+        expect(processed[1]?.chinese).toBe("然而：那不总是对的。");
+        expect(processed[2]?.english).toBe("Remember: practice makes perfect.");
+        expect(processed[2]?.chinese).toBe("记住：熟能生巧。");
+
+        // Now run the lint check on the processed sentences
+        const lint = lintListeningCabinDraft({
+            title: "Test Monologue",
+            sentences: processed,
+            request,
+            profile,
+        });
+
+        // There shouldn't be any speaker label errors flagged now
+        expect(lint.issues).not.toContain("monologue output contains speaker labels");
+    });
 });
+

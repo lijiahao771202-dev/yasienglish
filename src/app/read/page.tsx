@@ -1195,6 +1195,15 @@ function ReadingPageContent() {
         })();
     }, [article, markArticleSnapshotDirty, sessionUser?.id, pushReadingCoinFx, applyReadingEconomy]);
 
+    const handleExitReading = useCallback(() => {
+        setArticle(null);
+        setArticleStartedAt(null);
+        setIsWritingMode(false);
+        setIsEditMode(false);
+        setIsQuizMode(false);
+        setIsPretestOverlayOpen(false);
+    }, []);
+
     const handleCreateReadingNote = useCallback(async (payload: {
         paragraphOrder: number;
         paragraphBlockIndex: number;
@@ -1709,7 +1718,7 @@ function ReadingPageContent() {
         quizEligibleForArticle,
     ]);
 
-    const handleUrlSubmit = useCallback(async (url: string) => {
+    const handleUrlSubmit = useCallback(async (url: string, fallbackArticle?: ArticleData) => {
         setIsLoading(true);
         setError(null);
         try {
@@ -1776,10 +1785,23 @@ function ReadingPageContent() {
                 return;
             }
 
-            const response = await axios.post("/api/parse", { url });
-            const finalUrl = response.data.url || url;
+            let articleData: ArticleData;
+            let finalUrl = url;
+            let articleOpenSource = "read_open_parse";
+            try {
+                const response = await axios.post("/api/parse", { url });
+                finalUrl = response.data.url || url;
+                articleData = { ...response.data, url: finalUrl };
+            } catch (parseError) {
+                if (!fallbackArticle) {
+                    throw parseError;
+                }
+                finalUrl = fallbackArticle.url || url;
+                articleData = { ...fallbackArticle, url: finalUrl };
+                articleOpenSource = "read_open_feed_fallback";
+                console.warn("Using feed fallback article after parse failure:", parseError);
+            }
 
-            const articleData = { ...response.data, url: finalUrl };
             resetReadingViewport();
             setArticle(articleData);
             markReadArticleInStore(finalUrl);
@@ -1790,7 +1812,7 @@ function ReadingPageContent() {
                     action: "read_complete",
                     dedupeKey,
                     articleUrl: finalUrl,
-                    meta: { source: "read_open_parse" },
+                    meta: { source: articleOpenSource },
                 }).then((result) => pushReadingCoinFx(result));
             }
 
@@ -1803,6 +1825,7 @@ function ReadingPageContent() {
                 byline: articleData.byline,
                 siteName: articleData.siteName,
                 blocks: articleData.blocks,
+                image: articleData.image ?? null,
                 timestamp: Date.now()
             });
 
@@ -1812,7 +1835,7 @@ function ReadingPageContent() {
         } finally {
             setIsLoading(false);
         }
-    }, [applyReadingEconomy, markReadArticleInStore, pushReadingCoinFx, sessionUser?.id]);
+    }, [applyReadingEconomy, markReadArticleInStore, pushReadingCoinFx, resetReadingViewport, sessionUser?.id]);
 
     useEffect(() => {
         const candidate = (resumeArticleUrl || "").trim();
@@ -2617,8 +2640,9 @@ function ReadingPageContent() {
                                 onCreateReadingNote={handleCreateReadingNote}
                                 onDeleteReadingMarks={handleDeleteReadingMarks}
                                 onArticleSnapshotDirty={markArticleSnapshotDirty}
-                                topActionNode={quizEligibleForArticle ? renderQuizToggleButton() : undefined}
                                 onCompleteArticle={handleFlowCompleteArticle}
+                                hasQuiz={quizEligibleForArticle}
+                                onExitReading={handleExitReading}
                             />
 
                             <div className="hidden sticky bottom-8 z-40 animate-in slide-in-from-bottom-10 duration-700">

@@ -231,6 +231,7 @@ export default function ListeningCabinDashboard() {
     const [isGeneratingAiTopic, setIsGeneratingAiTopic] = useState(false);
     const [topicNotice, setTopicNotice] = useState<string | null>(null);
     const [showChineseSubtitle, setShowChineseSubtitle] = useState(true);
+    const [practiceMode, setPracticeMode] = useState<"listen" | "rebuild">("listen");
     const [randomTopicLocked, setRandomTopicLocked] = useState(false);
     const [previewSentenceKey, setPreviewSentenceKey] = useState<string | null>(null);
     const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
@@ -447,6 +448,7 @@ export default function ListeningCabinDashboard() {
                 response: data,
                 request: finalRequest,
                 showChineseSubtitle,
+                practiceMode,
             });
             router.push(`/listening-cabin/${newSession.id}?showChinese=${showChineseSubtitle}`);
         } catch (error) {
@@ -958,6 +960,11 @@ export default function ListeningCabinDashboard() {
                                                                 Done ✨
                                                             </div>
                                                         )}
+                                                        {session.practiceMode === "rebuild" && (
+                                                            <div className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-pink-50 border-[2px] border-pink-200 text-pink-600 shadow-sm">
+                                                                <span className="text-[9px] font-black tracking-widest uppercase">🧩 拼句挑战</span>
+                                                            </div>
+                                                        )}
                                                         {isMostRecent && (
                                                             <div className="ml-auto mr-1 flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-theme-primary-bg border-[2px] border-theme-border shadow-sm">
                                                                 <div className="relative flex h-2 w-2">
@@ -1079,24 +1086,40 @@ export default function ListeningCabinDashboard() {
                                                         <Clock size={12} strokeWidth={3} />
                                                         {formatDuration(getSessionActualDurationMinutes(selectedSession))}
                                                     </div>
+                                                    <motion.button 
+                                                         whileHover={{ scale: 1.05 }}
+                                                         whileTap={{ scale: 0.95 }}
+                                                         onClick={() => setIsImmersiveMode(!isImmersiveMode)}
+                                                         className={cn(
+                                                             "flex items-center gap-2 px-3.5 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                                                             isImmersiveMode 
+                                                                 ? "bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200" 
+                                                                 : "bg-white border-slate-100 text-slate-400 hover:border-pink-200 hover:text-pink-500"
+                                                         )}
+                                                     >
+                                                         {isImmersiveMode ? "Forge Focus Mode 👁️" : "List Artifact View 📜"}
+                                                     </motion.button>
+                                                     <motion.button 
+                                                         whileHover={{ scale: 1.05 }}
+                                                         whileTap={{ scale: 0.95 }}
+                                                         onClick={() => {
+                                                             const newMode = (selectedSession.practiceMode ?? "listen") === "listen" ? "rebuild" : "listen";
+                                                             void updateListeningCabinSession(selectedSession.id, { practiceMode: newMode });
+                                                         }}
+                                                         className={cn(
+                                                             "flex items-center gap-2 px-3.5 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
+                                                             (selectedSession.practiceMode ?? "listen") === "rebuild"
+                                                                 ? "bg-pink-600 border-pink-600 text-white shadow-xl shadow-pink-200" 
+                                                                 : "bg-white border-slate-100 text-slate-400 hover:border-pink-200 hover:text-pink-500"
+                                                         )}
+                                                     >
+                                                         {(selectedSession.practiceMode ?? "listen") === "rebuild" ? "🧩 拼句挑战" : "🎧 伴听模式"}
+                                                     </motion.button>
                                                 </div>
                                                 <h2 className="text-4xl sm:text-5xl font-black text-[#4a3a2a] tracking-tighter leading-tight drop-shadow-sm max-w-2xl">{selectedSession.title}</h2>
                                                 <div className="flex items-center justify-center md:justify-start gap-3">
                                                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{selectedSession.cefrLevel} Level</span>
                                                     <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
-                                                    <motion.button 
-                                                        whileHover={{ scale: 1.05 }}
-                                                        whileTap={{ scale: 0.95 }}
-                                                        onClick={() => setIsImmersiveMode(!isImmersiveMode)}
-                                                        className={cn(
-                                                            "flex items-center gap-2 px-3.5 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all border-2",
-                                                            isImmersiveMode 
-                                                                ? "bg-slate-900 border-slate-900 text-white shadow-xl shadow-slate-200" 
-                                                                : "bg-white border-slate-100 text-slate-400 hover:border-pink-200 hover:text-pink-500"
-                                                        )}
-                                                    >
-                                                        {isImmersiveMode ? "Forge Focus Mode 👁️" : "List Artifact View 📜"}
-                                                    </motion.button>
                                                 </div>
                                             </div>
                                         </div>
@@ -1973,6 +1996,40 @@ export default function ListeningCabinDashboard() {
                                                             <p className="text-[10px] opacity-70 font-bold">{option.hint}</p>
                                                         </button>
                                                     ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <p className="text-[11px] font-black uppercase tracking-widest text-slate-400 px-1">练习模式 (Practice Mode)</p>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    <button
+                                                        key="listen"
+                                                        type="button"
+                                                        onClick={() => setPracticeMode("listen")}
+                                                        className={cn(
+                                                            "h-24 rounded-[2.2rem] border-2 px-6 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98]",
+                                                            practiceMode === "listen"
+                                                                ? "border-pink-300 bg-pink-50 text-pink-600 shadow-[0_12px_24px_-4px_rgba(255,140,160,0.15)]"
+                                                                : "border-slate-100 bg-white text-slate-400 hover:border-pink-100",
+                                                        )}
+                                                    >
+                                                        <p className="text-sm font-black">🎧 沉浸伴听</p>
+                                                        <p className="text-[10px] opacity-70 font-bold">标准视听播放，辅助背景音效与字幕</p>
+                                                    </button>
+                                                    <button
+                                                        key="rebuild"
+                                                        type="button"
+                                                        onClick={() => setPracticeMode("rebuild")}
+                                                        className={cn(
+                                                            "h-24 rounded-[2.2rem] border-2 px-6 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.98]",
+                                                            practiceMode === "rebuild"
+                                                                ? "border-pink-300 bg-pink-50 text-pink-600 shadow-[0_12px_24px_-4px_rgba(255,140,160,0.15)]"
+                                                                : "border-slate-100 bg-white text-slate-400 hover:border-pink-100",
+                                                        )}
+                                                    >
+                                                        <p className="text-sm font-black">🧩 拼句挑战</p>
+                                                        <p className="text-[10px] opacity-70 font-bold">听完一句拼对一句，极速通关</p>
+                                                    </button>
                                                 </div>
                                             </div>
 

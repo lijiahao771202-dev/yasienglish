@@ -455,15 +455,16 @@ export function useListeningCabinPlayer({
     }, [isPlaying]);
 
     useEffect(() => {
-        playbackModeRef.current = playbackMode;
+        const activeMode = session.practiceMode === "rebuild" ? "single_pause" : playbackMode;
+        playbackModeRef.current = activeMode;
 
-        if (playbackMode === "auto_all") {
+        if (activeMode === "auto_all") {
             stopAtMsRef.current = null;
             return;
         }
 
-        stopAtMsRef.current = computeStopAtMs(currentSentenceIndexRef.current, playbackMode);
-    }, [computeStopAtMs, playbackMode]);
+        stopAtMsRef.current = computeStopAtMs(currentSentenceIndexRef.current, activeMode);
+    }, [computeStopAtMs, playbackMode, session.practiceMode]);
 
     useEffect(() => {
         const audio = audioRef.current;
@@ -1017,15 +1018,16 @@ export function useListeningCabinPlayer({
 
     const applyPlaybackMode = useCallback(
         (mode: ListeningCabinPlaybackMode) => {
-            playbackModeRef.current = mode;
-            setPlaybackMode(mode);
+            const activeMode = session.practiceMode === "rebuild" ? "single_pause" : mode;
+            playbackModeRef.current = activeMode;
+            setPlaybackMode(activeMode);
             setErrorMessage(null);
-            stopAtMsRef.current = computeStopAtMs(currentSentenceIndexRef.current, mode);
+            stopAtMsRef.current = computeStopAtMs(currentSentenceIndexRef.current, activeMode);
 
-            if (mode !== "auto_all") {
+            if (activeMode !== "auto_all") {
                 const audio = audioRef.current;
                 if (audio) {
-                    seekWithinSentence(audio, currentSentenceIndexRef.current, mode);
+                    seekWithinSentence(audio, currentSentenceIndexRef.current, activeMode);
                     setProgressRatio(
                         audio.duration && Number.isFinite(audio.duration)
                             ? audio.currentTime / audio.duration
@@ -1041,7 +1043,7 @@ export function useListeningCabinPlayer({
                 audio.muted = false;
             }
         },
-        [computeStopAtMs, seekWithinSentence],
+        [computeStopAtMs, seekWithinSentence, session.practiceMode],
     );
 
     const setSinglePauseMode = useCallback(() => {
@@ -1087,7 +1089,7 @@ export function useListeningCabinPlayer({
         currentSentenceIndex,
         isPlaying,
         isLoading,
-        playbackMode,
+        playbackMode: session.practiceMode === "rebuild" ? "single_pause" : playbackMode,
         playbackRate,
         showChineseSubtitle,
         progressRatio,

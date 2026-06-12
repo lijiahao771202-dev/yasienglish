@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState, useEffect, useCallback, type ComponentType } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { DrillCore } from "@/components/drill/DrillCore";
-import { Zap, ChevronRight, House, Sword, CircleHelp, X, BookOpen, Feather, Gauge, Coins, Gift, Blocks, Compass, Target, Brain } from "lucide-react";
+import { Zap, ChevronRight, House, Sword, CircleHelp, X, BookOpen, Feather, Gauge, Coins, Gift, Compass, Target } from "lucide-react";
 import { SpotlightTour, type TourStep } from "@/components/ui/SpotlightTour";
 import { cn } from "@/lib/utils";
 import { getRank } from "@/lib/rankUtils";
@@ -18,8 +18,10 @@ import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getRebuildPracticeTier } from "@/lib/rebuild-mode";
-import { saveProfilePatch } from "@/lib/user-repository";
-import type { AiProvider } from "@/lib/profile-settings";
+import {
+    REBUILD_CONTENT_MODE_OPTIONS,
+    type RebuildContentMode,
+} from "@/lib/rebuild-content-mode";
 import { DEFAULT_TRANSLATION_ELO } from "@/lib/translation-elo-reset";
 
 type GuideSectionId = "overview" | "elo" | "dictation" | "translation" | "items" | "drops";
@@ -305,6 +307,7 @@ function BattlePageContent() {
     const [rebuildBattleStreak, setRebuildBattleStreak] = useState(0);
     const [battleMode, setBattleMode] = useState<BattleMode>('rebuild');
     const [rebuildVariant, setRebuildVariant] = useState<"sentence" | "passage">("sentence");
+    const [rebuildContentMode, setRebuildContentMode] = useState<RebuildContentMode>("dialogue");
     const [rebuildSegmentCount, setRebuildSegmentCount] = useState<2 | 3 | 5>(3);
     const [translateVariant, setTranslateVariant] = useState<"sentence" | "passage">("sentence");
     const [translateSegmentCount, setTranslateSegmentCount] = useState<2 | 3 | 5>(3);
@@ -314,19 +317,6 @@ function BattlePageContent() {
     const [refreshCount, setRefreshCount] = useState(0);
     const [navTransition, setNavTransition] = useState<"home" | "read" | null>(null);
     const [showBattleTour, setShowBattleTour] = useState(false);
-    const [drillAiProvider, setDrillAiProvider] = useState<AiProvider>("deepseek");
-    const [drillNvidiaModel, setDrillNvidiaModel] = useState("z-ai/glm5");
-
-    const toggleDrillProvider = useCallback(() => {
-        setDrillAiProvider(prev => {
-            const providerCycle: AiProvider[] = ["deepseek", "glm", "nvidia", "github"];
-            const currentIndex = providerCycle.indexOf(prev);
-            const next = providerCycle[(currentIndex + 1) % providerCycle.length];
-            void saveProfilePatch({ ai_provider: next });
-            return next;
-        });
-    }, []);
-
     const activeModeDifficultyElo = battleMode === "translation"
         ? eloRating
         : battleMode === "dictation"
@@ -496,16 +486,6 @@ function BattlePageContent() {
                 setDictationElo(profile.dictation_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleElo(profile.rebuild_elo ?? profile.rebuild_hidden_elo ?? profile.listening_elo ?? 400);
                 setRebuildBattleStreak(profile.rebuild_streak ?? 0);
-                setDrillAiProvider(
-                    profile.ai_provider === "glm" || profile.ai_provider === "nvidia" || profile.ai_provider === "github" || profile.ai_provider === "mimo"
-                        ? profile.ai_provider
-                        : "deepseek",
-                );
-                setDrillNvidiaModel(
-                    typeof profile.nvidia_model === "string" && profile.nvidia_model.trim()
-                        ? profile.nvidia_model.trim()
-                        : "z-ai/glm5",
-                );
                 const activeUserMeta = await db.sync_meta.get("active_user_id");
                 const activeUserId = typeof activeUserMeta?.value === "string" ? activeUserMeta.value : "local";
                 const hiddenMeta = await db.sync_meta.get(`rebuild_hidden_elo::${activeUserId}`);
@@ -550,6 +530,7 @@ function BattlePageContent() {
                 type: "scenario",
                 topic,
                 rebuildVariant,
+                rebuildContentMode,
                 segmentCount: rebuildVariant === "passage" ? rebuildSegmentCount : 3,
             }
             : battleMode === "translation"
@@ -563,7 +544,7 @@ function BattlePageContent() {
                 type: "scenario",
                 topic,
             }
-    ), [battleMode, rebuildSegmentCount, rebuildVariant, translateSegmentCount, translateVariant]);
+    ), [battleMode, rebuildContentMode, rebuildSegmentCount, rebuildVariant, translateSegmentCount, translateVariant]);
 
     const handleQuickMatchClick = useCallback(() => {
         if (battleMode === "rebuild" || battleMode === "translation") {
@@ -762,34 +743,34 @@ function BattlePageContent() {
                                                 : "当前模式继续走 AI 生成。"}
                                         </p>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={toggleDrillProvider}
-                                        className={cn(
-                                            "ui-pressable inline-flex items-center gap-2 rounded-full border-4 px-4 py-2 text-sm font-black transition-colors",
-                                            drillAiProvider !== "deepseek"
-                                                ? "border-purple-300 bg-purple-50 text-purple-700 shadow-[0_4px_0_rgba(168,85,247,0.25)]"
-                                                : "border-theme-border bg-theme-base-bg text-theme-text-muted shadow-[0_4px_0_var(--theme-shadow)]"
-                                        )}
-                                        style={getPressableStyle(
-                                            drillAiProvider !== "deepseek" ? "rgba(168,85,247,0.25)" : "var(--theme-shadow)",
-                                            4
-                                        )}
-                                    >
-                                        {drillAiProvider === "glm" ? (
-                                            <Brain className="h-4 w-4" />
-                                        ) : drillAiProvider === "nvidia" ? (
-                                            <Brain className="h-4 w-4" />
-                                        ) : drillAiProvider === "github" ? (
-                                            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10019 0 0022 12.017C22 6.484 17.522 2 12 2z" /></svg>
-                                        ) : (
-                                            <Blocks className="h-4 w-4" />
-                                        )}
-                                        {drillAiProvider === "glm" ? "GLM" : drillAiProvider === "nvidia" ? "NVIDIA" : drillAiProvider === "github" ? "GitHub" : "DeepSeek"}
-                                    </button>
                                 </div>
                                 {battleMode === "rebuild" ? (
                                     <div data-tour-target="battle-rebuild-variants" className="mt-4 space-y-4 border-t-2 border-theme-border/30 pt-4">
+                                        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                            <div>
+                                                <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Rebuild Mode</p>
+                                                <p className="mt-1 text-sm leading-7 text-theme-text opacity-90">默认保留当前对话题感，也可以切到博客、文章、新闻或讲解型语料。</p>
+                                            </div>
+                                            <div className="flex max-w-full flex-wrap items-center gap-2 rounded-[1.35rem] border-4 border-theme-border bg-theme-base-bg p-1.5 shadow-[0_4px_0_var(--theme-shadow)] md:justify-end">
+                                                {REBUILD_CONTENT_MODE_OPTIONS.map((option) => (
+                                                    <button
+                                                        key={option.value}
+                                                        type="button"
+                                                        title={option.description}
+                                                        onClick={() => setRebuildContentMode(option.value)}
+                                                        className={cn(
+                                                            "ui-pressable min-h-11 rounded-full border-4 px-3 py-2 text-sm font-black transition-colors md:px-4",
+                                                            rebuildContentMode === option.value
+                                                                ? "border-theme-border bg-theme-primary-bg text-theme-primary-text shadow-[0_4px_0_var(--theme-shadow)]"
+                                                                : "border-transparent bg-transparent text-theme-text-muted hover:bg-theme-card-bg hover:text-theme-text"
+                                                        )}
+                                                        style={rebuildContentMode === option.value ? getPressableStyle("var(--theme-shadow)", 4) : undefined}
+                                                    >
+                                                        {option.shortLabel}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                             <div>
                                                 <p className="text-[11px] font-black uppercase tracking-[0.22em] text-theme-text-muted">Rebuild Branch</p>
@@ -1358,8 +1339,6 @@ function BattlePageContent() {
                             context={activeDrill}
                             onClose={handleCloseDrill}
                             initialMode={battleMode}
-                            aiProvider={drillAiProvider}
-                            nvidiaModel={drillNvidiaModel}
                         />
                     </motion.div>
                 )}

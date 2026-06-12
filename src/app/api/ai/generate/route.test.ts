@@ -1196,4 +1196,32 @@ describe("ai generate route", () => {
         expect(prompt).not.toContain("this phrase is far too long");
         expect(data.ragAppliedWords).toEqual(["actionable", "bridge", "policy design"]);
     });
+
+    it("returns a retryable rate-limit payload when the AI provider is busy", async () => {
+        createMock.mockRejectedValueOnce(Object.assign(new Error("Too many concurrent requests"), {
+            status: 429,
+            headers: {
+                get: (name: string) => name.toLowerCase() === "retry-after" ? "5" : null,
+            },
+        }));
+
+        const response = await POSTHandler(
+            new Request("http://localhost/api/ai/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    difficulty: "ielts",
+                    topic: "公共信任 · Why public trust is difficult to restore",
+                }),
+            }),
+        );
+
+        expect(response.status).toBe(429);
+        expect(response.headers.get("Retry-After")).toBe("5");
+        await expect(response.json()).resolves.toMatchObject({
+            errorCode: "AI_PROVIDER_RATE_LIMIT",
+            retryable: true,
+            error: "当前 AI 模型并发请求过多，文章生成稍后可重试。",
+        });
+    });
 });

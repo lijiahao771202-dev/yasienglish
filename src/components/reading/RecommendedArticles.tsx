@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, RotateCcw, Trash2, Check, Settings2, LayoutGrid, ChevronDown, ChevronLeft, ChevronRight, Compass, Dices } from "lucide-react";
+import { Archive, Brain, ExternalLink, Loader2, BookOpen, Cpu, Sparkles, Send, RefreshCw, RotateCcw, Trash2, Settings2, LayoutGrid, ChevronDown, ChevronLeft, ChevronRight, Compass, Dices } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ import { TranslationSlotMachine } from "@/components/battle/TranslationSlotMachi
 import { filterAIGenerationHistory, getAIGenerationDifficultyCounts, type HistoryDifficultyFilter } from "./ai-history";
 import { AIGenLearningTracker } from "./AIGenLearningTracker";
 import type { AIGenLearningReadEvent } from "./ai-learning-tracker";
+import { JOURNAL_GROUPS, DEFAULT_JOURNAL_GROUP_ID, getJournalSourcesByGroup, type JournalGroupId } from "@/lib/journal-feeds";
 import {
     AI_GENERATION_MODE_OPTIONS,
     AI_GENERATION_RAG_MODE_OPTIONS,
@@ -112,16 +113,29 @@ interface ReadArticleHistoryRecord {
     };
 }
 
-type FeedCategory = 'psychology' | 'ai_news' | 'ai_gen' | 'cat_mode';
-type ArticleView = 'all' | 'new' | 'unread' | 'read';
+type FeedCategory = 'psychology' | 'journals' | 'ai_gen' | 'cat_mode';
+type ArticleView = 'all' | 'archive';
 type ArticleStatus = 'new' | 'unread' | 'read';
 type AIGenerationWizardStep = "mode" | "difficulty" | "longform" | "rag" | "topic";
+interface GeneratedArticleBlock {
+    type: 'paragraph' | 'header' | 'list' | 'image' | 'blockquote';
+    id?: string;
+    content?: string;
+    tag?: string;
+    items?: string[];
+    src?: string;
+    alt?: string;
+    startTime?: number;
+    endTime?: number;
+}
+
 interface GeneratedArticleData {
     title: string;
     content: string;
     byline?: string;
     textContent?: string;
-    blocks?: unknown[];
+    blocks?: GeneratedArticleBlock[];
+    excerpt?: string;
     siteName?: string;
     videoUrl?: string;
     url?: string;
@@ -168,7 +182,7 @@ interface GeneratedArticleData {
 }
 
 interface RecommendedArticlesProps {
-    onSelect: (url: string) => void;
+    onSelect: (url: string, fallbackArticle?: GeneratedArticleData) => void;
     onArticleLoaded?: (article: GeneratedArticleData) => void;
     onListUpdate?: (articles: ArticleItem[]) => void;
     onArticleDeleted?: (url: string) => void;
@@ -241,6 +255,55 @@ async function safeParseResponsePayload(response: Response) {
     }
 }
 
+function stripFeedHtml(value?: string): string {
+    if (!value) return "";
+    return value
+        .replace(/<script[\s\S]*?<\/script>/gi, " ")
+        .replace(/<style[\s\S]*?<\/style>/gi, " ")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/[ \t]+/g, " ")
+        .trim();
+}
+
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
+function buildFeedFallbackArticle(item: ArticleItem): GeneratedArticleData {
+    const fallbackText = stripFeedHtml(item.snippet)
+        || `This feed item from ${item.source || "the selected source"} does not include a full abstract. Open the original article for the publisher page.`;
+    const paragraphs = fallbackText
+        .split(/\n{2,}/)
+        .map((paragraph) => paragraph.trim())
+        .filter(Boolean);
+    const blocks = (paragraphs.length > 0 ? paragraphs : [fallbackText])
+        .map((paragraph) => ({ type: "paragraph", content: paragraph }));
+
+    return {
+        title: item.title || "Untitled",
+        content: blocks.map((block) => `<p>${escapeHtml(block.content)}</p>`).join(""),
+        textContent: fallbackText,
+        blocks,
+        excerpt: fallbackText.slice(0, 180),
+        byline: item.source,
+        siteName: `${item.source || "Feed"} 摘要`,
+        url: item.link,
+        image: item.image ?? null,
+    };
+}
+
 function formatArticleDate(article: ArticleItem): string {
     const timestamp = getArticleTimestamp(article);
     if (!timestamp) {
@@ -306,6 +369,10 @@ function buildNextAiReadingRagSelection(
     };
 }
 
+const DEFAULT_STANDARD_FETCH_COUNT = 3;
+const DEFAULT_JOURNAL_FETCH_COUNT = 30;
+const JOURNAL_FETCH_COUNT_OPTIONS = [1, 3, 5, 10, 15, 20, 25, 30] as const;
+
 export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, onArticleDeleted }: RecommendedArticlesProps) {
     const prefersReducedMotion = useReducedMotion();
     const reducedMotion = Boolean(prefersReducedMotion);
@@ -342,8 +409,9 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     const [isGenerating, setIsGenerating] = useState(false);
 
     // New states for enhanced UX
-    const [fetchCount, setFetchCount] = useState(3); // Articles to fetch per refresh
+    const [fetchCount, setFetchCount] = useState(DEFAULT_STANDARD_FETCH_COUNT); // Articles to fetch per refresh
     const [showSettings, setShowSettings] = useState(false);
+    const [journalGroupId, setJournalGroupId] = useState<JournalGroupId>(DEFAULT_JOURNAL_GROUP_ID);
     const [isFetching, setIsFetching] = useState(false); // Just for button state
     const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
     const [loadingArticleLink, setLoadingArticleLink] = useState<string | null>(null);
@@ -557,6 +625,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             onListUpdate(nextArticles);
         }
     }, [onListUpdate]);
+    const activeFeedCacheKey = category === "journals" ? `journals:${journalGroupId}` : category;
     const updateAiReadingRagConfig = useCallback((patch: Partial<AIGenerationRagConfig>) => {
         const nextSelection = buildNextAiReadingRagSelection(aiReadingRag, genMode, patch);
         void persistAiReadingRagSelection(nextSelection);
@@ -598,20 +667,16 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             }
         });
 
-        const filteredArticles =
-            activeView === 'all'
-                ? orderedAll
-                : activeView === 'new'
-                    ? newArrivals
-                    : activeView === 'unread'
-                        ? unreadBacklog
-                        : read;
+        const activeArticles = sortByNewest(orderedAll.filter((item) => !item.archivedAt));
+        const archivedArticles = sortByNewest(orderedAll.filter((item) => Boolean(item.archivedAt)));
+
+        const filteredArticles = activeView === 'archive'
+            ? archivedArticles
+            : activeArticles;
 
         const filterItems = [
-            { id: 'all' as const, label: '全部', count: orderedAll.length, icon: LayoutGrid },
-            { id: 'new' as const, label: '新到达', count: newArrivals.length, icon: Sparkles },
-            { id: 'unread' as const, label: '待阅读', count: unreadBacklog.length, icon: BookOpen },
-            { id: 'read' as const, label: '已读历史', count: read.length, icon: Check },
+            { id: 'all' as const, label: '全部', count: activeArticles.length, icon: LayoutGrid },
+            { id: 'archive' as const, label: '归档', count: archivedArticles.length, icon: Archive },
         ];
 
         return {
@@ -774,7 +839,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
     }, [onListUpdate]);
 
     const refreshStandardFeed = useCallback(async (
-        selectedCategory: Extract<FeedCategory, "psychology" | "ai_news">,
+        selectedCategory: Extract<FeedCategory, "psychology" | "journals">,
         options?: {
             silent?: boolean;
             baseArticles?: ArticleItem[];
@@ -788,14 +853,19 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         }
 
         try {
-            const res = await fetch(`/api/feed?category=${selectedCategory}&count=${fetchCount}&t=${Date.now()}`);
+            const clampedFetchCount = selectedCategory === "journals" ? Math.min(fetchCount, DEFAULT_JOURNAL_FETCH_COUNT) : fetchCount;
+            const feedCacheKey = selectedCategory === "journals" ? `journals:${journalGroupId}` : selectedCategory;
+            const requestUrl = selectedCategory === "journals"
+                ? `/api/feed?category=journals&journalGroup=${journalGroupId}&count=${clampedFetchCount}&t=${Date.now()}`
+                : `/api/feed?category=${selectedCategory}&count=${clampedFetchCount}&t=${Date.now()}`;
+            const res = await fetch(requestUrl);
             const data: unknown = await res.json();
             if (!Array.isArray(data)) return;
 
             const fetchedAt = Date.now();
             const fetchedArticles = data
                 .filter(isArticleItem)
-                .slice(0, fetchCount)
+                .slice(0, clampedFetchCount)
                 .map((item) => ({
                     ...item,
                     pubDate: item.pubDate || new Date(fetchedAt).toISOString(),
@@ -811,7 +881,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
             const mergedArticles = mergeFeedArticles(baseArticles, fetchedArticles);
 
             syncVisibleArticles(mergedArticles);
-            await setFeed(selectedCategory, mergedArticles);
+            await setFeed(feedCacheKey, mergedArticles);
 
             if (!silent) {
                 if (uniqueNewCount > 0) {
@@ -842,7 +912,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 setTimeout(() => setNotification(null), 3000);
             }
         }
-    }, [fetchCount, setFeed, syncVisibleArticles]);
+    }, [fetchCount, journalGroupId, setFeed, syncVisibleArticles]);
 
     // Load from DB only (no auto-fetch from API)
     useEffect(() => {
@@ -857,8 +927,8 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         }
 
         // Only load from DB/memory - NO auto-fetch
-        loadFeedFromDB(category).then(() => {
-            const cachedFeeds = sortByNewest(getFeed(category) ?? []);
+        loadFeedFromDB(activeFeedCacheKey).then(() => {
+            const cachedFeeds = sortByNewest(getFeed(activeFeedCacheKey) ?? []);
             if (cachedFeeds.length > 0) {
                 syncVisibleArticles(cachedFeeds);
             } else {
@@ -867,14 +937,14 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
 
             const needsImageHydration = cachedFeeds.length > 0
                 && cachedFeeds.some((article) => !article.image)
-                && !silentImageHydrationRef.current[category];
+                && !silentImageHydrationRef.current[activeFeedCacheKey];
 
             if (needsImageHydration) {
-                silentImageHydrationRef.current[category] = true;
+                silentImageHydrationRef.current[activeFeedCacheKey] = true;
                 void refreshStandardFeed(category, { silent: true, baseArticles: cachedFeeds });
             }
         });
-    }, [category, getFeed, loadAIGenHistory, loadCatHistory, loadFeedFromDB, refreshStandardFeed, syncVisibleArticles]);
+    }, [activeFeedCacheKey, category, getFeed, loadAIGenHistory, loadCatHistory, loadFeedFromDB, refreshStandardFeed, syncVisibleArticles]);
 
     useEffect(() => {
         setActiveView('all');
@@ -1249,16 +1319,32 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         }
 
         if (confirm('Are you sure you want to remove this article?')) {
-            await deleteArticle(category, link);
+            await deleteArticle(activeFeedCacheKey, link);
             setArticles(prev => prev.filter(a => a.link !== link));
             if (onArticleDeleted) onArticleDeleted(link);
         }
     };
 
     const handleArchive = async (link: string, archived: boolean) => {
-        if (category !== "ai_gen" && category !== "cat_mode") return;
-
         try {
+            if (category !== "ai_gen" && category !== "cat_mode") {
+                const archivedAt = archived ? Date.now() : undefined;
+                const nextArticles = articlesRef.current.map((article) => (
+                        article.link === link
+                            ? { ...article, archivedAt }
+                            : article
+                ));
+                setArticles(nextArticles);
+                if (onListUpdate) onListUpdate(nextArticles.filter((article) => !article.archivedAt));
+                await setFeed(activeFeedCacheKey, nextArticles);
+                setNotification({
+                    message: archived ? "已归档文章" : "已恢复文章",
+                    type: "success",
+                });
+                setTimeout(() => setNotification(null), 2200);
+                return;
+            }
+
             await setReadArticleArchived(link, archived);
             setArticles((prev) => {
                 const next = prev.map((article) => (
@@ -1288,7 +1374,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         if (loadingArticleLink) return;
         setLoadingArticleLink(link);
         try {
-            await Promise.resolve(onSelect(link));
+            const selectedArticle = articlesRef.current.find((item) => item.link === link);
+            const fallbackArticle = selectedArticle && category !== "ai_gen" && category !== "cat_mode"
+                ? buildFeedFallbackArticle(selectedArticle)
+                : undefined;
+            await Promise.resolve(onSelect(link, fallbackArticle));
         } finally {
             setLoadingArticleLink(null);
         }
@@ -1301,8 +1391,27 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
         { id: "cat_mode", label: "CAT 成长" },
         { id: "ai_gen", label: "AI 生成" },
         { id: "psychology", label: "心理学" },
-        { id: "ai_news", label: "AI 资讯" },
+        { id: "journals", label: "期刊" },
     ];
+    const applyFetchCountForCategory = useCallback((nextCategory: FeedCategory) => {
+        if (nextCategory === "journals") {
+            setFetchCount(DEFAULT_JOURNAL_FETCH_COUNT);
+        } else if (nextCategory === "psychology") {
+            setFetchCount((current) => Math.min(current, 5) || DEFAULT_STANDARD_FETCH_COUNT);
+        }
+    }, []);
+    const handleJournalGroupSelect = useCallback((nextGroupId: JournalGroupId) => {
+        setJournalGroupId(nextGroupId);
+        setActiveView('all');
+        setShowArchivedHistory(false);
+        const cacheKey = `journals:${nextGroupId}`;
+        const cached = getFeed(cacheKey);
+        if (cached && cached.length > 0) {
+            setArticles(sortByNewest(cached));
+        } else {
+            setArticles([]);
+        }
+    }, [getFeed]);
     const panelTransition = {
         duration: prefersReducedMotion ? 0.16 : 0.6,
         ease: [0.22, 1, 0.36, 1] as const,
@@ -1470,7 +1579,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                 阅读流
                             </h3>
                             <p className="mt-3 max-w-xl text-sm font-medium leading-6 text-theme-text-muted">
-                                按新鲜度优先，保持阅读上下文连续。把训练、生成和资讯入口收进一个更可爱的阅读工作台里。
+                                按新鲜度优先，保持阅读上下文连续。把训练、生成和期刊入口收进一个更可爱的阅读工作台里。
                             </p>
                         </div>
 
@@ -1501,7 +1610,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         disabled={isFetching}
                                         className={cn(utilityButtonClass, "border-[3px] border-theme-border bg-theme-active-bg text-theme-active-text shadow-[0_4px_0_0_var(--theme-shadow)]")}
                                         style={getPressableStyle("var(--theme-shadow)", 4)}
-                                        title={category === "ai_gen" ? "刷新 AI 历史" : `刷新 ${category} 文章`}
+                                        title={category === "ai_gen" ? "刷新 AI 历史" : category === "journals" ? "抓取当前期刊分类" : `刷新 ${category} 文章`}
                                     >
                                         <RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin")} />
                                         {category === "ai_gen" ? "刷新历史" : `抓取 ${fetchCount} 篇`}
@@ -1516,8 +1625,11 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                 className="absolute right-0 top-full z-50 mt-3 rounded-[22px] border-4 border-theme-border bg-theme-card-bg p-3 shadow-[0_10px_0_0_var(--theme-shadow)]"
                                             >
                                                 <div className="mb-2 text-xs font-black uppercase tracking-[0.12em] text-slate-500">抓取数量</div>
-                                                <div className="flex gap-2">
-                                                    {[1, 2, 3, 4, 5].map((count) => (
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    {(category === "journals"
+                                                        ? JOURNAL_FETCH_COUNT_OPTIONS
+                                                        : [1, 2, 3, 4, 5]
+                                                    ).map((count) => (
                                                         <button
                                                             key={count}
                                                             onClick={() => {
@@ -1556,11 +1668,13 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                         onClick={() => {
                                             setShowSettings(false);
                                             setCatStartError(null);
+                                            applyFetchCountForCategory(tab.id);
                                             if (tab.id === "ai_gen" || tab.id === "cat_mode") {
                                                 setCategory(tab.id);
                                                 return;
                                             }
-                                            const cached = getFeed(tab.id);
+                                            const cacheKey = tab.id === "journals" ? `journals:${journalGroupId}` : tab.id;
+                                            const cached = getFeed(cacheKey);
                                             setCategory(tab.id);
                                             if (cached && cached.length > 0) {
                                                 setArticles(sortByNewest(cached));
@@ -1591,6 +1705,61 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     </div>
 
                     <AnimatePresence initial={false}>
+                        {category === "journals" && (
+                            <motion.div
+                                key="journal-group-picker"
+                                layout
+                                initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -10, filter: "blur(8px)" }}
+                                animate={{ opacity: 1, height: "auto", y: 0, filter: "blur(0px)" }}
+                                exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, height: 0, y: -10, filter: "blur(8px)" }}
+                                transition={panelTransition}
+                                className="overflow-hidden"
+                            >
+                                <div
+                                    data-journal-group-picker="true"
+                                    className="rounded-[24px] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_3px_0_var(--theme-shadow)]"
+                                >
+                                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                                        {JOURNAL_GROUPS.map((group) => {
+                                            const isActive = journalGroupId === group.id;
+                                            return (
+                                                <button
+                                                    key={group.id}
+                                                    type="button"
+                                                    onClick={() => handleJournalGroupSelect(group.id)}
+                                                    className={cn(
+                                                        "ui-pressable relative flex min-h-[46px] items-center justify-center overflow-hidden rounded-full px-3 text-sm font-black",
+                                                        isActive
+                                                            ? "text-theme-primary-text"
+                                                            : "bg-theme-base-bg text-theme-text-muted hover:text-theme-text",
+                                                    )}
+                                                    style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.1)", 3)}
+                                                >
+                                                    {isActive ? (
+                                                        <motion.span
+                                                            layoutId="journal-group-pill"
+                                                            className="absolute inset-0 rounded-full border-[3px] border-theme-border bg-theme-primary-bg shadow-[0_4px_0_0_var(--theme-shadow)]"
+                                                            transition={panelTransition}
+                                                        />
+                                                    ) : null}
+                                                    <span className="relative z-10 truncate">{group.label}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[18px] border-2 border-theme-border bg-theme-base-bg px-3 py-2 text-[11px] font-bold leading-5 text-theme-text-muted">
+                                        <span className="font-black text-theme-text">
+                                            {JOURNAL_GROUPS.find((group) => group.id === journalGroupId)?.label}
+                                        </span>
+                                        <span className="hidden text-theme-text-muted sm:inline">包含</span>
+                                        <span className="text-theme-text">
+                                            {getJournalSourcesByGroup(journalGroupId).map((source) => source.name).join(" / ")}
+                                        </span>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+
                         {category !== "ai_gen" && category !== "cat_mode" && (
                             <motion.div
                                 key="feed-view-filters"
@@ -1601,34 +1770,35 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                 transition={panelTransition}
                                 className="overflow-hidden"
                             >
-                                <div className="grid gap-3 rounded-[28px] border-4 border-theme-border bg-theme-card-bg p-2 shadow-[0_3px_0_var(--theme-shadow)] md:grid-cols-4">
+                                <div
+                                    data-feed-view-switch="compact"
+                                    className="inline-grid max-w-[260px] grid-cols-2 gap-1 rounded-full border-2 border-theme-border bg-theme-card-bg p-1 shadow-[0_2px_0_var(--theme-shadow)]"
+                                >
                                     {feedViewModel.filterItems.map((filterItem) => {
-                                        const Icon = filterItem.icon;
                                         const isActive = activeView === filterItem.id;
                                         return (
                                             <button
                                                 key={filterItem.id}
                                                 onClick={() => setActiveView(filterItem.id)}
                                                 className={cn(
-                                                    "ui-pressable relative flex min-h-[48px] items-center justify-center gap-2 overflow-hidden rounded-full px-3 py-2 text-sm font-black",
+                                                    "ui-pressable relative flex min-h-[32px] items-center justify-center gap-1.5 overflow-hidden rounded-full px-3 py-1 text-[11px] font-black",
                                                     isActive
                                                         ? "text-theme-primary-text"
                                                         : "bg-theme-base-bg text-theme-text-muted hover:text-theme-text"
                                                 )}
-                                                style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.1)", 4)}
+                                                style={getPressableStyle(isActive ? "var(--theme-shadow)" : "rgba(0,0,0,0.08)", 1.5)}
                                             >
                                                 {isActive ? (
                                                     <motion.span
                                                         layoutId="read-view-pill"
-                                                        className="absolute inset-0 rounded-full bg-theme-primary-bg shadow-[0_6px_0_0_var(--theme-shadow)] border-[3px] border-theme-border"
+                                                        className="absolute inset-0 rounded-full bg-theme-primary-bg shadow-[0_2px_0_0_var(--theme-shadow)] border-2 border-theme-border"
                                                         transition={panelTransition}
                                                     />
                                                 ) : null}
-                                                <span className="relative z-10 flex items-center gap-2">
-                                                    <Icon className="h-4 w-4" />
+                                                <span className="relative z-10 flex items-center gap-1.5">
                                                     <span>{filterItem.label}</span>
                                                     <span className={cn(
-                                                        "rounded-full px-2 py-0.5 text-[10px] font-black border-2",
+                                                        "rounded-full border px-1.5 py-0 text-[9px] font-black",
                                                         isActive ? "bg-theme-card-bg text-theme-primary-text border-theme-border" : "bg-theme-card-bg border-theme-border text-theme-text font-bold"
                                                     )}>
                                                         {filterItem.count}
@@ -2265,7 +2435,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants} className="space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-3 px-1">
                             <h4 className="text-sm font-black text-theme-text">
-                                {showArchivedHistory ? "归档箱" : "历史文章"}
+                                {showArchivedHistory ? "归档箱" : "全部文章"}
                             </h4>
                             <div className="flex items-center gap-2">
                                 <button
@@ -2278,7 +2448,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                             : "border-theme-border/50 bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
                                     )}
                                 >
-                                    历史 {activeHistoryCount}
+                                    全部 {activeHistoryCount}
                                 </button>
                                 <button
                                     type="button"
@@ -2518,7 +2688,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                     <motion.div variants={prefersReducedMotion ? undefined : blockEntryVariants} className="space-y-3">
                         <div className="flex flex-wrap items-center justify-between gap-3 px-1">
                             <h4 className="text-sm font-black text-theme-text">
-                                {showArchivedHistory ? "训练归档" : "训练历史"}
+                                {showArchivedHistory ? "训练归档" : "全部训练"}
                             </h4>
                             <div className="flex items-center gap-2">
                                 <button
@@ -2531,7 +2701,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                             : "border-theme-border/50 bg-theme-card-bg text-theme-text-muted hover:text-theme-text",
                                     )}
                                 >
-                                    历史 {activeHistoryCount}
+                                    全部 {activeHistoryCount}
                                 </button>
                                 <button
                                     type="button"
@@ -2596,20 +2766,22 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                 >
                     {articles.length === 0 && (
                         <div className={cn(shellCardClass, "py-16 text-center text-sm italic text-theme-text-muted")}>
-                            点击刷新按钮抓取文章 / Click refresh to fetch articles
+                            {category === "journals"
+                                ? "选择期刊分类后，点击抓取按钮获取该分类文章"
+                                : "点击刷新按钮抓取文章 / Click refresh to fetch articles"}
                         </div>
                     )}
 
                     {articles.length > 0 && (
                         <AnimatePresence mode="wait">
                             <motion.div
-                                key={`feed-view-${category}-${activeView}-${feedViewModel.filteredArticles.length === 0 ? "empty" : "filled"}`}
+                                key={`feed-view-${category}-${journalGroupId}-${activeView}-${feedViewModel.filteredArticles.length === 0 ? "empty" : "filled"}`}
                                 className="space-y-6"
                                 variants={prefersReducedMotion ? undefined : blockEntryVariants}
                             >
                                 {feedViewModel.filteredArticles.length === 0 ? (
                                     <div className={cn(shellCardClass, "p-10 text-center text-sm text-theme-text-muted")}>
-                                        这个分组暂时没有文章
+                                        {activeView === "archive" ? "归档里暂时没有文章" : "这个分组暂时没有文章"}
                                     </div>
                                 ) : (
                                     <motion.div
@@ -2629,6 +2801,7 @@ export function RecommendedArticles({ onSelect, onArticleLoaded, onListUpdate, o
                                                     category={category}
                                                     onSelect={handleSelectArticle}
                                                     onDelete={handleDelete}
+                                                    onArchive={handleArchive}
                                                     isLoading={loadingArticleLink === item.link}
                                                     isAnyLoading={Boolean(loadingArticleLink)}
                                                 />
@@ -2799,6 +2972,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, onArchive, is
     return (
         <div
             role="button"
+            data-article-card-link={item.link}
             tabIndex={isAnyLoading ? -1 : 0}
             onClick={handleOpenArticle}
             onKeyDown={(event) => {
@@ -2808,7 +2982,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, onArchive, is
             }}
             className={cn(
                 "ui-pressable group relative flex h-full min-h-[320px] cursor-pointer flex-col overflow-hidden rounded-[28px] border-4 border-theme-border bg-theme-card-bg text-left transition-all duration-300",
-                isAnyLoading && !isLoading && "opacity-75"
+                isAnyLoading && !isLoading && "pointer-events-none"
             )}
             style={getPressableStyle("var(--theme-shadow)", 8)}
         >
@@ -2846,7 +3020,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, onArchive, is
                                 event.stopPropagation();
                                 onArchive(item.link, !isArchived);
                             }}
-                            className="ui-pressable opacity-0 group-hover:opacity-100 transition-opacity flex h-7 w-7 items-center justify-center rounded-full border-2 border-theme-border bg-theme-card-bg text-theme-text-muted hover:text-theme-text"
+                            className="ui-pressable flex h-7 w-7 items-center justify-center rounded-full border-2 border-theme-border bg-theme-card-bg text-theme-text-muted transition hover:text-theme-text"
                             style={getPressableStyle("var(--theme-shadow)", 3)}
                             title={isArchived ? "恢复文章" : "归档文章"}
                             aria-label={isArchived ? "恢复文章" : "归档文章"}
@@ -2860,7 +3034,7 @@ function ArticleCard({ item, status, category, onSelect, onDelete, onArchive, is
                             event.stopPropagation();
                             onDelete(item.link);
                         }}
-                        className="ui-pressable opacity-0 group-hover:opacity-100 transition-opacity flex h-7 w-7 items-center justify-center rounded-full border-2 border-theme-border bg-theme-card-bg text-rose-500"
+                        className="ui-pressable flex h-7 w-7 items-center justify-center rounded-full border-2 border-theme-border bg-theme-card-bg text-rose-500 transition"
                         style={getPressableStyle("var(--theme-shadow)", 3)}
                         title="删除文章"
                         aria-label="删除文章"

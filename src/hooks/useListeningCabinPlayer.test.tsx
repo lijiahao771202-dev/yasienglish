@@ -1062,4 +1062,39 @@ describe("useListeningCabinPlayer", () => {
         expect(latestAudio.currentTime).toBeCloseTo(1.3, 2);
         expect(latestPlayer.playerState.isPlaying).toBe(true);
     });
+
+    it("forces single_pause mode when session practiceMode is rebuild", async () => {
+        const rebuildSession = {
+            ...buildSession(),
+            practiceMode: "rebuild" as const,
+        };
+
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://narration",
+            marks: [],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={rebuildSession}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+
+        await flushMicrotasks();
+
+        if (!latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        await act(async () => {
+            latestPlayer?.setAutoAllMode();
+        });
+
+        expect(latestPlayer.playerState.playbackMode).toBe("single_pause");
+    });
 });

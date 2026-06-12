@@ -1,9 +1,12 @@
+import type { RebuildContentMode } from "@/lib/rebuild-content-mode";
+
 export interface BattleDrillSelection {
     type: "scenario";
     topic: string;
     topicLine?: string;
     topicPrompt?: string;
     rebuildVariant?: "sentence" | "passage";
+    rebuildContentMode?: RebuildContentMode;
     segmentCount?: 2 | 3 | 5;
     translationVariant?: "sentence" | "passage";
     isQuickMatch?: boolean;

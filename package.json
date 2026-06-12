@@ -29,6 +29,7 @@
     "@huggingface/transformers": "3.3.3",
     "@mlc-ai/web-llm": "^0.2.82",
     "@mozilla/readability": "^0.6.0",
+    "@next/swc-darwin-arm64": "^16.2.9",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.99.1",
     "@tiptap/extension-character-count": "^3.22.3",

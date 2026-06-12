@@ -12,6 +12,13 @@ import {
     validateRebuildPassageSegments,
 } from "@/lib/rebuild-passage";
 import { countWords } from "@/lib/translationDifficulty";
+import {
+    DEFAULT_REBUILD_CONTENT_MODE,
+    getRebuildContentModeLabel,
+    getRebuildContentModePrompt,
+    normalizeRebuildContentMode,
+    type RebuildContentMode,
+} from "@/lib/rebuild-content-mode";
 
 const REBUILD_UPSTREAM_MAX_ATTEMPTS = 3;
 
@@ -146,10 +153,12 @@ export async function generateRebuildAiDrill(params: {
     topicPrompt?: string;
     injectedVocabulary?: string[];
     effectiveElo: number;
+    contentMode?: RebuildContentMode;
     provider?: "deepseek" | "glm" | "nvidia" | "github";
     nvidiaModel?: string;
 }) {
     const { topic, topicPrompt, injectedVocabulary, effectiveElo } = params;
+    const contentMode = normalizeRebuildContentMode(params.contentMode ?? DEFAULT_REBUILD_CONTENT_MODE);
     const client = params.provider
         ? await createDeepSeekClientForCurrentUserWithOverride({
             provider: params.provider,
@@ -166,6 +175,7 @@ You are generating JSON for natural spoken English listening material.
 
 Display topic: "${topic}"
 ${topicPrompt?.trim() ? `Scenario brief:\n${topicPrompt.trim()}` : `Scenario brief:\nTopic: ${topic}`}
+${getRebuildContentModePrompt(contentMode)}
 Difficulty target:
 - CEFR: ${difficulty.practiceTier.cefr}
 - Band Position: ${difficulty.bandPosition}
@@ -181,6 +191,7 @@ Requirements:
 - Write ONE natural spoken English listening sentence.
 - Make it sound like a real-life listening moment, not a lesson title or an exercise instruction.
 - The sentence must fit the scenario, but do not just repeat the topic labels.
+- Follow the selected content mode exactly: ${getRebuildContentModeLabel(contentMode)}.
 - Add a specific micro-scene in "_scenario_topic".
 - Return only "reference_english", "chinese", and "_scenario_topic".
 - Prefer the preferred length band, but keep naturalness first.
@@ -222,6 +233,7 @@ Return valid JSON only:
         referenceEnglish,
         theme: topic,
         scene,
+        contentMode,
         candidateId: `rebuild-ai-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     }, effectiveElo);
 }
@@ -232,10 +244,12 @@ export async function generateRebuildPassageAiDrill(params: {
     injectedVocabulary?: string[];
     effectiveElo: number;
     segmentCount: 2 | 3 | 5;
+    contentMode?: RebuildContentMode;
     provider?: "deepseek" | "glm" | "nvidia" | "github";
     nvidiaModel?: string;
 }) {
     const { topic, topicPrompt, injectedVocabulary, effectiveElo, segmentCount } = params;
+    const contentMode = normalizeRebuildContentMode(params.contentMode ?? DEFAULT_REBUILD_CONTENT_MODE);
     const client = params.provider
         ? await createDeepSeekClientForCurrentUserWithOverride({
             provider: params.provider,
@@ -253,6 +267,7 @@ You are generating JSON for a short spoken English listening passage.
 
 Display topic: "${topic}"
 ${topicPrompt?.trim() ? `Scenario brief:\n${topicPrompt.trim()}` : `Scenario brief:\nTopic: ${topic}`}
+${getRebuildContentModePrompt(contentMode)}
 Difficulty target:
 - CEFR: ${difficultyProfile.practiceTier.cefr}
 - Band Position: ${difficultyProfile.bandPosition ?? "mid"}
@@ -270,6 +285,7 @@ ${injectedVocabularySection}
 
 Requirements:
 - Create ONE coherent short spoken passage split into exactly ${segmentCount} natural segments.
+- Follow the selected content mode exactly: ${getRebuildContentModeLabel(contentMode)}.
 - All segments must stay on the same topic and same difficulty.
 - Prefer the soft word-count band so the passage feels substantial without becoming stiff.
 - You may go slightly outside the preferred band, but never outside the hard limit.
@@ -341,6 +357,7 @@ Return valid JSON only:
             topic,
             subTopic: scene,
             isScenario: true,
+            rebuildContentMode: contentMode,
         },
         _sourceMeta: {
             sourceMode: "ai" as DrillSourceMode,

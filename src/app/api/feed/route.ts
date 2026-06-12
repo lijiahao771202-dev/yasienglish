@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import Parser from "rss-parser";
+import { getJournalSourcesByGroup, resolveJournalGroupId } from "@/lib/journal-feeds";
 
 export const revalidate = 3600; // Cache for 1 hour
 
@@ -17,20 +18,11 @@ const FEEDS = {
         { name: "Scientific American Mind", url: "https://www.scientificamerican.com/section/mind-brain/?format=rss" },
         { name: "Greater Good Science", url: "https://greatergood.berkeley.edu/feed/rss" },
     ],
-    ai_news: [
-        { name: "Wired AI", url: "https://www.wired.com/feed/category/ai/latest/rss" },
-        { name: "MIT Tech Review", url: "https://www.technologyreview.com/feed/" },
-        { name: "Anthropic Research", url: "https://raw.githubusercontent.com/Olshansk/rss-feeds/main/feeds/feed_anthropic_research.xml" },
-        { name: "OpenAI", url: "https://openai.com/news/rss.xml" },
-        { name: "Google DeepMind", url: "https://deepmind.google/blog/feed/basic" },
-        { name: "Hugging Face", url: "https://hf.co/blog/feed.xml" },
-        { name: "LangChain", url: "https://blog.langchain.dev/rss/" },
-        { name: "Arxiv CS.AI", url: "https://rss.arxiv.org/rss/cs.AI" },
-    ]
 };
 
 type FeedCategory = keyof typeof FEEDS;
-type FeedSource = { name: string; url: string };
+type FeedSource = { name: string; url: string; weight?: number };
+type FeedRequestCategory = FeedCategory | "journals";
 
 interface ParsedFeedItem {
     title?: string;
@@ -66,7 +58,7 @@ const TRACKING_PARAMS = new Set([
     "ref_src",
 ]);
 
-const CATEGORY_KEYWORDS: Record<FeedCategory, { positive: string[]; negative: string[] }> = {
+const CATEGORY_KEYWORDS: Record<FeedRequestCategory, { positive: string[]; negative: string[] }> = {
     psychology: {
         positive: [
             "study",
@@ -96,19 +88,21 @@ const CATEGORY_KEYWORDS: Record<FeedCategory, { positive: string[]; negative: st
             "member institutions",
         ],
     },
-    ai_news: {
+    journals: {
         positive: [
             "research",
             "paper",
-            "benchmark",
-            "model",
-            "release",
-            "evaluation",
-            "safety",
-            "alignment",
-            "agent",
-            "training",
-            "inference",
+            "article",
+            "study",
+            "trial",
+            "evidence",
+            "findings",
+            "meta-analysis",
+            "review",
+            "science",
+            "clinical",
+            "behaviour",
+            "learning",
         ],
         negative: [
             "careers",
@@ -120,6 +114,9 @@ const CATEGORY_KEYWORDS: Record<FeedCategory, { positive: string[]; negative: st
             "sponsored",
             "announcement",
             "newsletter",
+            "correction",
+            "erratum",
+            "call for papers",
         ],
     },
 };
@@ -131,11 +128,29 @@ const SOURCE_WEIGHTS: Record<string, number> = {
     "BPS Research Digest": 1.08,
     "PsyPost": 1.12,
     "Scientific American Mind": 1.06,
-    "MIT Tech Review": 1.1,
-    "OpenAI": 1.08,
-    "Google DeepMind": 1.08,
-    "Anthropic Research": 1.06,
-    "Arxiv CS.AI": 1.12,
+    "Nature": 1.15,
+    "Science": 1.15,
+    "Nature Communications": 1.08,
+    "Scientific Reports": 1.02,
+    "PLOS ONE": 1.02,
+    "Cell": 1.14,
+    "Neuron": 1.1,
+    "Trends in Neurosciences": 1.08,
+    "The Lancet": 1.15,
+    "NEJM": 1.14,
+    "Nature Human Behaviour": 1.14,
+    "npj Science of Learning": 1.1,
+    "Trends in Cognitive Sciences": 1.12,
+    "Psychological Science": 1.08,
+    "Learning and Instruction": 1.08,
+    "Cognition": 1.06,
+    "Journal of Memory and Language": 1.06,
+};
+
+const FEED_FETCH_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
 };
 
 function stripHtml(value?: string): string {
@@ -180,7 +195,7 @@ function includesAny(haystack: string, needles: string[]): boolean {
 
 function scoreArticle(
     article: { title?: string; snippet?: string; pubDate?: string; source?: string },
-    category: FeedCategory,
+    category: FeedRequestCategory,
 ): number {
     const title = normalizeTitle(article.title);
     const snippet = normalizeTitle(stripHtml(article.snippet));
@@ -202,33 +217,49 @@ function scoreArticle(
 
 function shouldRejectArticle(
     article: { title?: string; snippet?: string },
-    category: FeedCategory,
+    category: FeedRequestCategory,
 ): boolean {
     const title = normalizeTitle(article.title);
     const snippet = normalizeTitle(stripHtml(article.snippet));
     const text = `${title} ${snippet}`.trim();
     const keywords = CATEGORY_KEYWORDS[category];
+    if (includesAny(title, keywords.negative)) return true;
     return includesAny(text, keywords.negative) && !includesAny(text, keywords.positive);
 }
 
 export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const category = searchParams.get("category") || "psychology";
+    const isJournalRequest = category === "journals";
     const requestedCount = Number(searchParams.get("count") ?? "10");
+    const maxCount = isJournalRequest ? 30 : 20;
     const count = Number.isFinite(requestedCount)
-        ? Math.min(Math.max(Math.floor(requestedCount), 1), 20)
+        ? Math.min(Math.max(Math.floor(requestedCount), 1), maxCount)
         : 10;
     const perSourceLimit = Math.max(count, 5);
 
     // Handle Standard RSS Feeds
     const parser = new Parser();
-    const selectedCategory = (category as FeedCategory) in FEEDS ? (category as FeedCategory) : "psychology";
-    const sources: FeedSource[] = FEEDS[selectedCategory];
+    const selectedCategory: FeedRequestCategory = isJournalRequest
+        ? "journals"
+        : (category as FeedCategory) in FEEDS ? (category as FeedCategory) : "psychology";
+    const journalGroupId = resolveJournalGroupId(searchParams.get("journalGroup"));
+    const sources: FeedSource[] = selectedCategory === "journals"
+        ? getJournalSourcesByGroup(journalGroupId)
+        : FEEDS[selectedCategory];
 
     try {
         const feedPromises = sources.map(async (source) => {
             try {
-                const feed = await parser.parseURL(source.url);
+                const feedResponse = await fetch(source.url, {
+                    headers: FEED_FETCH_HEADERS,
+                    redirect: "follow",
+                });
+                if (!feedResponse.ok) {
+                    throw new Error(`Status code ${feedResponse.status}`);
+                }
+                const feedXml = await feedResponse.text();
+                const feed = await parser.parseString(feedXml);
                 return feed.items.slice(0, perSourceLimit).map((rawItem) => {
                     const item = rawItem as ParsedFeedItem;
                     // Extract image from various RSS fields
@@ -373,7 +404,9 @@ export async function GET(req: Request) {
             return true;
         });
 
-        const perSourceCap = Math.max(1, Math.min(3, Math.ceil(count / 3)));
+        const perSourceCap = isJournalRequest
+            ? Math.max(3, Math.ceil(count / Math.max(1, sources.length)))
+            : Math.max(1, Math.min(3, Math.ceil(count / 3)));
         const sourceCount = new Map<string, number>();
         const articles = deduped
             .filter((article) => {

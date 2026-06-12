@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { deepseek } from "@/lib/deepseek";
+import {
+    buildAiProviderRateLimitPayload,
+    getAiProviderRetryAfterSeconds,
+    isAiProviderRateLimitError,
+} from "@/lib/ai-provider-errors";
 import { pickAIGenerationTopicSeed, type TopicSelection } from "@/lib/content-topic-pool";
 import {
     getStrictRagLimit,
@@ -919,6 +924,18 @@ STRICT REGENERATION NOTICE:
             model: "deepseek-chat",
         });
     } catch (error) {
+        if (isAiProviderRateLimitError(error)) {
+            console.warn("Article generation provider rate limited:", error);
+            const retryAfterSeconds = getAiProviderRetryAfterSeconds(error);
+            return NextResponse.json(
+                buildAiProviderRateLimitPayload("当前 AI 模型并发请求过多，文章生成稍后可重试。"),
+                {
+                    status: 429,
+                    headers: retryAfterSeconds ? { "Retry-After": String(retryAfterSeconds) } : undefined,
+                },
+            );
+        }
+
         console.error("Generation API Error:", error);
         return NextResponse.json(
             { error: "Failed to generate article" },

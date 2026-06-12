@@ -216,8 +216,9 @@ function findButtonByText(container: HTMLElement, text: string) {
 
 async function clickButton(button: HTMLButtonElement | null) {
     if (!button) throw new Error("Button not found");
-    act(() => {
+    await act(async () => {
         button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        await Promise.resolve();
     });
 }
 
@@ -283,6 +284,7 @@ describe("RecommendedArticles AI Studio wizard", () => {
         dbArticlesToArrayMock.mockClear();
         dbReadArticlesToArrayMock.mockClear();
         vi.stubGlobal("fetch", fetchMock);
+        vi.stubGlobal("confirm", vi.fn(() => true));
     });
 
     afterEach(async () => {
@@ -536,5 +538,162 @@ describe("RecommendedArticles AI Studio wizard", () => {
         await clickButton(findButtonByText(container, "CAT 成长"));
 
         expect(container.querySelector('[data-ai-gen-learning-tracker="true"]')).toBeNull();
+    });
+
+    it("shows journal categories instead of AI news and fetches the selected journal group", async () => {
+        fetchMock.mockResolvedValue({
+            ok: true,
+            json: async () => ([{
+                title: "Medical journal article",
+                link: "https://example.com/medical-journal-article",
+                pubDate: new Date().toISOString(),
+                source: "The Lancet",
+                snippet: "A clinical research update.",
+            }]),
+        });
+
+        const { container } = await renderRecommendedArticles();
+
+        expect(container.textContent).not.toContain("AI 资讯");
+        const journalTab = findButtonByText(container, "期刊");
+        expect(journalTab).toBeTruthy();
+
+        await clickButton(journalTab);
+
+        expect(container.querySelector('[data-journal-group-picker="true"]')).toBeTruthy();
+        expect(findButtonByText(container, "综合热门")).toBeTruthy();
+
+        await clickButton(findButtonByText(container, "医学健康"));
+        await clickButton(findButtonByText(container, "抓取 30 篇"));
+
+        await waitForCondition(() => fetchMock.mock.calls.length === 1, 2500);
+        const firstUrl = String(fetchMock.mock.calls[0]?.[0]);
+        expect(firstUrl).toContain("category=journals");
+        expect(firstUrl).toContain("journalGroup=medicine");
+        expect(firstUrl).toContain("count=30");
+
+        await clickButton(findButtonByText(container, "心理/学习"));
+        await clickButton(findButtonByText(container, "抓取 30 篇"));
+
+        await waitForCondition(() => fetchMock.mock.calls.length === 2, 2500);
+        const secondUrl = String(fetchMock.mock.calls[1]?.[0]);
+        expect(secondUrl).toContain("category=journals");
+        expect(secondUrl).toContain("journalGroup=psychology_learning");
+        expect(secondUrl).toContain("count=30");
+    });
+
+    it("keeps journal feed controls to all and archive only", async () => {
+        const { container } = await renderRecommendedArticles();
+
+        await clickButton(findButtonByText(container, "期刊"));
+
+        expect(findButtonByText(container, "全部")).toBeTruthy();
+        expect(findButtonByText(container, "归档")).toBeTruthy();
+        expect(container.querySelector('[data-feed-view-switch="compact"]')).toBeTruthy();
+        expect(findButtonByText(container, "新到达")).toBeNull();
+        expect(findButtonByText(container, "待阅读")).toBeNull();
+        expect(findButtonByText(container, "已读历史")).toBeNull();
+    });
+
+    it("archives journal articles inside the active journal group cache", async () => {
+        fetchMock.mockResolvedValue({
+            ok: true,
+            json: async () => ([{
+                title: "Medical journal article",
+                link: "https://example.com/medical-journal-article",
+                pubDate: new Date().toISOString(),
+                source: "The Lancet",
+                snippet: "A clinical research update.",
+            }]),
+        });
+
+        const { container } = await renderRecommendedArticles();
+
+        await clickButton(findButtonByText(container, "期刊"));
+        await clickButton(findButtonByText(container, "医学健康"));
+        await clickButton(findButtonByText(container, "抓取 30 篇"));
+
+        await waitForCondition(() => container.textContent?.includes("Medical journal article") ?? false, 2500);
+        setFeedMock.mockClear();
+
+        await clickButton(container.querySelector<HTMLButtonElement>('button[aria-label="归档文章"]'));
+
+        await waitForCondition(() => setFeedMock.mock.calls.length > 0, 2500);
+        expect(setFeedMock).toHaveBeenCalledWith(
+            "journals:medicine",
+            [expect.objectContaining({
+                link: "https://example.com/medical-journal-article",
+                archivedAt: expect.any(Number),
+            })],
+        );
+
+        await clickButton(findButtonByText(container, "归档"));
+        expect(container.textContent).toContain("Medical journal article");
+    });
+
+    it("deletes journal articles from the active journal group cache", async () => {
+        fetchMock.mockResolvedValue({
+            ok: true,
+            json: async () => ([{
+                title: "Medical journal article",
+                link: "https://example.com/medical-journal-article",
+                pubDate: new Date().toISOString(),
+                source: "The Lancet",
+                snippet: "A clinical research update.",
+            }]),
+        });
+
+        const { container } = await renderRecommendedArticles();
+
+        await clickButton(findButtonByText(container, "期刊"));
+        await clickButton(findButtonByText(container, "医学健康"));
+        await clickButton(findButtonByText(container, "抓取 30 篇"));
+
+        await waitForCondition(() => container.textContent?.includes("Medical journal article") ?? false, 2500);
+        await clickButton(container.querySelector<HTMLButtonElement>('button[aria-label="删除文章"]'));
+
+        await waitForCondition(() => deleteArticleMock.mock.calls.length > 0, 2500);
+        expect(deleteArticleMock).toHaveBeenCalledWith(
+            "journals:medicine",
+            "https://example.com/medical-journal-article",
+        );
+    });
+
+    it("passes RSS fallback content when opening a journal article", async () => {
+        fetchMock.mockResolvedValue({
+            ok: true,
+            json: async () => ([{
+                title: "Medical journal article",
+                link: "https://example.com/medical-journal-article",
+                pubDate: new Date().toISOString(),
+                source: "The Lancet",
+                snippet: "A clinical research update.",
+            }]),
+        });
+
+        const { container, onSelect } = await renderRecommendedArticles();
+
+        await clickButton(findButtonByText(container, "期刊"));
+        await clickButton(findButtonByText(container, "医学健康"));
+        await clickButton(findButtonByText(container, "抓取 30 篇"));
+
+        await waitForCondition(() => container.textContent?.includes("Medical journal article") ?? false, 2500);
+
+        await act(async () => {
+            container
+                .querySelector<HTMLElement>('[data-article-card-link="https://example.com/medical-journal-article"]')
+                ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+            await Promise.resolve();
+        });
+
+        await waitForCondition(() => onSelect.mock.calls.length > 0, 2500);
+        expect(onSelect).toHaveBeenCalledWith(
+            "https://example.com/medical-journal-article",
+            expect.objectContaining({
+                title: "Medical journal article",
+                textContent: "A clinical research update.",
+                siteName: "The Lancet 摘要",
+            }),
+        );
     });
 });

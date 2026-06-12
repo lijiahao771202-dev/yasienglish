@@ -9,7 +9,7 @@ import {
     RANDOM_TRANSLATION_SCENARIO_TOPIC,
     resolveTranslationScenarioContext,
 } from "@/lib/translation-quickmatch-topics";
-import type { AiProvider } from "@/lib/profile-settings";
+import type { RebuildContentMode } from "@/lib/rebuild-content-mode";
 
 export type DrillGenerationMode = "translation" | "listening" | "rebuild";
 export type DrillScenarioMode = DrillGenerationMode | "dictation";
@@ -244,14 +244,13 @@ export function buildDrillGenerationRequestBody(args: {
     injectedVocabulary?: string[];
     mode: DrillGenerationMode;
     rebuildVariant?: DrillVariant;
+    rebuildContentMode?: RebuildContentMode;
     segmentCount?: 2 | 3 | 5;
     sourceMode: DrillSourceMode;
     timestamp: number;
     topicLine: string;
     topicPrompt?: string;
     translationVariant?: DrillVariant;
-    provider?: AiProvider;
-    nvidiaModel?: string;
 }): DrillGenerationRequestBody {
     return {
         articleTitle: args.topicLine,
@@ -264,10 +263,9 @@ export function buildDrillGenerationRequestBody(args: {
         sourceMode: args.sourceMode,
         excludeBankIds: args.excludeBankIds,
         rebuildVariant: args.rebuildVariant,
+        rebuildContentMode: args.rebuildContentMode,
         translationVariant: args.translationVariant,
         segmentCount: args.segmentCount,
-        provider: args.provider,
-        nvidiaModel: args.nvidiaModel,
         bossType: args.bossType,
         _t: args.timestamp,
     };

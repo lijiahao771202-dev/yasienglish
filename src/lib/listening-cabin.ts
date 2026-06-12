@@ -94,6 +94,7 @@ export interface ListeningCabinGenerationRequest {
     scriptLength: ListeningCabinScriptLength;
     focusTags: ListeningCabinFocusTag[];
     speakerPlan: ListeningCabinSpeakerPlan;
+    practiceMode?: "listen" | "rebuild";
 }
 
 export interface ListeningCabinGenerationResponse {
@@ -135,6 +136,7 @@ export interface ListeningCabinSession extends ListeningCabinGenerationResponse 
     lastSentenceIndex: number;
     lastPlayedAt: number | null;
     audioDurationMs?: number;
+    practiceMode?: "listen" | "rebuild";
 }
 
 export type ListeningCabinPlaybackMode =
@@ -554,6 +556,7 @@ export const DEFAULT_LISTENING_CABIN_REQUEST: ListeningCabinGenerationRequest = 
             { speaker: "Narrator", voice: DEFAULT_TTS_VOICE },
         ],
     },
+    practiceMode: "listen",
 };
 
 export function isListeningCabinMultiSpeakerMode(scriptMode: ListeningCabinScriptMode) {
@@ -819,6 +822,7 @@ export function normalizeListeningCabinRequest(
         sentenceLength,
         scriptLength,
         speakerPlan: normalizeSpeakerPlan(payload?.speakerPlan, scriptMode),
+        practiceMode: payload?.practiceMode === "rebuild" ? "rebuild" : "listen",
     };
 }
 
@@ -1228,10 +1232,14 @@ export function lintListeningCabinDraft(params: {
     }
 
     const essayLikePattern = /\b(in conclusion|this essay|firstly|secondly|to summarize|moreover)\b/i;
-    const speakerLabelPattern = /^\s*[A-Za-z][A-Za-z0-9 ]{0,16}\s*[:：]/;
 
     if (request.scriptMode === "monologue") {
-        const hasSpeakerLabels = sentences.some((sentence) => speakerLabelPattern.test(sentence.english));
+        const configSpeakers = request.speakerPlan?.assignments?.map((a) => a.speaker).filter(Boolean) || [];
+        const escapedSpeakers = configSpeakers.map((s) => s.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&"));
+        const speakerNamesPattern = ["Speaker\\s*\\d*", "Narrator", "Host", "Guest\\s*\\d*", "Voice\\s*\\d*", ...escapedSpeakers].join("|");
+        const monologueSpeakerLabelRegex = new RegExp(`^\\s*(${speakerNamesPattern})\\s*[:：]`, "i");
+
+        const hasSpeakerLabels = sentences.some((sentence) => monologueSpeakerLabelRegex.test(sentence.english));
         if (hasSpeakerLabels) {
             issues.push("monologue output contains speaker labels");
         }
@@ -1345,10 +1353,27 @@ export function canonicalizeListeningCabinSentenceSpeakers(params: {
     sentences: ListeningCabinSentence[];
 }) {
     if (!isListeningCabinMultiSpeakerMode(params.scriptMode)) {
-        return params.sentences.map((sentence) => ({
-            ...sentence,
-            speaker: undefined,
-        }));
+        const configSpeakers = params.speakerPlan?.assignments?.map((a) => a.speaker).filter(Boolean) || [];
+        const escapedSpeakers = configSpeakers.map((s) => s.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&"));
+        const speakerNamesPattern = ["Speaker\\s*\\d*", "Narrator", "Host", "Guest\\s*\\d*", "Voice\\s*\\d*", ...escapedSpeakers].join("|");
+        const monologueSpeakerLabelRegex = new RegExp(`^\\s*(${speakerNamesPattern})\\s*[:：]\\s*`, "i");
+
+        const chineseSpeakerNamesPattern = [
+            "讲述者", "旁白", "主持人", "嘉宾\\s*\\d*", "发言人", "说话者", "Speaker\\s*\\d*", "Narrator", "Host",
+            ...escapedSpeakers,
+        ].join("|");
+        const monologueChineseSpeakerLabelRegex = new RegExp(`^\\s*(${chineseSpeakerNamesPattern})\\s*[:：]\\s*`, "i");
+
+        return params.sentences.map((sentence) => {
+            const cleanEnglish = sentence.english.replace(monologueSpeakerLabelRegex, "");
+            const cleanChinese = sentence.chinese.replace(monologueChineseSpeakerLabelRegex, "");
+            return {
+                ...sentence,
+                english: cleanEnglish,
+                chinese: cleanChinese,
+                speaker: undefined,
+            };
+        });
     }
 
     const assignments = params.speakerPlan.assignments;
@@ -1680,6 +1705,7 @@ export function createListeningCabinSession(params: {
     response: ListeningCabinGenerationResponse;
     request: ListeningCabinGenerationRequest;
     showChineseSubtitle: boolean;
+    practiceMode?: "listen" | "rebuild";
 }): ListeningCabinSession {
     const now = Date.now();
     const resolvedSpeakerPlan = params.response.meta.resolvedSpeakerPlan ?? params.request.speakerPlan;
@@ -1709,6 +1735,7 @@ export function createListeningCabinSession(params: {
         voice: primaryVoice,
         playbackRate: 1,
         showChineseSubtitle: params.showChineseSubtitle,
+        practiceMode: params.practiceMode ?? params.request.practiceMode ?? "listen",
         lastSentenceIndex: 0,
         lastPlayedAt: null,
     };

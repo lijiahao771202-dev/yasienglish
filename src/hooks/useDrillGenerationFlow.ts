@@ -5,7 +5,7 @@ import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction 
 import { queryRebuildSystemVocabulary } from "@/lib/rebuild-rag";
 import { resolveNextDrillEffectiveElo } from "@/lib/drill-elo";
 import { fetchNextDrillWithRetry } from "@/lib/drill-generation-client";
-import type { AiProvider } from "@/lib/profile-settings";
+import type { RebuildContentMode } from "@/lib/rebuild-content-mode";
 import {
     buildDrillGenerationRequestBody,
     canConsumePrefetchedDrill,
@@ -40,6 +40,7 @@ interface DrillGenerationContext {
     articleTitle?: string;
     articleContent?: string;
     topic?: string;
+    rebuildContentMode?: RebuildContentMode;
     segmentCount?: 2 | 3 | 5;
     isQuickMatch?: boolean;
 }
@@ -57,7 +58,6 @@ interface PrefetchedDrillLike {
 }
 
 interface UseDrillGenerationFlowParams<TDrill extends PrefetchedDrillLike, TTopic extends DrillScenarioContext> {
-    aiProvider: AiProvider;
     activeDrillSourceMode: DrillSourceMode;
     activeTopicPromptRef: MutableRefObject<string | undefined>;
     abortControllerRef: MutableRefObject<AbortController | null>;
@@ -104,11 +104,9 @@ interface UseDrillGenerationFlowParams<TDrill extends PrefetchedDrillLike, TTopi
         pendingBossState: PendingBossState | null;
         pendingGambleState: PendingGambleState | null;
     }) => void;
-    nvidiaModel?: string;
 }
 
 export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopic extends DrillScenarioContext>({
-    aiProvider,
     activeDrillSourceMode,
     activeTopicPromptRef,
     abortControllerRef,
@@ -152,7 +150,6 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
     translationVariant,
     triggerSurpriseDrop,
     updatePendingEventState,
-    nvidiaModel,
 }: UseDrillGenerationFlowParams<TDrill, TTopic>) {
     const scenarioMode = mode === "dictation" ? "dictation" : generationMode;
 
@@ -257,6 +254,7 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
                     excludeBankIds: activeDrillSourceMode === "bank" ? listeningBankExcludeIds : undefined,
                     injectedVocabulary,
                     mode: generationMode,
+                    rebuildContentMode: isRebuildMode ? context.rebuildContentMode : undefined,
                     rebuildVariant: isRebuildMode ? rebuildVariant : undefined,
                     segmentCount: isRebuildPassage || isTranslationPassage ? (context.segmentCount ?? 3) : undefined,
                     sourceMode: activeDrillSourceMode,
@@ -264,8 +262,6 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
                     topicLine: targetScenario.topicLine,
                     topicPrompt: nextTopicPrompt,
                     translationVariant: mode === "translation" ? translationVariant : undefined,
-                    provider: aiProvider,
-                    nvidiaModel,
                 });
 
                 const res = await fetch("/api/drill/next", {
@@ -297,10 +293,10 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
         abortPrefetchRef,
         activeDrillSourceMode,
         activeTopicPromptRef,
-        aiProvider,
         context.articleContent,
         context.articleTitle,
         context.isQuickMatch,
+        context.rebuildContentMode,
         context.segmentCount,
         context.topic,
         drillData?._topicMeta?.topic,
@@ -315,7 +311,6 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
         isTranslationPassage,
         listeningBankExcludeIds,
         mode,
-        nvidiaModel,
         rebuildVariant,
         resolveRebuildInjectedVocabulary,
         scenarioMode,
@@ -426,6 +421,7 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
                 excludeBankIds: activeDrillSourceMode === "bank" ? listeningBankExcludeIds : undefined,
                 injectedVocabulary,
                 mode: generationMode,
+                rebuildContentMode: isRebuildMode ? context.rebuildContentMode : undefined,
                 rebuildVariant: isRebuildMode ? rebuildVariant : undefined,
                 segmentCount: isRebuildPassage || isTranslationPassage ? (context.segmentCount ?? 3) : undefined,
                 sourceMode: activeDrillSourceMode,
@@ -433,8 +429,6 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
                 topicLine: targetScenario.topicLine,
                 topicPrompt: nextTopicPrompt,
                 translationVariant: mode === "translation" ? translationVariant : undefined,
-                provider: aiProvider,
-                nvidiaModel,
             });
             const data = await fetchNextDrillWithRetry(requestBody, {
                 signal,
@@ -459,7 +453,6 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
         abortControllerRef,
         abortPrefetchRef,
         activeDrillSourceMode,
-        aiProvider,
         activeTopicPromptRef,
         bossState,
         clearRebuildChoicePrefetch,
@@ -467,6 +460,7 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
         context.articleContent,
         context.articleTitle,
         context.isQuickMatch,
+        context.rebuildContentMode,
         context.segmentCount,
         context.topic,
         currentElo,
@@ -501,7 +495,6 @@ export function useDrillGenerationFlow<TDrill extends PrefetchedDrillLike, TTopi
         translationVariant,
         triggerSurpriseDrop,
         updatePendingEventState,
-        nvidiaModel,
     ]);
 
     return {

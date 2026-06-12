@@ -34,6 +34,12 @@ import type {
 } from "@/lib/listening-cabin";
 import { getPressableStyle } from "@/lib/pressable";
 import { cn } from "@/lib/utils";
+import {
+    tokenizeRebuildSentence,
+    collectRebuildDistractors,
+    buildRebuildTokenBank,
+    evaluateRebuildSelection,
+} from "@/lib/rebuild-mode";
 
 function renderSentence(sentence: string | undefined) {
     if (!sentence) {
@@ -98,6 +104,7 @@ function isTypographyStyle(value: string): value is TypographyStyle {
 
 function AppleKaraokeWord({ 
     word, 
+    displayWord,
     sentenceIndex,
     getSentenceTiming,
     durationRatio, 
@@ -110,6 +117,7 @@ function AppleKaraokeWord({
     onClick 
 }: { 
     word: string; 
+    displayWord?: string;
     sentenceIndex: number;
     getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null;
     durationRatio: number; 
@@ -285,7 +293,7 @@ function AppleKaraokeWord({
         <motion.span
             data-word-popup-segment={word}
             className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-100 hover:!blur-none focus:outline-none"
-            onClick={onClick}
+            onClick={displayWord && displayWord !== word ? undefined : onClick}
             style={{
                 ...styleConfig, // Apply root typo configs
                 opacity,
@@ -297,11 +305,18 @@ function AppleKaraokeWord({
             }}
         >
             <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
-                {word}
+                {displayWord || word}
             </span>
         </motion.span>
     );
 }
+
+const shakeVariants = {
+    shake: {
+        x: [0, -10, 10, -10, 10, -5, 5, 0],
+        transition: { duration: 0.5 }
+    }
+};
 
 function renderSubtitleBlock(
     sentences: ListeningCabinSentence[],
@@ -313,12 +328,22 @@ function renderSubtitleBlock(
     fontSizeEn: number,
     onWordClick: (word: string, context: string, anchorElement: HTMLElement) => void,
     audioRef?: React.RefObject<HTMLAudioElement | null>,
-    getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null
+    getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null,
+    practiceMode?: "listen" | "rebuild",
+    localMasteryMap?: Record<number, boolean>,
+    skippedSet?: Set<number>,
+    solvedSet?: Set<number>
 ) {
     if (!sentences) return null;
     return sentences.map((sentence, sIdx) => {
         if (!sentence) return null;
         const isActive = (sentence.index - 1) === activeIndex;
+        const sIdxReal = sentence.index - 1;
+        const isSentenceSolved = practiceMode !== "rebuild" ||
+            (localMasteryMap?.[sIdxReal] ?? sentence.isMastered ?? false) ||
+            skippedSet?.has(sIdxReal) ||
+            solvedSet?.has(sIdxReal);
+
         const rawContent = renderSentence(sentence.english) || "";
         const words = rawContent.split(" ");
 
@@ -422,6 +447,7 @@ function renderSubtitleBlock(
                         <AppleKaraokeWord
                             key={`${sIdx}-${wIdx}`}
                             word={word}
+                            displayWord={isSentenceSolved ? word : word.replace(/[a-zA-Z]/g, "•")}
                             sentenceIndex={sentence.index - 1}
                             getSentenceTiming={getSentenceTiming}
                             durationRatio={durationRatio}
@@ -454,7 +480,7 @@ function renderSubtitleBlock(
                             exit: { opacity: 0, transition: { duration: 0.2 } }
                         }}
                         className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer selection:bg-blue-500/10 focus:outline-none"
-                        onClick={(event) => onWordClick(word, rawContent, event.currentTarget)}
+                        onClick={isSentenceSolved ? (event) => onWordClick(word, rawContent, event.currentTarget) : undefined}
                         style={styleConfig}
                     >
                         <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
@@ -471,7 +497,7 @@ function renderSubtitleBlock(
                                     }}
                                     className="inline-block"
                                 >
-                                    {char}
+                                    {isSentenceSolved ? char : (/[a-zA-Z]/.test(char) ? "•" : char)}
                                 </motion.span>
                             ))}
                         </span>
@@ -512,11 +538,11 @@ function renderSubtitleBlock(
                         data-word-popup-segment={word}
                         variants={wordVar}
                         className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-70 transition-opacity focus:outline-none"
-                        onClick={(event) => onWordClick(word, rawContent, event.currentTarget)}
+                        onClick={isSentenceSolved ? (event) => onWordClick(word, rawContent, event.currentTarget) : undefined}
                         style={styleConfig}
                     >
                         <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
-                            {word}
+                            {isSentenceSolved ? word : word.replace(/[a-zA-Z]/g, "•")}
                         </span>
                     </motion.span>
                 );
@@ -635,6 +661,73 @@ function ListeningCabinPlayerView({
 
     // Use a local map for instant UI feedback without re-triggering the player hook
     const [localMasteryMap, setLocalMasteryMap] = useState<Record<number, boolean>>({});
+
+    const currentSentenceIndex = playerState.currentSentenceIndex;
+    const currentSentence = player.currentSentence;
+    const practiceMode = session.practiceMode ?? "listen";
+
+    // Rebuild challenge modes local states
+    const [effectiveElo, setEffectiveElo] = useState<number>(600);
+    const [skippedSet, setSkippedSet] = useState<Set<number>>(new Set());
+    const [solvedSet, setSolvedSet] = useState<Set<number>>(new Set());
+    const [rebuildAnswerTokens, setRebuildAnswerTokens] = useState<string[]>([]);
+    const [rebuildAvailableTokens, setRebuildAvailableTokens] = useState<string[]>([]);
+    const [rebuildFeedback, setRebuildFeedback] = useState<any | null>(null);
+    const [attempts, setAttempts] = useState<number>(0);
+    const [showHint, setShowHint] = useState<boolean>(false);
+    const [isShaking, setIsShaking] = useState<boolean>(false);
+
+    // Fetch ELO on mount
+    useEffect(() => {
+        db.user_profile.orderBy("id").first().then((profile) => {
+            if (profile) {
+                setEffectiveElo(profile.rebuild_elo ?? profile.listening_elo ?? profile.elo_rating ?? 600);
+            }
+        });
+    }, []);
+
+    // Other sentences' tokens to use as related context distractors
+    const otherSentencesTokens = useMemo(() => {
+        if (!session?.sentences) return [];
+        const tokens: string[] = [];
+        session.sentences.forEach((s, idx) => {
+            if (idx !== currentSentenceIndex) {
+                tokens.push(...tokenizeRebuildSentence(s.english || ""));
+            }
+        });
+        return tokens;
+    }, [session, currentSentenceIndex]);
+
+    // Initialize tokens when current sentence index changes
+    useEffect(() => {
+        if (practiceMode !== "rebuild" || !currentSentence) return;
+
+        const answerText = renderSentence(currentSentence.english) || "";
+        const answerTokens = tokenizeRebuildSentence(answerText);
+        const distractorTokens = collectRebuildDistractors({
+            answerTokens,
+            effectiveElo,
+            relatedBankTokens: otherSentencesTokens,
+        });
+        const tokenBank = buildRebuildTokenBank({
+            answerTokens,
+            distractorTokens,
+        });
+
+        setRebuildAnswerTokens([]);
+        setRebuildAvailableTokens(tokenBank);
+        setRebuildFeedback(null);
+        setAttempts(0);
+        setShowHint(false);
+        setIsShaking(false);
+    }, [currentSentenceIndex, practiceMode, currentSentence, effectiveElo, otherSentencesTokens]);
+
+    const isSolved = useMemo(() => {
+        if (practiceMode !== "rebuild") return true;
+        return (localMasteryMap[currentSentenceIndex] ?? currentSentence?.isMastered ?? false) ||
+            skippedSet.has(currentSentenceIndex) ||
+            solvedSet.has(currentSentenceIndex);
+    }, [practiceMode, localMasteryMap, currentSentenceIndex, currentSentence, skippedSet, solvedSet]);
 
     // Mastery-Based Progress
     const masteredCount = useMemo(() => {
@@ -1116,7 +1209,74 @@ function ListeningCabinPlayerView({
         return opened;
     }, [extractSelectionPopupText, openWordPopupAtPosition, subtitleLookupContext]);
 
+    const handleSelectToken = useCallback((idx: number) => {
+        const token = rebuildAvailableTokens[idx];
+        if (token === undefined) return;
+        setRebuildAnswerTokens(prev => [...prev, token]);
+        setRebuildAvailableTokens(prev => prev.filter((_, i) => i !== idx));
+        setRebuildFeedback(null);
+    }, [rebuildAvailableTokens]);
+
+    const handleRemoveToken = useCallback((idx: number) => {
+        const token = rebuildAnswerTokens[idx];
+        if (token === undefined) return;
+        setRebuildAvailableTokens(prev => [...prev, token]);
+        setRebuildAnswerTokens(prev => prev.filter((_, i) => i !== idx));
+        setRebuildFeedback(null);
+    }, [rebuildAnswerTokens]);
+
+    const handleToggleHint = useCallback(() => {
+        setShowHint(prev => !prev);
+    }, []);
+
+    const handleSkipSentence = useCallback(() => {
+        setSkippedSet(prev => {
+            const next = new Set(prev);
+            next.add(currentSentenceIndex);
+            return next;
+        });
+        void replayCurrentSentence();
+    }, [currentSentenceIndex, replayCurrentSentence]);
+
+    const handleCheckAnswer = useCallback(async () => {
+        if (!currentSentence) return;
+        const answerText = renderSentence(currentSentence.english) || "";
+        const answerTokens = tokenizeRebuildSentence(answerText);
+        const evaluation = evaluateRebuildSelection({
+            answerTokens,
+            selectedTokens: rebuildAnswerTokens,
+        });
+
+        setRebuildFeedback(evaluation);
+        setAttempts(prev => prev + 1);
+
+        if (evaluation.isCorrect) {
+            playSuccessSound();
+            confetti({
+                particleCount: 100,
+                spread: 70,
+                origin: { y: 0.6 }
+            });
+            setSolvedSet(prev => {
+                const next = new Set(prev);
+                next.add(currentSentenceIndex);
+                return next;
+            });
+            setLocalMasteryMap(prev => ({
+                ...prev,
+                [currentSentenceIndex]: true
+            }));
+            void toggleListeningCabinSentenceMastery(session.id, currentSentenceIndex, true);
+            void replayCurrentSentence();
+        } else {
+            playForgeSound(false);
+            setIsShaking(true);
+            setTimeout(() => setIsShaking(false), 500);
+        }
+    }, [currentSentence, rebuildAnswerTokens, currentSentenceIndex, playSuccessSound, playForgeSound, replayCurrentSentence, session.id]);
+
     const handleSubtitleTokenClick = useCallback((word: string, context: string, anchorElement: HTMLElement) => {
+        if (!isSolved) return;
         if (!word) {
             return;
         }
@@ -1129,14 +1289,14 @@ function ListeningCabinPlayerView({
         }
         const rect = anchorElement.getBoundingClientRect();
         openWordPopupAtPosition(word, rect.left + rect.width / 2, rect.bottom + 10, context || subtitleLookupContext);
-    }, [openWordPopupAtPosition, subtitleLookupContext]);
+    }, [openWordPopupAtPosition, subtitleLookupContext, isSolved]);
 
     const handleSubtitleSelectionLookup = useCallback(() => {
-        if (typeof window === "undefined") {
+        if (typeof window === "undefined" || !isSolved) {
             return;
         }
         openWordPopupFromSelection(window.getSelection(), subtitleLookupContext);
-    }, [openWordPopupFromSelection, subtitleLookupContext]);
+    }, [openWordPopupFromSelection, subtitleLookupContext, isSolved]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
@@ -1160,7 +1320,10 @@ function ListeningCabinPlayerView({
 
             if (event.key === "ArrowRight") {
                 event.preventDefault();
-                void nextSentenceAction();
+                if (isSolved) {
+                    void nextSentenceAction();
+                }
+                return;
             }
         };
 
@@ -1168,7 +1331,7 @@ function ListeningCabinPlayerView({
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, revealControls]);
+    }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, revealControls, isSolved]);
 
     return (
         <motion.main
@@ -1327,7 +1490,10 @@ function ListeningCabinPlayerView({
                     void nextSentenceAction();
                     revealControls();
                 }}
-                className="absolute inset-y-0 right-0 z-10 hidden w-[20%] min-w-[120px] cursor-e-resize bg-transparent md:block"
+                className={cn(
+                    "absolute inset-y-0 right-0 z-10 hidden w-[20%] min-w-[120px] cursor-e-resize bg-transparent md:block",
+                    !isSolved && "pointer-events-none opacity-0"
+                )}
                 aria-label="下一句"
             />
 
@@ -1697,7 +1863,7 @@ function ListeningCabinPlayerView({
                                             fontFamily: fontEn
                                         }}
                                     >
-                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, fontSizeEn, handleSubtitleTokenClick, audioRef, getSentenceTiming)}
+                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, fontSizeEn, handleSubtitleTokenClick, audioRef, getSentenceTiming, practiceMode, localMasteryMap, skippedSet, solvedSet)}
                                     </h1>
 
                                     <motion.div
@@ -1713,7 +1879,7 @@ function ListeningCabinPlayerView({
                                         }}
                                         className={cn(
                                             "font-sans mx-auto mt-10 max-w-[56rem] text-[clamp(1.1rem,2vw,1.35rem)] font-medium leading-relaxed tracking-wide antialiased",
-                                            playerState.showChineseSubtitle ? "visible" : "hidden pointer-events-none"
+                                            (playerState.showChineseSubtitle && (practiceMode !== "rebuild" || isSolved || showHint)) ? "visible" : "hidden pointer-events-none"
                                         )}
                                         style={{ color: "#1e293b", textRendering: "optimizeLegibility" }}
                                     >
@@ -1721,6 +1887,141 @@ function ListeningCabinPlayerView({
                                             {joinChineseSubtitle(currentSubtitleSentences)}
                                         </span>
                                     </motion.div>
+
+                                    {practiceMode === "rebuild" && (
+                                        <div className="mt-8 flex flex-col items-center gap-6 w-full max-w-[56rem] mx-auto">
+                                            {!isSolved ? (
+                                                <>
+                                                    {/* Selected Tokens Workspace */}
+                                                    <motion.div
+                                                        variants={shakeVariants}
+                                                        animate={isShaking ? "shake" : ""}
+                                                        className="w-full min-h-[5.5rem] p-4 flex flex-wrap gap-2 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md border border-white/40 shadow-[inset_0_2px_4px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.04)] transition-all duration-300"
+                                                    >
+                                                        {rebuildAnswerTokens.length === 0 ? (
+                                                            <p className="text-slate-400 text-sm font-medium tracking-wide pointer-events-none select-none">
+                                                                请点击下方词块还原听到的句子...
+                                                            </p>
+                                                        ) : (
+                                                            rebuildAnswerTokens.map((token, idx) => {
+                                                                const feedback = rebuildFeedback?.tokenFeedback?.[idx];
+                                                                const status = feedback?.status;
+
+                                                                let statusClass = "bg-white/60 text-slate-800 border-white/80 shadow-sm hover:bg-white/80 hover:border-slate-300";
+                                                                if (rebuildFeedback) {
+                                                                    if (status === "correct") {
+                                                                        statusClass = "bg-emerald-500/20 text-emerald-800 border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.15)]";
+                                                                    } else if (status === "misplaced") {
+                                                                        statusClass = "bg-amber-500/20 text-amber-800 border-amber-400/40 shadow-[0_0_12px_rgba(245,158,11,0.15)]";
+                                                                    } else if (status === "distractor") {
+                                                                        statusClass = "bg-rose-500/20 text-rose-800 border-rose-400/40 shadow-[0_0_12px_rgba(244,63,94,0.15)]";
+                                                                    }
+                                                                }
+
+                                                                return (
+                                                                    <motion.button
+                                                                        key={`selected-${token}-${idx}`}
+                                                                        layout
+                                                                        whileTap={{ scale: 0.95 }}
+                                                                        onClick={() => handleRemoveToken(idx)}
+                                                                        className={cn(
+                                                                            "px-3.5 py-1.5 rounded-xl text-sm font-bold border transition-all cursor-pointer flex items-center gap-1",
+                                                                            statusClass
+                                                                        )}
+                                                                    >
+                                                                        {token}
+                                                                    </motion.button>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </motion.div>
+
+                                                    {/* Available Pool Tray */}
+                                                    <div className="w-full flex flex-wrap gap-2 items-center justify-center p-4 min-h-[4rem] rounded-xl bg-slate-500/5 border border-white/10">
+                                                        {rebuildAvailableTokens.map((token, idx) => (
+                                                            <motion.button
+                                                                key={`pool-${token}-${idx}`}
+                                                                layout
+                                                                whileHover={{ scale: 1.05, y: -2 }}
+                                                                whileTap={{ scale: 0.95 }}
+                                                                onClick={() => handleSelectToken(idx)}
+                                                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold bg-white/70 hover:bg-white/90 text-slate-800 border border-white/80 shadow-sm transition-all cursor-pointer"
+                                                            >
+                                                                {token}
+                                                            </motion.button>
+                                                        ))}
+                                                    </div>
+
+                                                    {/* Control Action Bar */}
+                                                    <div className="flex items-center gap-4 mt-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleToggleHint}
+                                                            className={cn(
+                                                                "px-5 py-2 rounded-full text-xs font-bold border backdrop-blur-sm shadow-sm transition-all flex items-center gap-1.5",
+                                                                showHint 
+                                                                    ? "bg-amber-500/20 text-amber-800 border-amber-500/30" 
+                                                                    : "bg-white/40 text-slate-600 border-white/60 hover:bg-white/60"
+                                                            )}
+                                                        >
+                                                            💡 提示
+                                                        </button>
+                                                        
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleSkipSentence}
+                                                            className="px-5 py-2 rounded-full text-xs font-bold bg-white/40 text-slate-600 border border-white/60 hover:bg-white/60 backdrop-blur-sm shadow-sm transition-all flex items-center gap-1.5"
+                                                        >
+                                                            ⏭️ 跳过
+                                                        </button>
+
+                                                        <button
+                                                            type="button"
+                                                            disabled={rebuildAnswerTokens.length === 0}
+                                                            onClick={handleCheckAnswer}
+                                                            className={cn(
+                                                                "px-6 py-2 rounded-full text-xs font-black tracking-wide border shadow-md transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed",
+                                                                rebuildAnswerTokens.length > 0
+                                                                    ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white border-rose-500/20 hover:shadow-lg hover:scale-105"
+                                                                    : "bg-white/20 text-slate-400 border-white/30"
+                                                            )}
+                                                        >
+                                                            ✅ 检查
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            ) : (
+                                                /* Solved / Skipped Success Panel */
+                                                <motion.div
+                                                    initial={{ opacity: 0, scale: 0.95 }}
+                                                    animate={{ opacity: 1, scale: 1 }}
+                                                    className="w-full flex flex-col items-center gap-4 p-6 rounded-2xl bg-emerald-500/10 border border-emerald-400/30 shadow-[0_8px_32px_rgba(16,185,129,0.06)]"
+                                                >
+                                                    <div className="flex items-center gap-2 text-emerald-700">
+                                                        <span className="text-xl">🏆</span>
+                                                        <span className="font-black tracking-wider text-sm uppercase">拼句挑战已完成</span>
+                                                    </div>
+                                                    
+                                                    {playerState.currentSentenceIndex < session.sentences.length - 1 ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                void nextSentenceAction();
+                                                                revealControls();
+                                                            }}
+                                                            className="px-6 py-2.5 rounded-full text-xs font-black bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all flex items-center gap-2 group cursor-pointer"
+                                                        >
+                                                            下一句 <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                                                        </button>
+                                                    ) : (
+                                                        <div className="text-emerald-700 text-xs font-bold">
+                                                            这是最后一句了，你太棒了！
+                                                        </div>
+                                                    )}
+                                                </motion.div>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </motion.div>
                         </AnimatePresence>
@@ -2041,7 +2342,7 @@ function ListeningCabinPlayerView({
                                     void nextSentenceAction();
                                     revealControls();
                                 }}
-                                disabled={playerState.currentSentenceIndex >= session.sentences.length - 1}
+                                disabled={playerState.currentSentenceIndex >= session.sentences.length - 1 || !isSolved}
                                 className="ui-pressable text-[#121417] transition hover:opacity-60 disabled:opacity-20"
                                 style={getPressableStyle("rgba(0,0,0,0.03)", 2)}
                                 aria-label="下一句"
