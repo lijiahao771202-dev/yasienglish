@@ -327,6 +327,7 @@ export function useListeningCabinPlayer({
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [audioEnergy, setAudioEnergy] = useState(0);
     const [vocalHeat, setVocalHeat] = useState(0);
+    const [replayCount, setReplayCount] = useState(0);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -558,6 +559,11 @@ export function useListeningCabinPlayer({
         }
 
         const nextSentenceIndex = clampSentenceIndex(sentenceIndex, resolvedSentences.length);
+        if (nextSentenceIndex !== currentSentenceIndexRef.current) {
+            setReplayCount(0);
+        } else if (shouldPlay) {
+            setReplayCount((prev) => prev + 1);
+        }
         const commandToken = commandTokenRef.current + 1;
         commandTokenRef.current = commandToken;
         currentSentenceIndexRef.current = nextSentenceIndex;
@@ -789,6 +795,7 @@ export function useListeningCabinPlayer({
 
             const mode = playbackModeRef.current;
             if (mode === "repeat_current") {
+                setReplayCount((prev) => prev + 1);
                 seekWithinSentence(audio, currentSentenceIndexRef.current, mode);
                 void audio.play().catch(() => undefined);
                 return true;
@@ -921,6 +928,7 @@ export function useListeningCabinPlayer({
             if (nextSentenceIndex !== currentSentenceIndexRef.current) {
                 currentSentenceIndexRef.current = nextSentenceIndex;
                 setCurrentSentenceIndex(nextSentenceIndex);
+                setReplayCount(0);
                 persistSessionPatch({
                     lastSentenceIndex: nextSentenceIndex,
                     lastPlayedAt: Date.now(),
@@ -1116,6 +1124,7 @@ export function useListeningCabinPlayer({
         showChineseSubtitle,
         progressRatio,
         errorMessage,
+        replayCount,
     };
 
     return {

@@ -154,6 +154,7 @@ export interface ListeningCabinPlayerState {
     showChineseSubtitle: boolean;
     progressRatio: number;
     errorMessage: string | null;
+    replayCount: number;
 }
 
 export interface ListeningCabinSentenceTiming {

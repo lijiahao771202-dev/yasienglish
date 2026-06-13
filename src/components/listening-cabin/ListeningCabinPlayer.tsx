@@ -125,6 +125,69 @@ function isTypographyStyle(value: string): value is TypographyStyle {
     return ["crystal", "aurora", "hollow", "honey", "neon_pulse", "pearl_glow", "deep_sea_void"].includes(value);
 }
 
+type HintMode = "direct" | "progressive" | "adaptive";
+
+function getWordSkeleton(word: string, showLast: boolean) {
+    const match = word.match(/^([^a-zA-Z0-9'-]*)([a-zA-Z0-9'-]+)([^a-zA-Z0-9'-]*)$/);
+    if (!match) return word;
+
+    const prefix = match[1];
+    const cleanWord = match[2];
+    const suffix = match[3];
+
+    if (cleanWord.length <= 1) {
+        return word;
+    }
+
+    let skeleton = "";
+    if (showLast && cleanWord.length > 2) {
+        skeleton = cleanWord[0] + "_".repeat(cleanWord.length - 2) + cleanWord[cleanWord.length - 1];
+    } else {
+        skeleton = cleanWord[0] + "_".repeat(cleanWord.length - 1);
+    }
+
+    return prefix + skeleton + suffix;
+}
+
+function getWordDisplayInfo(
+    word: string,
+    wIdx: number,
+    revealedWordsCount: number,
+    hintMode: HintMode,
+    replayCount: number,
+    blurEnabled: boolean
+) {
+    if (!blurEnabled) {
+        return { text: word, isBlurred: false };
+    }
+
+    const effectiveRevealedCount = hintMode === "adaptive"
+        ? Math.max(revealedWordsCount, replayCount)
+        : revealedWordsCount;
+
+    if (wIdx < effectiveRevealedCount) {
+        return { text: word, isBlurred: false };
+    }
+
+    if (hintMode === "adaptive") {
+        // Adaptive mode: directly display the full word with blur, no skeletons!
+        return { text: word, isBlurred: true };
+    }
+
+    if (hintMode === "progressive" && wIdx >= effectiveRevealedCount && wIdx < effectiveRevealedCount + 3) {
+        return { text: getWordSkeleton(word, false), isBlurred: false };
+    }
+
+    return { text: word, isBlurred: true };
+}
+
+function getHintStep(hintMode: HintMode, replayCount: number) {
+    if (hintMode !== "adaptive") return 3;
+    if (replayCount === 0) return 1;
+    if (replayCount === 1) return 2;
+    return 3;
+}
+
 function AppleKaraokeWord({ 
     word, 
     sentenceIndex,
@@ -141,6 +204,8 @@ function AppleKaraokeWord({
     revealedWordsCount = 0,
     blurEnabled = false,
     subtitleAdvanceMs = 0,
+    hintMode = "direct",
+    replayCount = 0,
 }: { 
     word: string; 
     sentenceIndex: number;
@@ -157,6 +222,8 @@ function AppleKaraokeWord({
     revealedWordsCount?: number;
     blurEnabled?: boolean;
     subtitleAdvanceMs?: number;
+    hintMode?: HintMode;
+    replayCount?: number;
 }) {
     const opacity = useMotionValue(0.4);
     const filterBlur = useMotionValue(
@@ -318,6 +385,8 @@ function AppleKaraokeWord({
         }
     });
 
+    const displayInfo = getWordDisplayInfo(word, wIdx, revealedWordsCount, hintMode, replayCount, blurEnabled);
+
     return (
         <motion.span
             data-word-popup-segment={word}
@@ -337,9 +406,9 @@ function AppleKaraokeWord({
                 <span className={cn(
                     "inline-block", 
                     isActive ? "active:text-blue-500" : "",
-                    blurEnabled && isActive && wIdx >= revealedWordsCount && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
+                    isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
                 )}>
-                    {word}
+                    {displayInfo.text}
                 </span>
             </span>
         </motion.span>
@@ -363,7 +432,9 @@ function renderSubtitleBlock(
     getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null,
     blurEnabled?: boolean,
     revealedWordsCount?: number,
-    subtitleAdvanceMs?: number
+    subtitleAdvanceMs?: number,
+    hintMode: HintMode = "direct",
+    replayCount: number = 0
 ) {
     if (!sentences) return null;
     return sentences.map((sentence, sIdx) => {
@@ -499,6 +570,8 @@ function renderSubtitleBlock(
                             revealedWordsCount={revealedWordsCount}
                             blurEnabled={blurEnabled}
                             subtitleAdvanceMs={subtitleAdvanceMs}
+                            hintMode={hintMode}
+                            replayCount={replayCount}
                         />
                     );
                 });
@@ -506,6 +579,7 @@ function renderSubtitleBlock(
 
             if (transitionStyle === "radiant") {
                 return words.map((word, wIdx) => {
+                    const displayInfo = getWordDisplayInfo(word, wIdx, revealedWordsCount ?? 0, hintMode, replayCount, !!blurEnabled);
                     return (
                         <motion.span
                             key={`${sIdx}-${wIdx}`}
@@ -524,9 +598,9 @@ function renderSubtitleBlock(
                             <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
                                 <span className={cn(
                                     "active:text-blue-500 inline-block",
-                                    blurEnabled && isActive && wIdx >= (revealedWordsCount ?? 0) && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
+                                    isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
                                 )}>
-                                    {word.split("").map((char, cIdx) => (
+                                    {displayInfo.text.split("").map((char, cIdx) => (
                                         <motion.span
                                             key={cIdx}
                                             variants={{
@@ -551,6 +625,7 @@ function renderSubtitleBlock(
 
             {
                 return words.map((word, wIdx) => {
+                    const displayInfo = getWordDisplayInfo(word, wIdx, revealedWordsCount ?? 0, hintMode, replayCount, !!blurEnabled);
                     const wordVar = {
                         hidden: transitionStyle === "glide" ? { opacity: 0, y: 25, scale: 0.9 } :
                             transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
@@ -591,9 +666,9 @@ function renderSubtitleBlock(
                             <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
                                 <span className={cn(
                                     "active:text-blue-500 inline-block",
-                                    blurEnabled && isActive && wIdx >= (revealedWordsCount ?? 0) && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
+                                    isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
                                 )}>
-                                    {word}
+                                    {displayInfo.text}
                                 </span>
                             </span>
                         </motion.span>
@@ -777,6 +852,7 @@ function ListeningCabinPlayerView({
     const [preferencesHydrated, setPreferencesHydrated] = useState(false);
     const [blurEnabled, setBlurEnabled] = useState(true);
     const [revealedWordsCount, setRevealedWordsCount] = useState(0);
+    const [hintMode, setHintMode] = useState<HintMode>("direct");
 
     useEffect(() => {
         setRevealedWordsCount(0);
@@ -810,6 +886,7 @@ function ListeningCabinPlayerView({
         const savedSizeEn = localStorage.getItem("listening_cabin_font_size_en");
         const savedSizeZh = localStorage.getItem("listening_cabin_font_size_zh");
         const savedBlur = localStorage.getItem("listening_cabin_blur_enabled");
+        const savedHintMode = localStorage.getItem("listening_cabin_hint_mode");
 
         if (savedEn) setFontEn(savedEn);
         if (savedZh) setFontZh(savedZh);
@@ -830,6 +907,9 @@ function ListeningCabinPlayerView({
         if (savedBlur !== null) {
             setBlurEnabled(savedBlur === "true");
         }
+        if (savedHintMode === "direct" || savedHintMode === "progressive" || savedHintMode === "adaptive") {
+            setHintMode(savedHintMode);
+        }
 
         setPreferencesHydrated(true);
     }, []);
@@ -848,7 +928,8 @@ function ListeningCabinPlayerView({
         localStorage.setItem("listening_cabin_font_size_en", fontSizeEn.toString());
         localStorage.setItem("listening_cabin_font_size_zh", fontSizeZh.toString());
         localStorage.setItem("listening_cabin_blur_enabled", blurEnabled.toString());
-    }, [fontEn, fontZh, transitionStyle, typographyStyle, subtitleAdvanceMs, fontSizeEn, fontSizeZh, blurEnabled, preferencesHydrated]);
+        localStorage.setItem("listening_cabin_hint_mode", hintMode);
+    }, [fontEn, fontZh, transitionStyle, typographyStyle, subtitleAdvanceMs, fontSizeEn, fontSizeZh, blurEnabled, hintMode, preferencesHydrated]);
 
     // Player Spotlight Tour
     const [showPlayerTour, setShowPlayerTour] = useState(false);
@@ -1285,7 +1366,8 @@ function ListeningCabinPlayerView({
             if (event.key === "Tab") {
                 if (blurEnabled) {
                     event.preventDefault();
-                    setRevealedWordsCount((prev) => prev + 3);
+                    const step = getHintStep(hintMode, playerState.replayCount);
+                    setRevealedWordsCount((prev) => prev + step);
                     return;
                 }
             }
@@ -1295,7 +1377,7 @@ function ListeningCabinPlayerView({
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, showTutorial, blurEnabled]);
+    }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, showTutorial, blurEnabled, hintMode, playerState.replayCount]);
 
     return (
         <motion.main
@@ -1338,7 +1420,8 @@ function ListeningCabinPlayerView({
                 }
 
                 if (blurEnabled) {
-                    setRevealedWordsCount((prev) => prev + 3);
+                    const step = getHintStep(hintMode, playerState.replayCount);
+                    setRevealedWordsCount((prev) => prev + step);
                 }
             }}
         >
@@ -1634,8 +1717,6 @@ function ListeningCabinPlayerView({
                                                 ))}
                                             </div>
                                         </section>
-
-                                        {/* Motion System */}
                                         <section data-tour-target="settings-motion" className="space-y-3">
                                             <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">Cinematic Motion</label>
                                             <div className="grid grid-cols-2 gap-2">
@@ -1695,6 +1776,35 @@ function ListeningCabinPlayerView({
                                                         )}
                                                     >
                                                         {style.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </section>
+
+                                        {/* Hint Mode Selection */}
+                                        <section className="space-y-3">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest px-1">智能提示模式 (Hint Mode)</label>
+                                            <div className="grid grid-cols-1 gap-1.5">
+                                                {[
+                                                    { id: "direct", label: "直接显示", desc: "每次提示直接显示完整单词" },
+                                                    { id: "progressive", label: "渐进线索", desc: "前3个词显示首字母线索，后续自动恢复" },
+                                                    { id: "adaptive", label: "智能自适应", desc: "根据重听次数自适应显示首/尾字母或全词" }
+                                                ].map((mode) => (
+                                                    <button
+                                                        key={mode.id}
+                                                        onClick={() => setHintMode(mode.id as HintMode)}
+                                                        className={cn(
+                                                            "w-full px-4 py-3 rounded-2xl text-[11px] text-left transition-all duration-300 border flex flex-col gap-0.5",
+                                                            hintMode === mode.id
+                                                                ? "bg-amber-600 text-white border-amber-600 shadow-[0_8px_20px_-4px_rgba(217,119,6,0.4)] font-black"
+                                                                : "bg-white/50 text-slate-700 border-slate-100 hover:bg-white hover:shadow-sm"
+                                                        )}
+                                                    >
+                                                        <span className="font-black uppercase tracking-wider">{mode.label}</span>
+                                                        <span className={cn(
+                                                            "text-[9px] font-normal opacity-85",
+                                                            hintMode === mode.id ? "text-amber-100" : "text-slate-400"
+                                                        )}>{mode.desc}</span>
                                                     </button>
                                                 ))}
                                             </div>
@@ -1883,7 +1993,9 @@ function ListeningCabinPlayerView({
                                             getSentenceTiming,
                                             blurEnabled,
                                             revealedWordsCount,
-                                            subtitleAdvanceMs
+                                            subtitleAdvanceMs,
+                                            hintMode,
+                                            playerState.replayCount
                                         )}
                                     </h1>
 
