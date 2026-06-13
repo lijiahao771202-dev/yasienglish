@@ -985,7 +985,7 @@ describe("useListeningCabinPlayer", () => {
             await latestPlayer?.nextSentenceAction();
         });
 
-        expect(latestAudio.currentTime).toBeCloseTo(1.1, 2);
+        expect(latestAudio.currentTime).toBeCloseTo(1.02, 2);
         expect(latestAudio.muted).toBe(true);
         mockSeekSnapbackSeconds = 0;
 
@@ -1059,7 +1059,7 @@ describe("useListeningCabinPlayer", () => {
             await Promise.resolve();
         });
 
-        expect(latestAudio.currentTime).toBeCloseTo(1.3, 2);
+        expect(latestAudio.currentTime).toBeCloseTo(1.22, 2);
         expect(latestPlayer.playerState.isPlaying).toBe(true);
     });
 
@@ -1116,6 +1116,59 @@ describe("useListeningCabinPlayer", () => {
 
         // 5. It should have hit the stop boundary and paused automatically
         expect(latestPlayer.playerState.isPlaying).toBe(false);
+    });
+
+    it("scales word timings proportionally when audio duration is loaded and sentence timings are fitted", async () => {
+        getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
+            audio: "mock://narration",
+            marks: [
+                { type: "word", time: 100, end: 500, value: "Good" },
+                { type: "word", time: 600, end: 1200, value: "morning" },
+                { type: "word", time: 1300, end: 2000, value: "everyone" },
+            ],
+        });
+
+        await act(async () => {
+            root.render(
+                <PlayerHarness
+                    session={buildSession()}
+                    onUpdate={(player) => {
+                        latestPlayer = player;
+                    }}
+                />,
+            );
+        });
+
+        await flushMicrotasks();
+
+        if (!latestAudio || !latestPlayer) {
+            throw new Error("Player did not initialize");
+        }
+
+        // Before loadedmetadata, the first sentence is at 0-2160ms (marks-based).
+        // Word timings should match raw marks initially.
+        const originalWordTimings = latestPlayer.wordTimings[0];
+        expect(originalWordTimings?.[0]?.startMs).toBe(100);
+        expect(originalWordTimings?.[0]?.endMs).toBe(500);
+
+        // Trigger loadedmetadata with a duration of 13.5s (base total duration was 9.0s).
+        // Ratio = 13.5 / 9.0 = 1.5.
+        await act(async () => {
+            latestAudio.duration = 13.5;
+            latestAudio.dispatch("loadedmetadata");
+        });
+
+        // The first sentence timing should be scaled by 1.5.
+        // Since it falls back to even timings, the base sentence end was 3000ms (9000ms / 3).
+        // The fitted sentence end is 4500ms (13500ms / 3).
+        const timing = latestPlayer.getSentenceTiming(0);
+        expect(timing?.endMs).toBe(4500);
+
+        // Word timings of first sentence should also be scaled by 1.5!
+        // Word 0: 100 -> 150, 500 -> 750
+        const scaledWordTimings = latestPlayer.wordTimings[0];
+        expect(scaledWordTimings?.[0]?.startMs).toBe(150);
+        expect(scaledWordTimings?.[0]?.endMs).toBe(750);
     });
 
 });

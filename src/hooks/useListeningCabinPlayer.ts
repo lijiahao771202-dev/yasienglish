@@ -8,6 +8,7 @@ import {
     LISTENING_CABIN_PLAYBACK_RATE_OPTIONS,
     type ListeningCabinPlaybackMode,
     buildListeningCabinSentenceTimings,
+    buildListeningCabinWordTimings,
     type ListeningCabinPlaybackChunk,
     type ListeningCabinPlayerState,
     type ListeningCabinSentence,
@@ -32,7 +33,7 @@ const STOP_BOUNDARY_GUARD_MS = 0;
 const STOP_TAIL_BUFFER_MS = 160;
 const STOP_MIN_TAIL_AFTER_SENTENCE_MS = 12;
 const STOP_BLEED_GUARD_MS = 92;
-const STOP_PRE_MUTE_MS = 48;
+const STOP_PRE_MUTE_MS = 0;
 const STOP_MIN_AUDIBLE_WINDOW_MS = 420;
 const STOP_MIN_VALID_OFFSET_FROM_SEEK_MS = 300;
 const SEEK_BACKTRACK_TOLERANCE_MS = 40;
@@ -229,6 +230,44 @@ function fitSentenceTimingsToDuration(
     return fitted;
 }
 
+function scaleWordTimings(
+    baseWordTimings: Array<Array<{ startMs: number; endMs: number } | null>>,
+    baseSentenceTimings: ListeningCabinSentenceTiming[],
+    fittedSentenceTimings: ListeningCabinSentenceTiming[]
+): Array<Array<{ startMs: number; endMs: number } | null>> {
+    if (!baseWordTimings) return [];
+    return baseWordTimings.map((sentenceWords, sIdx) => {
+        const baseSentence = baseSentenceTimings[sIdx];
+        const fittedSentence = fittedSentenceTimings[sIdx];
+        if (!baseSentence || !fittedSentence || !sentenceWords) {
+            return sentenceWords || [];
+        }
+
+        const baseDuration = baseSentence.endMs - baseSentence.startMs;
+        const fittedDuration = fittedSentence.endMs - fittedSentence.startMs;
+        if (baseDuration <= 0 || fittedDuration <= 0) {
+            return sentenceWords;
+        }
+
+        const ratio = fittedDuration / baseDuration;
+
+        return sentenceWords.map((wordTiming) => {
+            if (!wordTiming) return null;
+            
+            const relativeStart = wordTiming.startMs - baseSentence.startMs;
+            const relativeEnd = wordTiming.endMs - baseSentence.startMs;
+            
+            const scaledStart = fittedSentence.startMs + relativeStart * ratio;
+            const scaledEnd = fittedSentence.startMs + relativeEnd * ratio;
+
+            return {
+                startMs: Math.round(scaledStart),
+                endMs: Math.round(scaledEnd),
+            };
+        });
+    });
+}
+
 function resolveSegmentTimings(
     rawTimings: TtsPayload["segmentTimings"],
     sentenceCount: number,
@@ -328,6 +367,8 @@ export function useListeningCabinPlayer({
     const [audioEnergy, setAudioEnergy] = useState(0);
     const [vocalHeat, setVocalHeat] = useState(0);
     const [replayCount, setReplayCount] = useState(0);
+    const [wordTimings, setWordTimings] = useState<Array<Array<{ startMs: number; endMs: number } | null>>>([]);
+    const baseWordTimingsRef = useRef<Array<Array<{ startMs: number; endMs: number } | null>>>([]);
 
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
@@ -419,7 +460,13 @@ export function useListeningCabinPlayer({
         mode: ListeningCabinPlaybackMode,
     ) => {
         const timing = resolveSafeTimingForSentence(sentenceIndex);
-        const targetMs = timing?.startMs ?? 0;
+        if (!timing) return { targetMs: 0, actualStartMs: 0 };
+
+        const rawStartMs = timing.startMs;
+        const prevTiming = sentenceIndex > 0 ? timingsRef.current[sentenceIndex - 1] : null;
+        const minStartMs = prevTiming ? prevTiming.endMs : 0;
+        const targetMs = Math.max(minStartMs, rawStartMs - 80);
+
         audio.currentTime = targetMs / 1000;
         audio.playbackRate = playbackRateRef.current;
 
@@ -531,6 +578,11 @@ export function useListeningCabinPlayer({
                     timingsRef.current = markTimings;
                     timingsSourceRef.current = "marks";
                 }
+                
+                const alignedWordTimings = buildListeningCabinWordTimings(resolvedSentences, payload.marks || [], timingsRef.current);
+                baseWordTimingsRef.current = alignedWordTimings;
+                setWordTimings(alignedWordTimings);
+
                 audio.src = payload.audio;
                 audio.load();
                 narrationReadyRef.current = true;
@@ -982,19 +1034,25 @@ export function useListeningCabinPlayer({
                 ? baseTimingsRef.current
                 : timingsRef.current;
 
+            let fittedTimings: ListeningCabinSentenceTiming[];
             if (timingsSourceRef.current === "segment") {
-                timingsRef.current = fitSentenceTimingsToDuration(
+                fittedTimings = fitSentenceTimingsToDuration(
                     baseTimings,
                     audio.duration * 1000,
                     { allowExpand: true, allowShrink: false, progressiveExpand: true },
                 );
-                return;
+            } else {
+                fittedTimings = fitSentenceTimingsToDuration(
+                    baseTimings,
+                    audio.duration * 1000,
+                );
             }
+            timingsRef.current = fittedTimings;
 
-            timingsRef.current = fitSentenceTimingsToDuration(
-                baseTimings,
-                audio.duration * 1000,
-            );
+            if (baseWordTimingsRef.current && baseWordTimingsRef.current.length > 0) {
+                const scaled = scaleWordTimings(baseWordTimingsRef.current, baseTimings, fittedTimings);
+                setWordTimings(scaled);
+            }
         };
 
         audio.addEventListener("timeupdate", handleTimeUpdate);
@@ -1151,5 +1209,6 @@ export function useListeningCabinPlayer({
         audioEnergy,
         vocalHeat,
         audioRef,
+        wordTimings,
     };
 }

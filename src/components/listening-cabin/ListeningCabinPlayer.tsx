@@ -149,10 +149,222 @@ function getWordSkeleton(word: string, showLast: boolean) {
     return prefix + skeleton + suffix;
 }
 
-function getWordDisplayInfo(
+export function getSentenceGroups(words: string[], senseGroups?: string[]): number[][] {
+    if (senseGroups && senseGroups.length > 0) {
+        const groups: number[][] = [];
+        let wordIndex = 0;
+        
+        senseGroups.forEach((groupStr) => {
+            const groupWords = groupStr.trim().split(/\s+/).filter(Boolean);
+            if (groupWords.length === 0) return;
+            
+            const groupIndices: number[] = [];
+            for (let i = 0; i < groupWords.length; i++) {
+                if (wordIndex < words.length) {
+                    groupIndices.push(wordIndex);
+                    wordIndex++;
+                }
+            }
+            if (groupIndices.length > 0) {
+                groups.push(groupIndices);
+            }
+        });
+        
+        if (wordIndex < words.length) {
+            if (groups.length > 0) {
+                for (let i = wordIndex; i < words.length; i++) {
+                    groups[groups.length - 1].push(i);
+                }
+            } else {
+                const leftover: number[] = [];
+                for (let i = wordIndex; i < words.length; i++) {
+                    leftover.push(i);
+                }
+                groups.push(leftover);
+            }
+        }
+        return groups;
+    }
+
+    const groups: number[][] = [];
+    let current: number[] = [];
+    words.forEach((word, idx) => {
+        current.push(idx);
+        const trimmed = word.trim();
+        const isBoundary = /[,\;:!\?\.\—]['"”’)]*$/.test(trimmed) || trimmed.endsWith("...");
+        if (isBoundary || current.length >= 6 || idx === words.length - 1) {
+            groups.push(current);
+            current = [];
+        }
+    });
+    return groups;
+}
+
+export function getWordWeight(word: string) {
+    const cleanWord = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (cleanWord.length === 0) return 0.5;
+
+    // Function words list
+    const functionWords = new Set([
+        "the", "a", "an", "of", "to", "in", "on", "at", "by", "for", "with", "about", 
+        "against", "between", "into", "through", "during", "before", "after", "above", 
+        "below", "from", "up", "down", "out", "off", "over", "under", "again", 
+        "then", "once", "here", "there", "when", "where", "why", "how", "all", "any", 
+        "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", 
+        "not", "only", "own", "same", "so", "than", "too", "very", "can", "will", 
+        "just", "should", "now", "i", "me", "my", "we", "our", "you", "your", "he", 
+        "him", "his", "she", "her", "it", "its", "they", "them", "their", "what", 
+        "which", "who", "this", "that", "these", "those", "am", "is", "are", "was", 
+        "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", 
+        "would", "and", "or", "but", "as", "if"
+    ]);
+
+    let weight = cleanWord.length;
+
+    if (functionWords.has(cleanWord)) {
+        weight *= 0.6;
+    } else if (cleanWord.length > 6) {
+        weight *= 0.85; // Longer content words are slightly faster per character
+    }
+
+    return weight;
+}
+
+export function getWordPauseWeight(word: string): number {
+    const trimmed = word.trim();
+    if (/[,\;:—]$/.test(trimmed)) {
+        return 2.5; // Short pause
+    }
+    if (/[\.\!\?]$/.test(trimmed) || trimmed.endsWith("...")) {
+        return 5.0; // Long pause
+    }
+    return 0;
+}
+
+export interface WordTimingWithSource {
+    startMs: number;
+    endMs: number;
+    isInterpolated: boolean;
+}
+
+export function fillMissingWordTimings(
+    words: string[],
+    wordTimings: Array<{ startMs: number; endMs: number } | null> | null | undefined,
+    sentenceStartMs: number,
+    sentenceEndMs: number
+): WordTimingWithSource[] {
+    const n = words.length;
+    if (n === 0) return [];
+
+    const result: Array<WordTimingWithSource | null> = new Array(n).fill(null);
+    if (wordTimings) {
+        for (let i = 0; i < Math.min(n, wordTimings.length); i++) {
+            if (wordTimings[i]) {
+                result[i] = {
+                    startMs: wordTimings[i]!.startMs,
+                    endMs: wordTimings[i]!.endMs,
+                    isInterpolated: false
+                };
+            }
+        }
+    }
+
+    let i = 0;
+    while (i < n) {
+        if (result[i] !== null) {
+            i++;
+            continue;
+        }
+
+        let j = i;
+        while (j < n && result[j] === null) {
+            j++;
+        }
+
+        const leftBoundMs = i > 0 ? result[i - 1]!.endMs : sentenceStartMs;
+        const rightBoundMs = j < n ? result[j]!.startMs : sentenceEndMs;
+
+        const count = j - i;
+        const totalDuration = Math.max(0, rightBoundMs - leftBoundMs);
+
+        const missingWords = words.slice(i, j);
+        const weights = missingWords.map(w => getWordWeight(w) + getWordPauseWeight(w));
+        const totalWeight = weights.reduce((sum, w) => sum + w, 0) || 1;
+
+        let currentStart = leftBoundMs;
+        for (let k = 0; k < count; k++) {
+            const wordIdx = i + k;
+            const wRatio = weights[k] / totalWeight;
+            const wDuration = totalDuration * wRatio;
+            const startMs = Math.round(currentStart);
+            const endMs = Math.round(currentStart + wDuration);
+
+            result[wordIdx] = {
+                startMs,
+                endMs,
+                isInterpolated: true
+            };
+            currentStart += wDuration;
+        }
+
+        i = j;
+    }
+
+    return result as WordTimingWithSource[];
+}
+
+export function getGroupTimeBounds(
+    words: string[],
+    groupIdx: number,
+    sentenceStartMs: number,
+    sentenceEndMs: number,
+    wordTimings?: Array<{ startMs: number; endMs: number } | null> | null,
+    senseGroups?: string[]
+) {
+    const groups = getSentenceGroups(words, senseGroups);
+    const group = groups[groupIdx];
+    if (!group || group.length === 0) {
+        return { startMs: sentenceStartMs, endMs: sentenceEndMs };
+    }
+
+    const firstWIdx = group[0];
+    const lastWIdx = group[group.length - 1];
+
+    const filledTimings = fillMissingWordTimings(words, wordTimings, sentenceStartMs, sentenceEndMs);
+    const firstWord = filledTimings[firstWIdx];
+    const lastWord = filledTimings[lastWIdx];
+
+    const groupStartMs = firstWord.startMs;
+    const groupEndMs = lastWord.endMs;
+
+    // Start: try to anticipate 100ms before first word, but NEVER before:
+    // 1. The previous word's end + 5ms (prevents bleed into the previous group).
+    // 2. The sentence start (prevents bleed into the previous sentence).
+    let startFloor = sentenceStartMs;
+    if (firstWIdx - 1 >= 0) {
+        const prevWord = filledTimings[firstWIdx - 1];
+        startFloor = Math.max(startFloor, prevWord.endMs + 5);
+    }
+    const startMs = Math.max(startFloor, groupStartMs - 100);
+
+    // End: add 120ms tail padding to capture the complete phoneme tail.
+    // Never go beyond:
+    // 1. The next word's start - 5ms (prevents bleed into the next group).
+    // 2. The sentence end (prevents bleed into the next sentence).
+    let endCeil = sentenceEndMs;
+    if (lastWIdx + 1 < words.length) {
+        const nextWord = filledTimings[lastWIdx + 1];
+        endCeil = Math.min(endCeil, nextWord.startMs - 5);
+    }
+    const endMs = Math.min(endCeil, groupEndMs + 120);
+
+    return { startMs, endMs };
+}
+
+export function getWordDisplayInfo(
     word: string,
-    wIdx: number,
-    revealedWordsCount: number,
+    groupIdx: number,
+    revealedGroupsCount: number,
     hintMode: HintMode,
     replayCount: number,
     blurEnabled: boolean
@@ -162,10 +374,10 @@ function getWordDisplayInfo(
     }
 
     const effectiveRevealedCount = hintMode === "adaptive"
-        ? Math.max(revealedWordsCount, replayCount)
-        : revealedWordsCount;
+        ? Math.max(revealedGroupsCount, replayCount)
+        : revealedGroupsCount;
 
-    if (wIdx < effectiveRevealedCount) {
+    if (groupIdx < effectiveRevealedCount) {
         return { text: word, isBlurred: false };
     }
 
@@ -174,18 +386,11 @@ function getWordDisplayInfo(
         return { text: word, isBlurred: true };
     }
 
-    if (hintMode === "progressive" && wIdx >= effectiveRevealedCount && wIdx < effectiveRevealedCount + 3) {
+    if (hintMode === "progressive" && groupIdx === effectiveRevealedCount) {
         return { text: getWordSkeleton(word, false), isBlurred: false };
     }
 
     return { text: word, isBlurred: true };
-}
-
-function getHintStep(hintMode: HintMode, replayCount: number) {
-    if (hintMode !== "adaptive") return 3;
-    if (replayCount === 0) return 1;
-    if (replayCount === 1) return 2;
-    return 3;
 }
 
 function AppleKaraokeWord({ 
@@ -200,12 +405,17 @@ function AppleKaraokeWord({
     audioRef, 
     karaokeVariant = "bouncy",
     onClick,
-    wIdx = 0,
-    revealedWordsCount = 0,
+    groupIdx = 0,
+    revealedGroupsCount = 0,
     blurEnabled = false,
     subtitleAdvanceMs = 0,
     hintMode = "direct",
     replayCount = 0,
+    isLastOfGroup = false,
+    groupReplayEnabled = false,
+    hoveredGroupIdx,
+    setHoveredGroupIdx,
+    wordTiming,
 }: { 
     word: string; 
     sentenceIndex: number;
@@ -218,12 +428,17 @@ function AppleKaraokeWord({
     audioRef?: React.RefObject<HTMLAudioElement | null>; 
     karaokeVariant?: "bouncy" | "pure" | "pop" | "ghost" | "neon";
     onClick: React.MouseEventHandler<HTMLSpanElement>; 
-    wIdx?: number;
-    revealedWordsCount?: number;
+    groupIdx?: number;
+    revealedGroupsCount?: number;
     blurEnabled?: boolean;
     subtitleAdvanceMs?: number;
     hintMode?: HintMode;
     replayCount?: number;
+    isLastOfGroup?: boolean;
+    groupReplayEnabled?: boolean;
+    hoveredGroupIdx?: number | null;
+    setHoveredGroupIdx?: (idx: number | null) => void;
+    wordTiming?: { startMs: number; endMs: number } | null;
 }) {
     const opacity = useMotionValue(0.4);
     const filterBlur = useMotionValue(
@@ -288,8 +503,13 @@ function AppleKaraokeWord({
         const sentenceDuration = Math.max(endMs - startMs, 300); 
         
         // Because speech isn't perfectly linear, we add slight stagger to make the transition feel organic
-        const wordStartMs = startMs + sentenceDuration * cumulativeRatio - 250; // early anticipation to reduce perceived lag
-        const wordEndMs = startMs + sentenceDuration * (cumulativeRatio + durationRatio) + 120; // keep it lit a bit longer
+        let wordStartMs = startMs + sentenceDuration * cumulativeRatio - 250; // early anticipation to reduce perceived lag
+        let wordEndMs = startMs + sentenceDuration * (cumulativeRatio + durationRatio) + 120; // keep it lit a bit longer
+
+        if (wordTiming) {
+            wordStartMs = wordTiming.startMs - 250;
+            wordEndMs = wordTiming.endMs + 120;
+        }
 
         let targetState: "upcoming" | "active" | "past" = "upcoming";
         if (currentMs > wordEndMs) {
@@ -385,13 +605,27 @@ function AppleKaraokeWord({
         }
     });
 
-    const displayInfo = getWordDisplayInfo(word, wIdx, revealedWordsCount, hintMode, replayCount, blurEnabled);
+    const displayInfo = getWordDisplayInfo(word, groupIdx, revealedGroupsCount, hintMode, replayCount, blurEnabled);
+    const isHovered = groupReplayEnabled && isActive && hoveredGroupIdx === groupIdx;
 
     return (
         <motion.span
             data-word-popup-segment={word}
-            className="inline-block mr-[0.24em] whitespace-nowrap focus:outline-none cursor-pointer hover:opacity-100 hover:!blur-none"
+            className={cn(
+                "inline-block whitespace-nowrap focus:outline-none cursor-pointer hover:opacity-100 hover:!blur-none transition-all duration-200",
+                (groupReplayEnabled && isLastOfGroup) ? "mr-[0.55em]" : "mr-[0.24em]"
+            )}
             onClick={onClick}
+            onMouseEnter={() => {
+                if (groupReplayEnabled && isActive && setHoveredGroupIdx) {
+                    setHoveredGroupIdx(groupIdx);
+                }
+            }}
+            onMouseLeave={() => {
+                if (groupReplayEnabled && isActive && setHoveredGroupIdx) {
+                    setHoveredGroupIdx(null);
+                }
+            }}
             style={{
                 ...styleConfig, // Apply root typo configs
                 opacity: opacity,
@@ -427,22 +661,34 @@ function renderSubtitleBlock(
     transitionStyle: string,
     typographyStyle: string,
     fontSizeEn: number,
-    onWordClick: (word: string, context: string, anchorElement: HTMLElement) => void,
+    onWordClick: (word: string, context: string, anchorElement: HTMLElement, wIdx: number) => void,
     audioRef?: React.RefObject<HTMLAudioElement | null>,
     getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null,
     blurEnabled?: boolean,
-    revealedWordsCount?: number,
+    revealedGroupsCount?: number,
     subtitleAdvanceMs?: number,
     hintMode: HintMode = "direct",
-    replayCount: number = 0
+    replayCount: number = 0,
+    groupReplayEnabled: boolean = false,
+    hoveredGroupIdx?: number | null,
+    setHoveredGroupIdx?: (idx: number | null) => void,
+    wordTimings?: Array<Array<{ startMs: number; endMs: number } | null>> | null
 ) {
     if (!sentences) return null;
     return sentences.map((sentence, sIdx) => {
         if (!sentence) return null;
         const isActive = (sentence.index - 1) === activeIndex;
+        const sentenceWordTimings = wordTimings?.[sentence.index - 1] || null;
 
         const rawContent = renderSentence(sentence.english) || "";
         const words = rawContent.split(" ");
+        const groups = getSentenceGroups(words, sentence.senseGroups);
+        const wordToGroupMap = new Map<number, number>();
+        groups.forEach((group, gIdx) => {
+            group.forEach((wIdx) => {
+                wordToGroupMap.set(wIdx, gIdx);
+            });
+        });
 
         // Define Typography Styles with Ambient Shadow Support
         const getStyleConfig = () => {
@@ -531,6 +777,197 @@ function renderSubtitleBlock(
 
         // Subtitle Style Logic
         const renderWords = () => {
+            if (groupReplayEnabled) {
+                // Precalculate char lengths for Apple Karaoke duration calculation
+                const totalChars = words.reduce((acc, w) => acc + (w.replace(/[^a-zA-Z]/g, '').length || 1), 0);
+                const wordData = words.map((word) => {
+                    const charCount = word.replace(/[^a-zA-Z]/g, '').length || 1;
+                    return { charCount };
+                });
+
+                return groups.map((wordIndices, gIdx) => {
+                    const isHovered = groupReplayEnabled && isActive && hoveredGroupIdx === gIdx;
+                    
+                    return (
+                        <span
+                            key={`group-${sIdx}-${gIdx}`}
+                            className={cn(
+                                "inline-flex items-center flex-wrap pb-0.5 px-0.5 mx-0.5 my-0.5 transition-all duration-300 select-none cursor-pointer border-b-[1.5px]",
+                                isActive 
+                                    ? (isHovered
+                                        ? "border-indigo-500 dark:border-indigo-400 bg-indigo-500/5 dark:bg-indigo-400/5 rounded-t-sm scale-[1.01]"
+                                        : "border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500")
+                                    : "border-transparent opacity-75"
+                            )}
+                            onMouseEnter={() => {
+                                if (isActive && setHoveredGroupIdx) {
+                                    setHoveredGroupIdx(gIdx);
+                                }
+                            }}
+                            onMouseLeave={() => {
+                                if (isActive && setHoveredGroupIdx) {
+                                    setHoveredGroupIdx(null);
+                                }
+                            }}
+                            onClick={(event) => {
+                                if (event.target === event.currentTarget || ((event.target as HTMLElement).tagName === "SPAN" && (event.target as HTMLElement).classList.contains("inline-flex"))) {
+                                    // Trigger first word of group
+                                    const firstWIdx = wordIndices[0];
+                                    if (firstWIdx !== undefined) {
+                                        onWordClick(words[firstWIdx], rawContent, event.currentTarget, firstWIdx);
+                                    }
+                                }
+                            }}
+                        >
+                            {wordIndices.map((wIdx) => {
+                                const word = words[wIdx];
+                                const isLastOfGroup = wIdx === wordIndices[wordIndices.length - 1];
+
+                                if (transitionStyle.startsWith("karaoke") || transitionStyle === "apple_karaoke") {
+                                    let cumulativeCharsBefore = 0;
+                                    for (let i = 0; i < wIdx; i++) {
+                                        cumulativeCharsBefore += wordData[i].charCount;
+                                    }
+                                    const charCount = wordData[wIdx].charCount;
+                                    const durationRatio = charCount / totalChars;
+                                    const cumulativeRatio = cumulativeCharsBefore / totalChars;
+
+                                    return (
+                                        <AppleKaraokeWord
+                                            key={`${sIdx}-${wIdx}`}
+                                            word={word}
+                                            sentenceIndex={sentence.index - 1}
+                                            getSentenceTiming={getSentenceTiming}
+                                            durationRatio={durationRatio}
+                                            cumulativeRatio={cumulativeRatio}
+                                            isActive={isActive}
+                                            themeColor={themeColor}
+                                            styleConfig={styleConfig}
+                                            audioRef={audioRef}
+                                            karaokeVariant={
+                                                transitionStyle === "karaoke_pure" ? "pure" : 
+                                                transitionStyle === "karaoke_pop" ? "pop" : 
+                                                transitionStyle === "karaoke_ghost" ? "ghost" : 
+                                                transitionStyle === "karaoke_neon" ? "neon" : 
+                                                "bouncy"
+                                            }
+                                            onClick={(event) => {
+                                                onWordClick(word, rawContent, event.currentTarget, wIdx);
+                                            }}
+                                            groupIdx={gIdx}
+                                            revealedGroupsCount={revealedGroupsCount}
+                                            blurEnabled={blurEnabled}
+                                            subtitleAdvanceMs={subtitleAdvanceMs}
+                                            hintMode={hintMode}
+                                            replayCount={replayCount}
+                                            isLastOfGroup={isLastOfGroup}
+                                            groupReplayEnabled={groupReplayEnabled}
+                                            hoveredGroupIdx={hoveredGroupIdx}
+                                            setHoveredGroupIdx={setHoveredGroupIdx}
+                                            wordTiming={sentenceWordTimings?.[wIdx] || null}
+                                        />
+                                    );
+                                }
+
+                                if (transitionStyle === "radiant") {
+                                    const displayInfo = getWordDisplayInfo(word, gIdx, revealedGroupsCount ?? 0, hintMode, replayCount, !!blurEnabled);
+                                    return (
+                                        <motion.span
+                                            key={`${sIdx}-${wIdx}`}
+                                            data-word-popup-segment={word}
+                                            variants={{
+                                                hidden: { opacity: 0 },
+                                                visible: { opacity: 1, transition: { staggerChildren: 0.008 } },
+                                                exit: { opacity: 0, transition: { duration: 0.2 } }
+                                            }}
+                                            className="inline-block whitespace-nowrap focus:outline-none cursor-pointer mx-0.5 transition-all duration-200"
+                                            onClick={(event) => {
+                                                onWordClick(word, rawContent, event.currentTarget, wIdx);
+                                            }}
+                                            style={styleConfig}
+                                        >
+                                            <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
+                                                <span className={cn(
+                                                    "active:text-blue-500 inline-block",
+                                                    isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
+                                                )}>
+                                                    {displayInfo.text.split("").map((char, cIdx) => (
+                                                        <motion.span
+                                                            key={cIdx}
+                                                            variants={{
+                                                                hidden: { opacity: 0, y: 12 },
+                                                                visible: {
+                                                                    opacity: 1, y: 0,
+                                                                    transition: { type: "spring" as const, stiffness: 120, damping: 28, mass: 1 }
+                                                                },
+                                                                exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
+                                                            }}
+                                                            className="inline-block"
+                                                        >
+                                                            {char}
+                                                        </motion.span>
+                                                    ))}
+                                                </span>
+                                            </span>
+                                        </motion.span>
+                                    );
+                                }
+
+                                const displayInfo = getWordDisplayInfo(word, gIdx, revealedGroupsCount ?? 0, hintMode, replayCount, !!blurEnabled);
+                                const wordVar = {
+                                    hidden: transitionStyle === "glide" ? { opacity: 0, y: 25, scale: 0.9 } :
+                                        transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
+                                            transitionStyle === "blur" ? { opacity: 0, filter: "blur(12px)", scale: 1.1 } :
+                                                transitionStyle === "stagger" ? { opacity: 0, x: -20, rotate: -5 } :
+                                                    transitionStyle === "elastic" ? { opacity: 0, scale: 0.5, y: 20 } :
+                                                        transitionStyle === "neon" ? { opacity: 0, textShadow: "0 0 0px transparent" } :
+                                                            { opacity: 0 },
+                                    visible: {
+                                        opacity: 1, y: 0, x: 0, scale: 1, rotate: 0, filter: "blur(0px)",
+                                        textShadow: (transitionStyle === "neon" ? `0 0 20px ${themeColor}` : styleConfig.textShadow) as any,
+                                        transition: {
+                                            type: "spring" as const,
+                                            stiffness: transitionStyle === "elastic" ? 260 : 100,
+                                            damping: transitionStyle === "elastic" ? 15 : 22,
+                                            duration: 0.6
+                                        }
+                                    },
+                                    exit: {
+                                        opacity: 0,
+                                        y: transitionStyle === "glide" ? -20 : -8,
+                                        filter: transitionStyle === "blur" ? "blur(10px)" : "none",
+                                        transition: { duration: 0.25 }
+                                    }
+                                };
+
+                                return (
+                                    <motion.span
+                                        key={`${sIdx}-${wIdx}`}
+                                        data-word-popup-segment={word}
+                                        variants={wordVar}
+                                        className="inline-block whitespace-nowrap focus:outline-none cursor-pointer mx-0.5 transition-all duration-200"
+                                        onClick={(event) => {
+                                            onWordClick(word, rawContent, event.currentTarget, wIdx);
+                                        }}
+                                        style={styleConfig}
+                                    >
+                                        <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
+                                            <span className={cn(
+                                                "active:text-blue-500 inline-block",
+                                                isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
+                                            )}>
+                                                {displayInfo.text}
+                                            </span>
+                                        </span>
+                                    </motion.span>
+                                );
+                            })}
+                        </span>
+                    );
+                });
+            }
+
+            // Normal Flat rendering if group replay is disabled
             if (transitionStyle.startsWith("karaoke") || transitionStyle === "apple_karaoke") {
                 const totalChars = words.reduce((acc, w) => acc + (w.replace(/[^a-zA-Z]/g, '').length || 1), 0);
                 let cumulativeChars = 0;
@@ -543,6 +980,14 @@ function renderSubtitleBlock(
 
                     const wordStart = charIndex;
                     charIndex += word.length + 1;
+
+                    const groupIdx = wordToGroupMap.get(wIdx) ?? 0;
+                    const isLastOfGroup = (() => {
+                        const gIdx = wordToGroupMap.get(wIdx);
+                        if (gIdx === undefined) return false;
+                        const group = groups[gIdx];
+                        return group ? group[group.length - 1] === wIdx : false;
+                    })();
 
                     return (
                         <AppleKaraokeWord
@@ -564,14 +1009,19 @@ function renderSubtitleBlock(
                                 "bouncy"
                             }
                             onClick={(event) => {
-                                onWordClick(word, rawContent, event.currentTarget);
+                                onWordClick(word, rawContent, event.currentTarget, wIdx);
                             }}
-                            wIdx={wIdx}
-                            revealedWordsCount={revealedWordsCount}
+                            groupIdx={groupIdx}
+                            revealedGroupsCount={revealedGroupsCount}
                             blurEnabled={blurEnabled}
                             subtitleAdvanceMs={subtitleAdvanceMs}
                             hintMode={hintMode}
                             replayCount={replayCount}
+                            isLastOfGroup={isLastOfGroup}
+                            groupReplayEnabled={groupReplayEnabled}
+                            hoveredGroupIdx={hoveredGroupIdx}
+                            setHoveredGroupIdx={setHoveredGroupIdx}
+                            wordTiming={sentenceWordTimings?.[wIdx] || null}
                         />
                     );
                 });
@@ -579,7 +1029,15 @@ function renderSubtitleBlock(
 
             if (transitionStyle === "radiant") {
                 return words.map((word, wIdx) => {
-                    const displayInfo = getWordDisplayInfo(word, wIdx, revealedWordsCount ?? 0, hintMode, replayCount, !!blurEnabled);
+                    const groupIdx = wordToGroupMap.get(wIdx) ?? 0;
+                    const displayInfo = getWordDisplayInfo(word, groupIdx, revealedGroupsCount ?? 0, hintMode, replayCount, !!blurEnabled);
+                    const isLastOfGroup = (() => {
+                        const gIdx = wordToGroupMap.get(wIdx);
+                        if (gIdx === undefined) return false;
+                        const group = groups[gIdx];
+                        return group ? group[group.length - 1] === wIdx : false;
+                    })();
+                    const isHovered = groupReplayEnabled && isActive && hoveredGroupIdx === groupIdx;
                     return (
                         <motion.span
                             key={`${sIdx}-${wIdx}`}
@@ -589,9 +1047,22 @@ function renderSubtitleBlock(
                                 visible: { opacity: 1, transition: { staggerChildren: 0.008 } },
                                 exit: { opacity: 0, transition: { duration: 0.2 } }
                             }}
-                            className="inline-block mr-[0.24em] whitespace-nowrap focus:outline-none cursor-pointer"
+                            className={cn(
+                                "inline-block whitespace-nowrap focus:outline-none cursor-pointer transition-all duration-200",
+                                (groupReplayEnabled && isLastOfGroup) ? "mr-[0.55em]" : "mr-[0.24em]"
+                            )}
                             onClick={(event) => {
-                                onWordClick(word, rawContent, event.currentTarget);
+                                onWordClick(word, rawContent, event.currentTarget, wIdx);
+                            }}
+                            onMouseEnter={() => {
+                                if (groupReplayEnabled && isActive && setHoveredGroupIdx) {
+                                    setHoveredGroupIdx(groupIdx);
+                                }
+                            }}
+                            onMouseLeave={() => {
+                                if (groupReplayEnabled && isActive && setHoveredGroupIdx) {
+                                    setHoveredGroupIdx(null);
+                                }
                             }}
                             style={styleConfig}
                         >
@@ -625,7 +1096,15 @@ function renderSubtitleBlock(
 
             {
                 return words.map((word, wIdx) => {
-                    const displayInfo = getWordDisplayInfo(word, wIdx, revealedWordsCount ?? 0, hintMode, replayCount, !!blurEnabled);
+                    const groupIdx = wordToGroupMap.get(wIdx) ?? 0;
+                    const displayInfo = getWordDisplayInfo(word, groupIdx, revealedGroupsCount ?? 0, hintMode, replayCount, !!blurEnabled);
+                    const isLastOfGroup = (() => {
+                        const gIdx = wordToGroupMap.get(wIdx);
+                        if (gIdx === undefined) return false;
+                        const group = groups[gIdx];
+                        return group ? group[group.length - 1] === wIdx : false;
+                    })();
+                    const isHovered = groupReplayEnabled && isActive && hoveredGroupIdx === groupIdx;
                     const wordVar = {
                         hidden: transitionStyle === "glide" ? { opacity: 0, y: 25, scale: 0.9 } :
                             transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
@@ -657,9 +1136,22 @@ function renderSubtitleBlock(
                             key={`${sIdx}-${wIdx}`}
                             data-word-popup-segment={word}
                             variants={wordVar}
-                            className="inline-block mr-[0.24em] whitespace-nowrap focus:outline-none cursor-pointer"
+                            className={cn(
+                                "inline-block whitespace-nowrap focus:outline-none cursor-pointer transition-all duration-200",
+                                (groupReplayEnabled && isLastOfGroup) ? "mr-[0.55em]" : "mr-[0.24em]"
+                            )}
                             onClick={(event) => {
-                                onWordClick(word, rawContent, event.currentTarget);
+                                onWordClick(word, rawContent, event.currentTarget, wIdx);
+                            }}
+                            onMouseEnter={() => {
+                                if (groupReplayEnabled && isActive && setHoveredGroupIdx) {
+                                    setHoveredGroupIdx(groupIdx);
+                                }
+                            }}
+                            onMouseLeave={() => {
+                                if (groupReplayEnabled && isActive && setHoveredGroupIdx) {
+                                    setHoveredGroupIdx(null);
+                                }
                             }}
                             style={styleConfig}
                         >
@@ -769,7 +1261,7 @@ function ListeningCabinPlayerView({
     };
     const [subtitleAdvanceMs, setSubtitleAdvanceMs] = useState(1000);
     const player = useListeningCabinPlayer({ session, restart, subtitleAdvanceMs });
-    const { playerState, currentSubtitleSentences, audioEnergy, vocalHeat, audioRef, getSentenceTiming } = player;
+    const { playerState, currentSubtitleSentences, audioEnergy, vocalHeat, audioRef, getSentenceTiming, wordTimings } = player;
 
     const [hasInteractedWithPlay, setHasInteractedWithPlay] = useState(false);
     
@@ -849,13 +1341,16 @@ function ListeningCabinPlayerView({
     const [typographyStyle, setTypographyStyle] = useState<TypographyStyle>("crystal");
     const [fontSizeEn, setFontSizeEn] = useState(1.1); // 1.1x default
     const [fontSizeZh, setFontSizeZh] = useState(1.0); // 1.0x default
+
     const [preferencesHydrated, setPreferencesHydrated] = useState(false);
     const [blurEnabled, setBlurEnabled] = useState(true);
-    const [revealedWordsCount, setRevealedWordsCount] = useState(0);
+    const [revealedGroupsCount, setRevealedGroupsCount] = useState(0);
     const [hintMode, setHintMode] = useState<HintMode>("direct");
+    const [groupReplayEnabled, setGroupReplayEnabled] = useState(false);
+    const [hoveredGroupIdx, setHoveredGroupIdx] = useState<number | null>(null);
 
     useEffect(() => {
-        setRevealedWordsCount(0);
+        setRevealedGroupsCount(0);
     }, [playerState.currentSentenceIndex]);
 
     const [showMasteryFlash, setShowMasteryFlash] = useState(false);
@@ -910,6 +1405,10 @@ function ListeningCabinPlayerView({
         if (savedHintMode === "direct" || savedHintMode === "progressive" || savedHintMode === "adaptive") {
             setHintMode(savedHintMode);
         }
+        const savedGroupReplay = localStorage.getItem("listening_cabin_group_replay_enabled");
+        if (savedGroupReplay !== null) {
+            setGroupReplayEnabled(savedGroupReplay === "true");
+        }
 
         setPreferencesHydrated(true);
     }, []);
@@ -929,7 +1428,8 @@ function ListeningCabinPlayerView({
         localStorage.setItem("listening_cabin_font_size_zh", fontSizeZh.toString());
         localStorage.setItem("listening_cabin_blur_enabled", blurEnabled.toString());
         localStorage.setItem("listening_cabin_hint_mode", hintMode);
-    }, [fontEn, fontZh, transitionStyle, typographyStyle, subtitleAdvanceMs, fontSizeEn, fontSizeZh, blurEnabled, hintMode, preferencesHydrated]);
+        localStorage.setItem("listening_cabin_group_replay_enabled", groupReplayEnabled.toString());
+    }, [fontEn, fontZh, transitionStyle, typographyStyle, subtitleAdvanceMs, fontSizeEn, fontSizeZh, blurEnabled, hintMode, groupReplayEnabled, preferencesHydrated]);
 
     // Player Spotlight Tour
     const [showPlayerTour, setShowPlayerTour] = useState(false);
@@ -1314,7 +1814,86 @@ function ListeningCabinPlayerView({
         return opened;
     }, [extractSelectionPopupText, openWordPopupAtPosition, subtitleLookupContext]);
 
-    const handleSubtitleTokenClick = useCallback((word: string, context: string, anchorElement: HTMLElement) => {
+    const slicePlaybackListenerRef = useRef<(() => void) | null>(null);
+    const slicePlaybackFrameRef = useRef<number | null>(null);
+
+    const playGroupSlice = useCallback((startMs: number, endMs: number) => {
+        const audio = audioRef.current;
+        if (!audio) return;
+
+        if (slicePlaybackFrameRef.current !== null) {
+            cancelAnimationFrame(slicePlaybackFrameRef.current);
+            slicePlaybackFrameRef.current = null;
+        }
+        if (slicePlaybackListenerRef.current) {
+            audio.removeEventListener("timeupdate", slicePlaybackListenerRef.current);
+            slicePlaybackListenerRef.current = null;
+        }
+
+        audio.currentTime = startMs / 1000;
+        
+        if (audio.paused) {
+            audio.play().catch(() => {});
+        }
+
+        const checkEnd = () => {
+            if (!audio) return;
+            const currentSec = audio.currentTime;
+            const targetEndSec = endMs / 1000;
+            if (currentSec >= targetEndSec) {
+                audio.currentTime = startMs / 1000;
+                if (audio.paused) {
+                    audio.play().catch(() => {});
+                }
+            }
+        };
+
+        const onTimeUpdate = () => {
+            checkEnd();
+        };
+
+        slicePlaybackListenerRef.current = onTimeUpdate;
+        audio.addEventListener("timeupdate", onTimeUpdate);
+
+        const loop = () => {
+            if (slicePlaybackListenerRef.current === onTimeUpdate) {
+                checkEnd();
+                slicePlaybackFrameRef.current = requestAnimationFrame(loop);
+            }
+        };
+        slicePlaybackFrameRef.current = requestAnimationFrame(loop);
+    }, [audioRef]);
+
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (audio && slicePlaybackListenerRef.current) {
+            audio.removeEventListener("timeupdate", slicePlaybackListenerRef.current);
+            slicePlaybackListenerRef.current = null;
+        }
+        if (slicePlaybackFrameRef.current !== null) {
+            cancelAnimationFrame(slicePlaybackFrameRef.current);
+            slicePlaybackFrameRef.current = null;
+        }
+    }, [playerState.currentSentenceIndex, audioRef]);
+
+    useEffect(() => {
+        if (!playerState.isPlaying) {
+            if (slicePlaybackFrameRef.current !== null) {
+                cancelAnimationFrame(slicePlaybackFrameRef.current);
+                slicePlaybackFrameRef.current = null;
+            }
+        }
+    }, [playerState.isPlaying]);
+
+    useEffect(() => {
+        return () => {
+            if (slicePlaybackFrameRef.current !== null) {
+                cancelAnimationFrame(slicePlaybackFrameRef.current);
+            }
+        };
+    }, []);
+
+    const handleSubtitleTokenClick = useCallback((word: string, context: string, anchorElement: HTMLElement, wIdx: number) => {
         if (!word) {
             return;
         }
@@ -1325,9 +1904,47 @@ function ListeningCabinPlayerView({
                 return;
             }
         }
-        const rect = anchorElement.getBoundingClientRect();
-        openWordPopupAtPosition(word, rect.left + rect.width / 2, rect.bottom + 10, context || subtitleLookupContext);
-    }, [openWordPopupAtPosition, subtitleLookupContext]);
+
+        if (groupReplayEnabled) {
+            const currentIdx = playerState.currentSentenceIndex;
+            const timing = getSentenceTiming ? getSentenceTiming(currentIdx) : null;
+            if (timing) {
+                const words = (context || "").split(" ");
+                const sentence = currentSubtitleSentences.find(s => s.index - 1 === currentIdx);
+                const senseGroups = sentence?.senseGroups;
+                const groups = getSentenceGroups(words, senseGroups);
+                const wordToGroupMap = new Map<number, number>();
+                groups.forEach((group, gIdx) => {
+                    group.forEach((idx) => {
+                        wordToGroupMap.set(idx, gIdx);
+                    });
+                });
+                
+                const numericWIdx = typeof wIdx === "number" ? wIdx : parseInt(wIdx as any, 10);
+                let groupIdx = !isNaN(numericWIdx) ? wordToGroupMap.get(numericWIdx) : undefined;
+                
+                if (groupIdx === undefined) {
+                    const cleanStr = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+                    const targetClean = cleanStr(word);
+                    const foundIdx = words.findIndex((w) => cleanStr(w) === targetClean);
+                    if (foundIdx !== -1) {
+                        groupIdx = wordToGroupMap.get(foundIdx);
+                    }
+                }
+                
+                if (groupIdx === undefined) {
+                    groupIdx = 0;
+                }
+
+                const sentenceWordTimings = wordTimings?.[currentIdx] || null;
+                const bounds = getGroupTimeBounds(words, groupIdx, timing.startMs, timing.endMs, sentenceWordTimings, senseGroups);
+                playGroupSlice(bounds.startMs, bounds.endMs);
+            }
+        } else {
+            const rect = anchorElement.getBoundingClientRect();
+            openWordPopupAtPosition(word, rect.left + rect.width / 2, rect.bottom + 10, context || subtitleLookupContext);
+        }
+    }, [openWordPopupAtPosition, subtitleLookupContext, groupReplayEnabled, getSentenceTiming, playerState.currentSentenceIndex, playGroupSlice, wordTimings, currentSubtitleSentences]);
 
     const handleSubtitleSelectionLookup = useCallback(() => {
         if (typeof window === "undefined") {
@@ -1347,6 +1964,10 @@ function ListeningCabinPlayerView({
 
             if (event.key === " " || event.code === "Space") {
                 event.preventDefault();
+                if (audioRef.current && slicePlaybackListenerRef.current) {
+                    audioRef.current.removeEventListener("timeupdate", slicePlaybackListenerRef.current);
+                    slicePlaybackListenerRef.current = null;
+                }
                 void replayCurrentSentence();
                 return;
             }
@@ -1366,8 +1987,7 @@ function ListeningCabinPlayerView({
             if (event.key === "Tab") {
                 if (blurEnabled) {
                     event.preventDefault();
-                    const step = getHintStep(hintMode, playerState.replayCount);
-                    setRevealedWordsCount((prev) => prev + step);
+                    setRevealedGroupsCount((prev) => prev + 1);
                     return;
                 }
             }
@@ -1377,7 +1997,7 @@ function ListeningCabinPlayerView({
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, showTutorial, blurEnabled, hintMode, playerState.replayCount]);
+    }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, showTutorial, blurEnabled]);
 
     return (
         <motion.main
@@ -1420,8 +2040,7 @@ function ListeningCabinPlayerView({
                 }
 
                 if (blurEnabled) {
-                    const step = getHintStep(hintMode, playerState.replayCount);
-                    setRevealedWordsCount((prev) => prev + step);
+                    setRevealedGroupsCount((prev) => prev + 1);
                 }
             }}
         >
@@ -1608,6 +2227,26 @@ function ListeningCabinPlayerView({
                         style={getPressableStyle("rgba(67,83,99,0.08)", 2)}
                     >
                         {blurEnabled ? "模糊窗: 开启" : "模糊窗: 关闭"}
+                    </motion.button>
+
+                    {/* Group Replay Toggle */}
+                    <motion.button
+                        type="button"
+                        onClick={() => {
+                            setGroupReplayEnabled(!groupReplayEnabled);
+                            revealControls();
+                        }}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className={cn(
+                            "ui-pressable inline-flex h-9 px-4 items-center justify-center rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm",
+                            groupReplayEnabled 
+                                ? "bg-indigo-600 text-white border border-indigo-600 shadow-[0_0_12px_rgba(79,70,229,0.4)] animate-pulse-subtle" 
+                                : "text-[#4c555b] bg-white/40 backdrop-blur-sm border border-transparent"
+                        )}
+                        style={getPressableStyle("rgba(67,83,99,0.08)", 2)}
+                    >
+                        {groupReplayEnabled ? "意群重放: 开启" : "意群重放: 关闭"}
                     </motion.button>
 
                     {/* Phase 24: Typographic Atelier Toggle */}
@@ -1992,10 +2631,14 @@ function ListeningCabinPlayerView({
                                             audioRef,
                                             getSentenceTiming,
                                             blurEnabled,
-                                            revealedWordsCount,
+                                            revealedGroupsCount,
                                             subtitleAdvanceMs,
                                             hintMode,
-                                            playerState.replayCount
+                                            playerState.replayCount,
+                                            groupReplayEnabled,
+                                            hoveredGroupIdx,
+                                            setHoveredGroupIdx,
+                                            wordTimings
                                         )}
                                     </h1>
 
@@ -2299,6 +2942,10 @@ function ListeningCabinPlayerView({
                                         e.preventDefault();
                                         e.stopPropagation();
                                         setHasInteractedWithPlay(true);
+                                        if (slicePlaybackListenerRef.current && audioRef.current) {
+                                            audioRef.current.removeEventListener("timeupdate", slicePlaybackListenerRef.current);
+                                            slicePlaybackListenerRef.current = null;
+                                        }
                                         if (playerState.isPlaying) {
                                             player.pausePlayback();
                                             return;

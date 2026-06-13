@@ -10,6 +10,7 @@ import {
     buildListeningCabinNarrationText,
     buildListeningCabinPlaybackChunks,
     buildListeningCabinSentenceTimings,
+    buildListeningCabinWordTimings,
     createListeningCabinSession,
     LISTENING_CABIN_RANDOM_TOPIC_POOLS,
     LISTENING_CABIN_RANDOM_TOPIC_POOL_SIZE_PER_MODE,
@@ -328,6 +329,52 @@ describe("listening cabin helpers", () => {
         ]);
     });
 
+    it("builds precise word-level timings using speech marks", () => {
+        const sentenceTimings = [
+            { index: 1, startMs: 0, endMs: 1076 },
+            { index: 2, startMs: 1100, endMs: 3080 },
+        ];
+        const sentences = [
+            { index: 1, english: "Good morning, everyone.", chinese: "大家早上好。" },
+            { index: 2, english: "Today I'd like to walk you through our launch plan.", chinese: "今天我想带你过一遍上线计划。" },
+        ];
+        const marks = [
+            { time: 0, start: 0, end: 180, type: "word", value: "Good" },
+            { time: 220, start: 220, end: 480, type: "word", value: "morning" },
+            { time: 1100, start: 1100, end: 1320, type: "word", value: "Today" },
+            { time: 1360, start: 1360, end: 1490, type: "word", value: "I'd" },
+            { time: 1520, start: 1520, end: 1640, type: "word", value: "like" },
+            { time: 1680, start: 1680, end: 1780, type: "word", value: "to" },
+            { time: 1820, start: 1820, end: 1980, type: "word", value: "walk" },
+            { time: 2020, start: 2020, end: 2140, type: "word", value: "you" },
+            { time: 2180, start: 2180, end: 2400, type: "word", value: "through" },
+            { time: 2440, start: 2440, end: 2520, type: "word", value: "our" },
+            { time: 2560, start: 2560, end: 2820, type: "word", value: "launch" },
+            { time: 2860, start: 2860, end: 3080, type: "word", value: "plan" },
+        ];
+
+        const wordTimings = buildListeningCabinWordTimings(sentences, marks, sentenceTimings);
+
+        expect(wordTimings[0]).toEqual([
+            { startMs: 0, endMs: 180 },
+            { startMs: 220, endMs: 480 },
+            null,
+        ]);
+
+        expect(wordTimings[1]).toEqual([
+            { startMs: 1100, endMs: 1320 },
+            { startMs: 1360, endMs: 1490 },
+            { startMs: 1520, endMs: 1640 },
+            { startMs: 1680, endMs: 1780 },
+            { startMs: 1820, endMs: 1980 },
+            { startMs: 2020, endMs: 2140 },
+            { startMs: 2180, endMs: 2400 },
+            { startMs: 2440, endMs: 2520 },
+            { startMs: 2560, endMs: 2820 },
+            { startMs: 2860, endMs: 3080 },
+        ]);
+    });
+
     it("creates a local session with v2 strategy fields", () => {
         const session = createListeningCabinSession({
             response: {
@@ -392,6 +439,28 @@ describe("listening cabin helpers", () => {
 
         expect(sentences[0]?.emotion).toBe("neutral");
         expect(sentences[0]?.pace).toBe("normal");
+    });
+
+    it("normalizes and preserves senseGroups if present", () => {
+        const sentences = normalizeListeningCabinSentences(
+            [
+                { 
+                    english: "Hello there, how are you?", 
+                    chinese: "你好，你好吗？", 
+                    senseGroups: ["Hello there,", "how are you?"] 
+                },
+                {
+                    english: "I am fine.",
+                    chinese: "我很好。",
+                    senseGroups: ["I am", "  ", "", "fine."]
+                }
+            ],
+            4,
+            "monologue",
+        );
+
+        expect(sentences[0]?.senseGroups).toEqual(["Hello there,", "how are you?"]);
+        expect(sentences[1]?.senseGroups).toEqual(["I am", "fine."]);
     });
 
     it("asks the model to use rare natural repetition for emotional delivery", () => {

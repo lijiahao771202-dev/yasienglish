@@ -9,6 +9,7 @@ import {
     buildSentenceUnits,
     extractWordTokens,
     type TtsWordMark,
+    type WordToken,
 } from "@/lib/read-speaking";
 
 export type ListeningCabinScriptStyle =
@@ -79,6 +80,7 @@ export interface ListeningCabinSentence {
     pace?: ListeningCabinSentencePace;
     isMastered?: boolean;
     note?: string;
+    senseGroups?: string[];
 }
 
 export interface ListeningCabinGenerationRequest {
@@ -1047,6 +1049,7 @@ Strict writing constraints:
 - title should be concise and practical.
 - Every sentence must include english + chinese.
 - Every sentence must include emotion + pace.
+- Every sentence must include a "senseGroups" array of strings, splitting the "english" sentence into natural spoken semantic/syntactic chunks (sense groups) for practice. Each chunk should usually be 1 to 5 words long (e.g. prepositional phrase, noun phrase, verb phrase). The concatenation of all elements in "senseGroups" (separated by space or naturally reconstructed) should exactly match the "english" field. Do not include separate punctuation marks as distinct elements in the array; keep them attached to their respective words.
 - english must sound spoken, rhythmic, and life-like.
 - chinese should be concise and easy to map to the spoken line.
 - Use punctuation naturally to express emotion (comma, ellipsis, question mark, exclamation) without overusing.
@@ -1072,8 +1075,8 @@ JSON schema:
   "title": "short title",
   "sentences": [
     ${request.scriptMode === "monologue"
-        ? '{ "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast" }'
-        : `{ "speaker": "${(speakerPlan.assignments[0]?.speaker ?? "Jenny").replace(/"/g, "\\\"")}", "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast" }`}
+        ? '{ "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast", "senseGroups": ["phrase 1", "phrase 2"] }'
+        : `{ "speaker": "${(speakerPlan.assignments[0]?.speaker ?? "Jenny").replace(/"/g, "\\\"")}", "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast", "senseGroups": ["phrase 1", "phrase 2"] }`}
   ]
 }
 `.trim();
@@ -1297,6 +1300,13 @@ export function normalizeListeningCabinSentences(
             const speaker = normalizeSpeakerName((item as { speaker?: unknown })?.speaker, "");
             const emotion = normalizeSentenceEmotion((item as { emotion?: unknown })?.emotion);
             const pace = normalizeSentencePace((item as { pace?: unknown })?.pace);
+            const senseGroupsRaw = (item as { senseGroups?: unknown })?.senseGroups;
+            const senseGroups = Array.isArray(senseGroupsRaw)
+                ? senseGroupsRaw
+                    .map((g) => typeof g === "string" ? normalizeSentenceText(g) : "")
+                    .filter((g) => g.trim().length > 0)
+                : undefined;
+
             if (!english || !chinese) {
                 return null;
             }
@@ -1308,6 +1318,7 @@ export function normalizeListeningCabinSentences(
                 emotion,
                 pace,
                 ...(isListeningCabinMultiSpeakerMode(scriptMode) && speaker ? { speaker } : {}),
+                ...(senseGroups && senseGroups.length > 0 ? { senseGroups } : {}),
             } as ListeningCabinSentence;
         })
         .filter((item): item is ListeningCabinSentence => item !== null);
@@ -1642,17 +1653,41 @@ export function buildListeningCabinSentenceTimings(
         } satisfies ListeningCabinSentenceTiming;
     });
 
-    return timings.map((timing, index) => {
-        const nextTiming = timings[index + 1];
-        const startMs = index === 0 ? Math.max(0, timing.startMs) : Math.max(timings[index - 1].endMs, timing.startMs);
-        const endMs = nextTiming ? Math.max(timing.endMs, nextTiming.startMs - 24) : Math.max(timing.endMs, startMs);
+    const mapped: ListeningCabinSentenceTiming[] = [];
+    let lastEndMs = 0;
 
-        return {
+    for (let i = 0; i < timings.length; i++) {
+        const timing = timings[i];
+        const nextTiming = timings[i + 1];
+
+        // Start time: must be at least lastEndMs to prevent overlap
+        let startMs = Math.max(lastEndMs, timing.startMs);
+
+        // End time:
+        let endMs = timing.endMs;
+        if (nextTiming) {
+            if (timing.endMs > nextTiming.startMs) {
+                // Overlap: split exactly at nextTiming.startMs
+                endMs = nextTiming.startMs;
+                // Adjust startMs if it was pushed past endMs
+                startMs = Math.min(startMs, endMs);
+            } else {
+                // Gap: end 24ms before next sentence starts
+                endMs = Math.max(timing.endMs, nextTiming.startMs - 24);
+            }
+        } else {
+            endMs = Math.max(timing.endMs, startMs);
+        }
+
+        mapped.push({
             index: timing.index,
             startMs,
             endMs,
-        };
-    });
+        });
+        lastEndMs = endMs;
+    }
+
+    return mapped;
 }
 
 export function buildListeningCabinAudioCacheKey(text: string, voice: string, playbackRate: number) {
@@ -1741,4 +1776,123 @@ export function createListeningCabinSession(params: {
         lastSentenceIndex: 0,
         lastPlayedAt: null,
     };
+}
+
+export function alignWordsToTokens(
+    words: string[],
+    unitTokens: WordToken[],
+    tokenToMark: Map<number, number>,
+    wordMarks: TtsWordMark[],
+    sentenceStartMs: number,
+    sentenceEndMs: number
+): Array<{ startMs: number; endMs: number } | null> {
+    const wordTimings: Array<{ startMs: number; endMs: number } | null> = new Array(words.length).fill(null);
+    
+    let tokenIdx = 0;
+    for (let wIdx = 0; wIdx < words.length; wIdx++) {
+        const word = words[wIdx];
+        const cleanWord = word.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (!cleanWord) {
+            continue;
+        }
+
+        const matchedTokens: typeof unitTokens = [];
+        
+        while (tokenIdx < unitTokens.length) {
+            const token = unitTokens[tokenIdx];
+            const cleanToken = token.text.toLowerCase().replace(/[^a-z0-9]/g, "");
+            
+            if (cleanWord.includes(cleanToken) || cleanToken.includes(cleanWord)) {
+                matchedTokens.push(token);
+                tokenIdx++;
+            } else {
+                if (matchedTokens.length > 0) {
+                    break;
+                }
+                const matchesFuture = words.slice(wIdx + 1).some(futureWord => {
+                    const cleanFuture = futureWord.toLowerCase().replace(/[^a-z0-9]/g, "");
+                    return cleanFuture.includes(cleanToken) || cleanToken.includes(cleanFuture);
+                });
+                if (matchesFuture) {
+                    break;
+                }
+                tokenIdx++;
+            }
+        }
+
+        if (matchedTokens.length > 0) {
+            let startMs: number | null = null;
+            let endMs: number | null = null;
+
+            for (const token of matchedTokens) {
+                const markIdx = tokenToMark.get(token.index);
+                if (markIdx !== undefined) {
+                    const mark = wordMarks[markIdx];
+                    if (startMs === null || mark.time < startMs) {
+                        startMs = mark.time;
+                    }
+                    if (endMs === null || mark.end > endMs) {
+                        endMs = mark.end;
+                    }
+                }
+            }
+
+            if (startMs !== null && endMs !== null) {
+                wordTimings[wIdx] = { startMs, endMs };
+            }
+        }
+    }
+
+    return wordTimings;
+}
+
+export function buildListeningCabinWordTimings(
+    sentences: ListeningCabinSentence[],
+    marks: TtsWordMark[],
+    sentenceTimings: ListeningCabinSentenceTiming[]
+): Array<Array<{ startMs: number; endMs: number } | null>> {
+    const narrationText = buildListeningCabinNarrationText(sentences);
+    
+    const renderSentenceLocal = (text: string | undefined) => {
+        if (!text) return "";
+        return text.replace(/^\s*[A-Za-z][A-Za-z0-9 .,'()\-&]{0,40}:\s*/u, "");
+    };
+
+    if (!narrationText || !marks || marks.length === 0) {
+        return sentences.map((sentence) => {
+            const rawContent = renderSentenceLocal(sentence.english);
+            return new Array(rawContent.split(" ").length).fill(null);
+        });
+    }
+
+    const boundaries: number[] = [0];
+    let cursor = 0;
+
+    sentences.forEach((sentence, index) => {
+        const normalizedEnglish = normalizeSentenceText(sentence.english);
+        cursor += normalizedEnglish.length;
+        boundaries.push(cursor);
+        if (index < sentences.length - 1) {
+            cursor += 1;
+        }
+    });
+
+    const sentenceUnits = buildSentenceUnits(narrationText, boundaries);
+    const wordMarks = marks.filter((mark) => mark.type === "word" && typeof mark.value === "string");
+    const tokens = extractWordTokens(narrationText);
+    const tokenToMark = alignTokensToMarks(tokens, wordMarks);
+
+    return sentenceUnits.map((unit, unitIndex) => {
+        const sentence = sentences[unitIndex];
+        if (!sentence) {
+            return [];
+        }
+        const rawContent = renderSentenceLocal(sentence.english);
+        const words = rawContent.split(" ");
+        const sTiming = sentenceTimings[unitIndex] ?? { startMs: 0, endMs: 0 };
+
+        const unitTokens = tokens.filter((token) => token.start >= unit.start && token.end <= unit.end);
+        
+        return alignWordsToTokens(words, unitTokens, tokenToMark, wordMarks, sTiming.startMs, sTiming.endMs);
+    });
 }
