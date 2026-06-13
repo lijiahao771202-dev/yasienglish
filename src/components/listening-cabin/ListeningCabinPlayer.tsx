@@ -739,6 +739,20 @@ function ListeningCabinPlayerView({
         restDelta: 0.001
     });
 
+    const {
+        nextSentenceAction,
+        previousSentenceAction,
+        replayCurrentSentence,
+        cyclePlaybackRate,
+        changePlaybackRate,
+        pausePlayback,
+        resumeOrPlay,
+    } = player;
+
+    const [showControls, setShowControls] = useState(false);
+    const [showSpeedSlider, setShowSpeedSlider] = useState(false);
+    const speedContainerRef = useRef<HTMLDivElement>(null);
+
     useEffect(() => {
         springProgress.set(playerState.progressRatio);
     }, [playerState.progressRatio, springProgress]);
@@ -753,20 +767,6 @@ function ListeningCabinPlayerView({
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [showSpeedSlider]);
-
-    const {
-        nextSentenceAction,
-        previousSentenceAction,
-        replayCurrentSentence,
-        cyclePlaybackRate,
-        changePlaybackRate,
-        pausePlayback,
-        resumeOrPlay,
-    } = player;
-
-    const [showControls, setShowControls] = useState(false);
-    const [showSpeedSlider, setShowSpeedSlider] = useState(false);
-    const speedContainerRef = useRef<HTMLDivElement>(null);
     const [showSettings, setShowSettings] = useState(false);
     const [fontEn, setFontEn] = useState("var(--font-inter)");
     const [fontZh, setFontZh] = useState("var(--font-zh-sans-modern)");
