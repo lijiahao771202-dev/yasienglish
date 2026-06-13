@@ -19,6 +19,10 @@ import {
     Flame,
     Sparkles,
     Compass,
+    Lightbulb,
+    Delete,
+    RotateCcw,
+    SkipForward,
 } from "lucide-react";
 import { useForgeHaptics } from "@/hooks/useForgeHaptics";
 
@@ -34,12 +38,6 @@ import type {
 } from "@/lib/listening-cabin";
 import { getPressableStyle } from "@/lib/pressable";
 import { cn } from "@/lib/utils";
-import {
-    tokenizeRebuildSentence,
-    collectRebuildDistractors,
-    buildRebuildTokenBank,
-    evaluateRebuildSelection,
-} from "@/lib/rebuild-mode";
 
 function renderSentence(sentence: string | undefined) {
     if (!sentence) {
@@ -48,6 +46,30 @@ function renderSentence(sentence: string | undefined) {
 
     return sentence.replace(/^\s*[A-Za-z][A-Za-z0-9 .,'()\-&]{0,40}:\s*/u, "");
 }
+
+function playKeySuccessSound() {
+    if (typeof window === "undefined") return;
+    try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = "sine";
+        // Crisp, high-pitched mechanical tick/pop sound
+        osc.frequency.setValueAtTime(900 + Math.random() * 150, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1400, audioCtx.currentTime + 0.05);
+        
+        gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.05);
+    } catch (e) {
+        // Safe catch
+    }
+}
+
 
 function getPlaybackModeLabel(mode: ListeningCabinPlaybackMode) {
     switch (mode) {
@@ -89,6 +111,7 @@ const SUBTITLE_ADVANCE_OPTIONS = [
     { label: "0.6s", value: 600 },
     { label: "1.0s", value: 1000 },
     { label: "1.2s", value: 1200 },
+    { label: "1.5s", value: 1500 },
 ] as const;
 
 type TransitionStyle = "radiant" | "mist" | "glide" | "classic" | "typewriter" | "blur" | "stagger" | "elastic" | "neon" | "apple_karaoke" | "karaoke_pure" | "karaoke_pop" | "karaoke_ghost" | "karaoke_neon";
@@ -104,7 +127,6 @@ function isTypographyStyle(value: string): value is TypographyStyle {
 
 function AppleKaraokeWord({ 
     word, 
-    displayWord,
     sentenceIndex,
     getSentenceTiming,
     durationRatio, 
@@ -114,10 +136,13 @@ function AppleKaraokeWord({
     styleConfig, 
     audioRef, 
     karaokeVariant = "bouncy",
-    onClick 
+    onClick,
+    wIdx = 0,
+    revealedWordsCount = 0,
+    blurEnabled = false,
+    subtitleAdvanceMs = 0,
 }: { 
     word: string; 
-    displayWord?: string;
     sentenceIndex: number;
     getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null;
     durationRatio: number; 
@@ -128,6 +153,10 @@ function AppleKaraokeWord({
     audioRef?: React.RefObject<HTMLAudioElement | null>; 
     karaokeVariant?: "bouncy" | "pure" | "pop" | "ghost" | "neon";
     onClick: React.MouseEventHandler<HTMLSpanElement>; 
+    wIdx?: number;
+    revealedWordsCount?: number;
+    blurEnabled?: boolean;
+    subtitleAdvanceMs?: number;
 }) {
     const opacity = useMotionValue(0.4);
     const filterBlur = useMotionValue(
@@ -192,8 +221,8 @@ function AppleKaraokeWord({
         const sentenceDuration = Math.max(endMs - startMs, 300); 
         
         // Because speech isn't perfectly linear, we add slight stagger to make the transition feel organic
-        const wordStartMs = startMs + sentenceDuration * cumulativeRatio - 80; // slightly early anticipation
-        const wordEndMs = startMs + sentenceDuration * (cumulativeRatio + durationRatio) + 180; // keep it lit a bit longer
+        const wordStartMs = startMs + sentenceDuration * cumulativeRatio - 250; // early anticipation to reduce perceived lag
+        const wordEndMs = startMs + sentenceDuration * (cumulativeRatio + durationRatio) + 120; // keep it lit a bit longer
 
         let targetState: "upcoming" | "active" | "past" = "upcoming";
         if (currentMs > wordEndMs) {
@@ -224,7 +253,7 @@ function AppleKaraokeWord({
                     animate(scale, 1, { duration: 0.1 });
                     animate(opacity, 0.1, { duration: 0.2 });
                     animate(filterBlur, 0, { duration: 0.1 });
-                    animate(glow, 0, { duration: 0.1 });
+                    animate(glow, 0.1, { duration: 0.1 });
                 } else {
                     animate(scale, 0.96, { type: "spring" as const, stiffness: 200, damping: 25 });
                     animate(opacity, 0.4, { type: "spring" as const, stiffness: 200, damping: 25 });
@@ -292,31 +321,34 @@ function AppleKaraokeWord({
     return (
         <motion.span
             data-word-popup-segment={word}
-            className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-100 hover:!blur-none focus:outline-none"
-            onClick={displayWord && displayWord !== word ? undefined : onClick}
+            className="inline-block mr-[0.24em] whitespace-nowrap focus:outline-none cursor-pointer hover:opacity-100 hover:!blur-none"
+            onClick={onClick}
             style={{
                 ...styleConfig, // Apply root typo configs
-                opacity,
-                filter,
-                scale,
-                textShadow,
+                opacity: opacity,
+                filter: filter,
+                scale: scale,
+                textShadow: textShadow,
                 color: styleConfig.color || "#1e293b",
-                transition: "color 0.4s ease, filter 0.4s ease"
+                transition: "color 0.4s ease"
             }}
         >
-            <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
-                {displayWord || word}
+            <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
+                <span className={cn(
+                    "inline-block", 
+                    isActive ? "active:text-blue-500" : "",
+                    blurEnabled && isActive && wIdx >= revealedWordsCount && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
+                )}>
+                    {word}
+                </span>
             </span>
         </motion.span>
     );
 }
 
-const shakeVariants = {
-    shake: {
-        x: [0, -10, 10, -10, 10, -5, 5, 0],
-        transition: { duration: 0.5 }
-    }
-};
+
+
+
 
 function renderSubtitleBlock(
     sentences: ListeningCabinSentence[],
@@ -329,20 +361,14 @@ function renderSubtitleBlock(
     onWordClick: (word: string, context: string, anchorElement: HTMLElement) => void,
     audioRef?: React.RefObject<HTMLAudioElement | null>,
     getSentenceTiming?: (index: number) => import("@/lib/listening-cabin").ListeningCabinSentenceTiming | null,
-    practiceMode?: "listen" | "rebuild",
-    localMasteryMap?: Record<number, boolean>,
-    skippedSet?: Set<number>,
-    solvedSet?: Set<number>
+    blurEnabled?: boolean,
+    revealedWordsCount?: number,
+    subtitleAdvanceMs?: number
 ) {
     if (!sentences) return null;
     return sentences.map((sentence, sIdx) => {
         if (!sentence) return null;
         const isActive = (sentence.index - 1) === activeIndex;
-        const sIdxReal = sentence.index - 1;
-        const isSentenceSolved = practiceMode !== "rebuild" ||
-            (localMasteryMap?.[sIdxReal] ?? sentence.isMastered ?? false) ||
-            skippedSet?.has(sIdxReal) ||
-            solvedSet?.has(sIdxReal);
 
         const rawContent = renderSentence(sentence.english) || "";
         const words = rawContent.split(" ");
@@ -355,7 +381,7 @@ function renderSubtitleBlock(
                 fontSize: `${fontSizeEn}em`,
                 // Soft Ambient Light Bleed:
                 textShadow: isActive && themeColor ? `0 0 15px ${themeColor.replace('0.6', '0.12').replace('0.65', '0.12')}` : "none",
-                transition: "all 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
+                transition: "color 0.5s ease, text-shadow 0.5s ease, -webkit-text-stroke 0.5s ease",
             } as any;
 
             switch (typographyStyle) {
@@ -434,20 +460,23 @@ function renderSubtitleBlock(
 
         // Subtitle Style Logic
         const renderWords = () => {
-            if (["apple_karaoke", "karaoke_pure", "karaoke_pop", "karaoke_ghost", "karaoke_neon"].includes(transitionStyle)) {
-                const totalChars = words.reduce((sum, word) => sum + (word.replace(/[^a-zA-Z]/g, '').length || 1), 0);
+            if (transitionStyle.startsWith("karaoke") || transitionStyle === "apple_karaoke") {
+                const totalChars = words.reduce((acc, w) => acc + (w.replace(/[^a-zA-Z]/g, '').length || 1), 0);
                 let cumulativeChars = 0;
+                let charIndex = 0;
                 return words.map((word, wIdx) => {
                     const charCount = word.replace(/[^a-zA-Z]/g, '').length || 1;
                     const durationRatio = charCount / totalChars;
                     const cumulativeRatio = cumulativeChars / totalChars;
                     cumulativeChars += charCount;
 
+                    const wordStart = charIndex;
+                    charIndex += word.length + 1;
+
                     return (
                         <AppleKaraokeWord
                             key={`${sIdx}-${wIdx}`}
                             word={word}
-                            displayWord={isSentenceSolved ? word : word.replace(/[a-zA-Z]/g, "•")}
                             sentenceIndex={sentence.index - 1}
                             getSentenceTiming={getSentenceTiming}
                             durationRatio={durationRatio}
@@ -463,90 +492,114 @@ function renderSubtitleBlock(
                                 transitionStyle === "karaoke_neon" ? "neon" : 
                                 "bouncy"
                             }
-                            onClick={(event) => onWordClick(word, rawContent, event.currentTarget)}
+                            onClick={(event) => {
+                                onWordClick(word, rawContent, event.currentTarget);
+                            }}
+                            wIdx={wIdx}
+                            revealedWordsCount={revealedWordsCount}
+                            blurEnabled={blurEnabled}
+                            subtitleAdvanceMs={subtitleAdvanceMs}
                         />
                     );
                 });
             }
 
             if (transitionStyle === "radiant") {
-                return words.map((word, wIdx) => (
-                    <motion.span
-                        key={`${sIdx}-${wIdx}`}
-                        data-word-popup-segment={word}
-                        variants={{
-                            hidden: { opacity: 0 },
-                            visible: { opacity: 1, transition: { staggerChildren: 0.008 } },
-                            exit: { opacity: 0, transition: { duration: 0.2 } }
-                        }}
-                        className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer selection:bg-blue-500/10 focus:outline-none"
-                        onClick={isSentenceSolved ? (event) => onWordClick(word, rawContent, event.currentTarget) : undefined}
-                        style={styleConfig}
-                    >
-                        <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
-                            {word.split("").map((char, cIdx) => (
-                                <motion.span
-                                    key={cIdx}
-                                    variants={{
-                                        hidden: { opacity: 0, y: 12 },
-                                        visible: {
-                                            opacity: 1, y: 0,
-                                            transition: { type: "spring" as const, stiffness: 120, damping: 28, mass: 1 }
-                                        },
-                                        exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
-                                    }}
-                                    className="inline-block"
-                                >
-                                    {isSentenceSolved ? char : (/[a-zA-Z]/.test(char) ? "•" : char)}
-                                </motion.span>
-                            ))}
-                        </span>
-                    </motion.span>
-                ));
+                return words.map((word, wIdx) => {
+                    return (
+                        <motion.span
+                            key={`${sIdx}-${wIdx}`}
+                            data-word-popup-segment={word}
+                            variants={{
+                                hidden: { opacity: 0 },
+                                visible: { opacity: 1, transition: { staggerChildren: 0.008 } },
+                                exit: { opacity: 0, transition: { duration: 0.2 } }
+                            }}
+                            className="inline-block mr-[0.24em] whitespace-nowrap focus:outline-none cursor-pointer"
+                            onClick={(event) => {
+                                onWordClick(word, rawContent, event.currentTarget);
+                            }}
+                            style={styleConfig}
+                        >
+                            <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
+                                <span className={cn(
+                                    "active:text-blue-500 inline-block",
+                                    blurEnabled && isActive && wIdx >= (revealedWordsCount ?? 0) && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
+                                )}>
+                                    {word.split("").map((char, cIdx) => (
+                                        <motion.span
+                                            key={cIdx}
+                                            variants={{
+                                                hidden: { opacity: 0, y: 12 },
+                                                visible: {
+                                                    opacity: 1, y: 0,
+                                                    transition: { type: "spring" as const, stiffness: 120, damping: 28, mass: 1 }
+                                                },
+                                                exit: { opacity: 0, y: -10, transition: { duration: 0.2 } }
+                                            }}
+                                            className="inline-block"
+                                        >
+                                            {char}
+                                        </motion.span>
+                                    ))}
+                                </span>
+                            </span>
+                        </motion.span>
+                    );
+                });
             }
 
-            return words.map((word, wIdx) => {
-                const wordVar = {
-                    hidden: transitionStyle === "glide" ? { opacity: 0, y: 25, scale: 0.9 } :
-                        transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
-                            transitionStyle === "blur" ? { opacity: 0, filter: "blur(12px)", scale: 1.1 } :
-                                transitionStyle === "stagger" ? { opacity: 0, x: -20, rotate: -5 } :
-                                    transitionStyle === "elastic" ? { opacity: 0, scale: 0.5, y: 20 } :
-                                        transitionStyle === "neon" ? { opacity: 0, textShadow: "0 0 0px transparent" } :
-                                            { opacity: 0 },
-                    visible: {
-                        opacity: 1, y: 0, x: 0, scale: 1, rotate: 0, filter: "blur(0px)",
-                        textShadow: (transitionStyle === "neon" ? `0 0 20px ${themeColor}` : styleConfig.textShadow) as any,
-                        transition: {
-                            type: "spring" as const,
-                            stiffness: transitionStyle === "elastic" ? 260 : 100,
-                            damping: transitionStyle === "elastic" ? 15 : 22,
-                            duration: 0.6
+            {
+                return words.map((word, wIdx) => {
+                    const wordVar = {
+                        hidden: transitionStyle === "glide" ? { opacity: 0, y: 25, scale: 0.9 } :
+                            transitionStyle === "typewriter" ? { opacity: 0, y: 4, filter: "blur(4px)" } :
+                                transitionStyle === "blur" ? { opacity: 0, filter: "blur(12px)", scale: 1.1 } :
+                                    transitionStyle === "stagger" ? { opacity: 0, x: -20, rotate: -5 } :
+                                        transitionStyle === "elastic" ? { opacity: 0, scale: 0.5, y: 20 } :
+                                            transitionStyle === "neon" ? { opacity: 0, textShadow: "0 0 0px transparent" } :
+                                                { opacity: 0 },
+                        visible: {
+                            opacity: 1, y: 0, x: 0, scale: 1, rotate: 0, filter: "blur(0px)",
+                            textShadow: (transitionStyle === "neon" ? `0 0 20px ${themeColor}` : styleConfig.textShadow) as any,
+                            transition: {
+                                type: "spring" as const,
+                                stiffness: transitionStyle === "elastic" ? 260 : 100,
+                                damping: transitionStyle === "elastic" ? 15 : 22,
+                                duration: 0.6
+                            }
+                        },
+                        exit: {
+                            opacity: 0,
+                            y: transitionStyle === "glide" ? -20 : -8,
+                            filter: transitionStyle === "blur" ? "blur(10px)" : "none",
+                            transition: { duration: 0.25 }
                         }
-                    },
-                    exit: {
-                        opacity: 0,
-                        y: transitionStyle === "glide" ? -20 : -8,
-                        filter: transitionStyle === "blur" ? "blur(10px)" : "none",
-                        transition: { duration: 0.25 }
-                    }
-                };
+                    };
 
-                return (
-                    <motion.span
-                        key={`${sIdx}-${wIdx}`}
-                        data-word-popup-segment={word}
-                        variants={wordVar}
-                        className="inline-block mr-[0.24em] whitespace-nowrap cursor-pointer hover:opacity-70 transition-opacity focus:outline-none"
-                        onClick={isSentenceSolved ? (event) => onWordClick(word, rawContent, event.currentTarget) : undefined}
-                        style={styleConfig}
-                    >
-                        <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none active:text-blue-500">
-                            {isSentenceSolved ? word : word.replace(/[a-zA-Z]/g, "•")}
-                        </span>
-                    </motion.span>
-                );
-            });
+                    return (
+                        <motion.span
+                            key={`${sIdx}-${wIdx}`}
+                            data-word-popup-segment={word}
+                            variants={wordVar}
+                            className="inline-block mr-[0.24em] whitespace-nowrap focus:outline-none cursor-pointer"
+                            onClick={(event) => {
+                                onWordClick(word, rawContent, event.currentTarget);
+                            }}
+                            style={styleConfig}
+                        >
+                            <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
+                                <span className={cn(
+                                    "active:text-blue-500 inline-block",
+                                    blurEnabled && isActive && wIdx >= (revealedWordsCount ?? 0) && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
+                                )}>
+                                    {word}
+                                </span>
+                            </span>
+                        </motion.span>
+                    );
+                });
+            }
         };
 
         const blockVariants: Variants = {
@@ -566,7 +619,10 @@ function renderSubtitleBlock(
             <motion.div
                 key={sentence.index}
                 variants={transitionStyle === "mist" || transitionStyle === "classic" ? blockVariants : containerVariants}
-                className="mb-8 last:mb-0 relative"
+                className={cn(
+                    "mb-8 last:mb-0 relative transition-all duration-500",
+                    blurEnabled && isActive && "group cursor-pointer"
+                )}
                 style={{
                     fontFamily,
                     pointerEvents: isActive ? "auto" : "none",
@@ -664,70 +720,7 @@ function ListeningCabinPlayerView({
 
     const currentSentenceIndex = playerState.currentSentenceIndex;
     const currentSentence = player.currentSentence;
-    const practiceMode = session.practiceMode ?? "listen";
 
-    // Rebuild challenge modes local states
-    const [effectiveElo, setEffectiveElo] = useState<number>(600);
-    const [skippedSet, setSkippedSet] = useState<Set<number>>(new Set());
-    const [solvedSet, setSolvedSet] = useState<Set<number>>(new Set());
-    const [rebuildAnswerTokens, setRebuildAnswerTokens] = useState<string[]>([]);
-    const [rebuildAvailableTokens, setRebuildAvailableTokens] = useState<string[]>([]);
-    const [rebuildFeedback, setRebuildFeedback] = useState<any | null>(null);
-    const [attempts, setAttempts] = useState<number>(0);
-    const [showHint, setShowHint] = useState<boolean>(false);
-    const [isShaking, setIsShaking] = useState<boolean>(false);
-
-    // Fetch ELO on mount
-    useEffect(() => {
-        db.user_profile.orderBy("id").first().then((profile) => {
-            if (profile) {
-                setEffectiveElo(profile.rebuild_elo ?? profile.listening_elo ?? profile.elo_rating ?? 600);
-            }
-        });
-    }, []);
-
-    // Other sentences' tokens to use as related context distractors
-    const otherSentencesTokens = useMemo(() => {
-        if (!session?.sentences) return [];
-        const tokens: string[] = [];
-        session.sentences.forEach((s, idx) => {
-            if (idx !== currentSentenceIndex) {
-                tokens.push(...tokenizeRebuildSentence(s.english || ""));
-            }
-        });
-        return tokens;
-    }, [session, currentSentenceIndex]);
-
-    // Initialize tokens when current sentence index changes
-    useEffect(() => {
-        if (practiceMode !== "rebuild" || !currentSentence) return;
-
-        const answerText = renderSentence(currentSentence.english) || "";
-        const answerTokens = tokenizeRebuildSentence(answerText);
-        const distractorTokens = collectRebuildDistractors({
-            answerTokens,
-            effectiveElo,
-            relatedBankTokens: otherSentencesTokens,
-        });
-        const tokenBank = buildRebuildTokenBank({
-            answerTokens,
-            distractorTokens,
-        });
-
-        setRebuildAnswerTokens([]);
-        setRebuildAvailableTokens(tokenBank);
-        setRebuildFeedback(null);
-        setAttempts(0);
-        setShowHint(false);
-        setIsShaking(false);
-    }, [currentSentenceIndex, practiceMode, currentSentence, effectiveElo, otherSentencesTokens]);
-
-    const isSolved = useMemo(() => {
-        if (practiceMode !== "rebuild") return true;
-        return (localMasteryMap[currentSentenceIndex] ?? currentSentence?.isMastered ?? false) ||
-            skippedSet.has(currentSentenceIndex) ||
-            solvedSet.has(currentSentenceIndex);
-    }, [practiceMode, localMasteryMap, currentSentenceIndex, currentSentence, skippedSet, solvedSet]);
 
     // Mastery-Based Progress
     const masteredCount = useMemo(() => {
@@ -750,14 +743,30 @@ function ListeningCabinPlayerView({
         springProgress.set(playerState.progressRatio);
     }, [playerState.progressRatio, springProgress]);
 
+    useEffect(() => {
+        if (!showSpeedSlider) return;
+        const handleClickOutside = (event: MouseEvent) => {
+            if (speedContainerRef.current && !speedContainerRef.current.contains(event.target as Node)) {
+                setShowSpeedSlider(false);
+            }
+        };
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, [showSpeedSlider]);
+
     const {
         nextSentenceAction,
         previousSentenceAction,
         replayCurrentSentence,
         cyclePlaybackRate,
+        changePlaybackRate,
+        pausePlayback,
+        resumeOrPlay,
     } = player;
 
     const [showControls, setShowControls] = useState(false);
+    const [showSpeedSlider, setShowSpeedSlider] = useState(false);
+    const speedContainerRef = useRef<HTMLDivElement>(null);
     const [showSettings, setShowSettings] = useState(false);
     const [fontEn, setFontEn] = useState("var(--font-inter)");
     const [fontZh, setFontZh] = useState("var(--font-zh-sans-modern)");
@@ -766,10 +775,19 @@ function ListeningCabinPlayerView({
     const [fontSizeEn, setFontSizeEn] = useState(1.1); // 1.1x default
     const [fontSizeZh, setFontSizeZh] = useState(1.0); // 1.0x default
     const [preferencesHydrated, setPreferencesHydrated] = useState(false);
+    const [blurEnabled, setBlurEnabled] = useState(true);
+    const [revealedWordsCount, setRevealedWordsCount] = useState(0);
+
+    useEffect(() => {
+        setRevealedWordsCount(0);
+    }, [playerState.currentSentenceIndex]);
+
     const [showMasteryFlash, setShowMasteryFlash] = useState(false);
     const [showEpicMasteryFlash, setShowEpicMasteryFlash] = useState(false);
     const [isSettlementOpen, setIsSettlementOpen] = useState(false);
+    const [showTutorial, setShowTutorial] = useState(true);
     const isTogglingRef = useRef(false);
+    const [activeTabWordStart, setActiveTabWordStart] = useState<number | null>(null);
 
     const { playForgeSound, playSuccessSound, playGrandSuccessSound } = useForgeHaptics();
 
@@ -778,6 +796,7 @@ function ListeningCabinPlayerView({
 
     const hideControlsTimerRef = useRef<number | null>(null);
     const subtitleLookupRootRef = useRef<HTMLDivElement | null>(null);
+    const wordAudioCleanupRef = useRef<(() => void) | null>(null);
 
     // Persistence: Load
     useEffect(() => {
@@ -790,6 +809,7 @@ function ListeningCabinPlayerView({
             ?? localStorage.getItem("listening_cabin_subtitle_advance_ms");
         const savedSizeEn = localStorage.getItem("listening_cabin_font_size_en");
         const savedSizeZh = localStorage.getItem("listening_cabin_font_size_zh");
+        const savedBlur = localStorage.getItem("listening_cabin_blur_enabled");
 
         if (savedEn) setFontEn(savedEn);
         if (savedZh) setFontZh(savedZh);
@@ -806,6 +826,9 @@ function ListeningCabinPlayerView({
         if (savedSizeZh) {
             const val = parseFloat(savedSizeZh);
             if (!isNaN(val)) setFontSizeZh(val);
+        }
+        if (savedBlur !== null) {
+            setBlurEnabled(savedBlur === "true");
         }
 
         setPreferencesHydrated(true);
@@ -824,7 +847,8 @@ function ListeningCabinPlayerView({
         localStorage.setItem("listening_cabin_subtitle_advance", subtitleAdvanceMs.toString());
         localStorage.setItem("listening_cabin_font_size_en", fontSizeEn.toString());
         localStorage.setItem("listening_cabin_font_size_zh", fontSizeZh.toString());
-    }, [fontEn, fontZh, transitionStyle, typographyStyle, subtitleAdvanceMs, fontSizeEn, fontSizeZh, preferencesHydrated]);
+        localStorage.setItem("listening_cabin_blur_enabled", blurEnabled.toString());
+    }, [fontEn, fontZh, transitionStyle, typographyStyle, subtitleAdvanceMs, fontSizeEn, fontSizeZh, blurEnabled, preferencesHydrated]);
 
     // Player Spotlight Tour
     const [showPlayerTour, setShowPlayerTour] = useState(false);
@@ -839,12 +863,8 @@ function ListeningCabinPlayerView({
     }, [showPlayerTour]);
 
     useEffect(() => {
-        const hasCompleted = localStorage.getItem("player-v2-onboarded");
-        if (!hasCompleted) {
-            // Delay slightly after mount so the player finishes entrance animation
-            const timer = setTimeout(() => setShowPlayerTour(true), 1500);
-            return () => clearTimeout(timer);
-        }
+        // Automatically complete onboarding to turn off auto tour
+        localStorage.setItem("player-v2-onboarded", "true");
     }, []);
 
     const handlePlayerTourComplete = () => {
@@ -1100,6 +1120,10 @@ function ListeningCabinPlayerView({
         scheduleHideControls();
     }, [scheduleHideControls]);
 
+    // Auto-advance is now manual using arrow keys
+    const autoAdvancePendingRef = useRef(false);
+    const hasStartedPlayingRef = useRef(false);
+
     const subtitleLookupContext = useMemo(() => (
         currentSubtitleSentences
             .map((sentence) => renderSentence(sentence.english) ?? "")
@@ -1209,74 +1233,7 @@ function ListeningCabinPlayerView({
         return opened;
     }, [extractSelectionPopupText, openWordPopupAtPosition, subtitleLookupContext]);
 
-    const handleSelectToken = useCallback((idx: number) => {
-        const token = rebuildAvailableTokens[idx];
-        if (token === undefined) return;
-        setRebuildAnswerTokens(prev => [...prev, token]);
-        setRebuildAvailableTokens(prev => prev.filter((_, i) => i !== idx));
-        setRebuildFeedback(null);
-    }, [rebuildAvailableTokens]);
-
-    const handleRemoveToken = useCallback((idx: number) => {
-        const token = rebuildAnswerTokens[idx];
-        if (token === undefined) return;
-        setRebuildAvailableTokens(prev => [...prev, token]);
-        setRebuildAnswerTokens(prev => prev.filter((_, i) => i !== idx));
-        setRebuildFeedback(null);
-    }, [rebuildAnswerTokens]);
-
-    const handleToggleHint = useCallback(() => {
-        setShowHint(prev => !prev);
-    }, []);
-
-    const handleSkipSentence = useCallback(() => {
-        setSkippedSet(prev => {
-            const next = new Set(prev);
-            next.add(currentSentenceIndex);
-            return next;
-        });
-        void replayCurrentSentence();
-    }, [currentSentenceIndex, replayCurrentSentence]);
-
-    const handleCheckAnswer = useCallback(async () => {
-        if (!currentSentence) return;
-        const answerText = renderSentence(currentSentence.english) || "";
-        const answerTokens = tokenizeRebuildSentence(answerText);
-        const evaluation = evaluateRebuildSelection({
-            answerTokens,
-            selectedTokens: rebuildAnswerTokens,
-        });
-
-        setRebuildFeedback(evaluation);
-        setAttempts(prev => prev + 1);
-
-        if (evaluation.isCorrect) {
-            playSuccessSound();
-            confetti({
-                particleCount: 100,
-                spread: 70,
-                origin: { y: 0.6 }
-            });
-            setSolvedSet(prev => {
-                const next = new Set(prev);
-                next.add(currentSentenceIndex);
-                return next;
-            });
-            setLocalMasteryMap(prev => ({
-                ...prev,
-                [currentSentenceIndex]: true
-            }));
-            void toggleListeningCabinSentenceMastery(session.id, currentSentenceIndex, true);
-            void replayCurrentSentence();
-        } else {
-            playForgeSound(false);
-            setIsShaking(true);
-            setTimeout(() => setIsShaking(false), 500);
-        }
-    }, [currentSentence, rebuildAnswerTokens, currentSentenceIndex, playSuccessSound, playForgeSound, replayCurrentSentence, session.id]);
-
     const handleSubtitleTokenClick = useCallback((word: string, context: string, anchorElement: HTMLElement) => {
-        if (!isSolved) return;
         if (!word) {
             return;
         }
@@ -1289,17 +1246,18 @@ function ListeningCabinPlayerView({
         }
         const rect = anchorElement.getBoundingClientRect();
         openWordPopupAtPosition(word, rect.left + rect.width / 2, rect.bottom + 10, context || subtitleLookupContext);
-    }, [openWordPopupAtPosition, subtitleLookupContext, isSolved]);
+    }, [openWordPopupAtPosition, subtitleLookupContext]);
 
     const handleSubtitleSelectionLookup = useCallback(() => {
-        if (typeof window === "undefined" || !isSolved) {
+        if (typeof window === "undefined") {
             return;
         }
         openWordPopupFromSelection(window.getSelection(), subtitleLookupContext);
-    }, [openWordPopupFromSelection, subtitleLookupContext, isSolved]);
+    }, [openWordPopupFromSelection, subtitleLookupContext]);
 
     useEffect(() => {
         const handleKeyDown = (event: KeyboardEvent) => {
+            if (showTutorial) return;
             if (event.key === "Escape") {
                 setWordPopup(null);
                 setShowSettings(false);
@@ -1320,10 +1278,16 @@ function ListeningCabinPlayerView({
 
             if (event.key === "ArrowRight") {
                 event.preventDefault();
-                if (isSolved) {
-                    void nextSentenceAction();
-                }
+                void nextSentenceAction();
                 return;
+            }
+
+            if (event.key === "Tab") {
+                if (blurEnabled) {
+                    event.preventDefault();
+                    setRevealedWordsCount((prev) => prev + 3);
+                    return;
+                }
             }
         };
 
@@ -1331,7 +1295,7 @@ function ListeningCabinPlayerView({
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, revealControls, isSolved]);
+    }, [nextSentenceAction, previousSentenceAction, replayCurrentSentence, showTutorial, blurEnabled]);
 
     return (
         <motion.main
@@ -1351,6 +1315,32 @@ function ListeningCabinPlayerView({
                 }
             }}
             onMouseLeave={scheduleHideControls}
+            onClick={(event) => {
+                if (showTutorial || isSettlementOpen) return;
+
+                const target = event.target as HTMLElement;
+                if (!target) return;
+
+                // Ignore clicks on words, buttons, links, header, controls, progress bar, or mastery controls
+                if (
+                    target.closest("[data-word-popup-segment]") ||
+                    target.closest("button") ||
+                    target.closest("a") ||
+                    target.closest("header") ||
+                    target.closest(".glass-panel") ||
+                    target.closest(".ui-pressable") ||
+                    target.closest("[data-tour-target='player-controls']") ||
+                    target.closest("[data-progress-bar]") ||
+                    target.closest("[id^='mastery-']") ||
+                    target.closest("[class*='mastery']")
+                ) {
+                    return;
+                }
+
+                if (blurEnabled) {
+                    setRevealedWordsCount((prev) => prev + 3);
+                }
+            }}
         >
             {/* Phase 4: Prism & Fluid - Masterpiece Background */}
             <div className="pointer-events-none absolute inset-0 bg-[#ffffff] overflow-hidden">
@@ -1490,10 +1480,7 @@ function ListeningCabinPlayerView({
                     void nextSentenceAction();
                     revealControls();
                 }}
-                className={cn(
-                    "absolute inset-y-0 right-0 z-10 hidden w-[20%] min-w-[120px] cursor-e-resize bg-transparent md:block",
-                    !isSolved && "pointer-events-none opacity-0"
-                )}
+                className="absolute inset-y-0 right-0 z-10 hidden w-[20%] min-w-[120px] cursor-e-resize bg-transparent md:block"
                 aria-label="下一句"
             />
 
@@ -1863,7 +1850,21 @@ function ListeningCabinPlayerView({
                                             fontFamily: fontEn
                                         }}
                                     >
-                                        {renderSubtitleBlock(currentSubtitleSentences, playerState.currentSentenceIndex, activeMistTheme[0], fontEn, transitionStyle, typographyStyle, fontSizeEn, handleSubtitleTokenClick, audioRef, getSentenceTiming, practiceMode, localMasteryMap, skippedSet, solvedSet)}
+                                        {renderSubtitleBlock(
+                                            currentSubtitleSentences,
+                                            playerState.currentSentenceIndex,
+                                            activeMistTheme[0],
+                                            fontEn,
+                                            transitionStyle,
+                                            typographyStyle,
+                                            fontSizeEn,
+                                            handleSubtitleTokenClick,
+                                            audioRef,
+                                            getSentenceTiming,
+                                            blurEnabled,
+                                            revealedWordsCount,
+                                            subtitleAdvanceMs
+                                        )}
                                     </h1>
 
                                     <motion.div
@@ -1879,7 +1880,7 @@ function ListeningCabinPlayerView({
                                         }}
                                         className={cn(
                                             "font-sans mx-auto mt-10 max-w-[56rem] text-[clamp(1.1rem,2vw,1.35rem)] font-medium leading-relaxed tracking-wide antialiased",
-                                            (playerState.showChineseSubtitle && (practiceMode !== "rebuild" || isSolved || showHint)) ? "visible" : "hidden pointer-events-none"
+                                            playerState.showChineseSubtitle ? "visible" : "hidden pointer-events-none"
                                         )}
                                         style={{ color: "#1e293b", textRendering: "optimizeLegibility" }}
                                     >
@@ -1888,145 +1889,11 @@ function ListeningCabinPlayerView({
                                         </span>
                                     </motion.div>
 
-                                    {practiceMode === "rebuild" && (
-                                        <div className="mt-8 flex flex-col items-center gap-6 w-full max-w-[56rem] mx-auto">
-                                            {!isSolved ? (
-                                                <>
-                                                    {/* Selected Tokens Workspace */}
-                                                    <motion.div
-                                                        variants={shakeVariants}
-                                                        animate={isShaking ? "shake" : ""}
-                                                        className="w-full min-h-[5.5rem] p-4 flex flex-wrap gap-2 items-center justify-center rounded-2xl bg-white/20 backdrop-blur-md border border-white/40 shadow-[inset_0_2px_4px_rgba(255,255,255,0.06),0_8px_32px_rgba(0,0,0,0.04)] transition-all duration-300"
-                                                    >
-                                                        {rebuildAnswerTokens.length === 0 ? (
-                                                            <p className="text-slate-400 text-sm font-medium tracking-wide pointer-events-none select-none">
-                                                                请点击下方词块还原听到的句子...
-                                                            </p>
-                                                        ) : (
-                                                            rebuildAnswerTokens.map((token, idx) => {
-                                                                const feedback = rebuildFeedback?.tokenFeedback?.[idx];
-                                                                const status = feedback?.status;
-
-                                                                let statusClass = "bg-white/60 text-slate-800 border-white/80 shadow-sm hover:bg-white/80 hover:border-slate-300";
-                                                                if (rebuildFeedback) {
-                                                                    if (status === "correct") {
-                                                                        statusClass = "bg-emerald-500/20 text-emerald-800 border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.15)]";
-                                                                    } else if (status === "misplaced") {
-                                                                        statusClass = "bg-amber-500/20 text-amber-800 border-amber-400/40 shadow-[0_0_12px_rgba(245,158,11,0.15)]";
-                                                                    } else if (status === "distractor") {
-                                                                        statusClass = "bg-rose-500/20 text-rose-800 border-rose-400/40 shadow-[0_0_12px_rgba(244,63,94,0.15)]";
-                                                                    }
-                                                                }
-
-                                                                return (
-                                                                    <motion.button
-                                                                        key={`selected-${token}-${idx}`}
-                                                                        layout
-                                                                        whileTap={{ scale: 0.95 }}
-                                                                        onClick={() => handleRemoveToken(idx)}
-                                                                        className={cn(
-                                                                            "px-3.5 py-1.5 rounded-xl text-sm font-bold border transition-all cursor-pointer flex items-center gap-1",
-                                                                            statusClass
-                                                                        )}
-                                                                    >
-                                                                        {token}
-                                                                    </motion.button>
-                                                                );
-                                                            })
-                                                        )}
-                                                    </motion.div>
-
-                                                    {/* Available Pool Tray */}
-                                                    <div className="w-full flex flex-wrap gap-2 items-center justify-center p-4 min-h-[4rem] rounded-xl bg-slate-500/5 border border-white/10">
-                                                        {rebuildAvailableTokens.map((token, idx) => (
-                                                            <motion.button
-                                                                key={`pool-${token}-${idx}`}
-                                                                layout
-                                                                whileHover={{ scale: 1.05, y: -2 }}
-                                                                whileTap={{ scale: 0.95 }}
-                                                                onClick={() => handleSelectToken(idx)}
-                                                                className="px-3.5 py-1.5 rounded-xl text-sm font-bold bg-white/70 hover:bg-white/90 text-slate-800 border border-white/80 shadow-sm transition-all cursor-pointer"
-                                                            >
-                                                                {token}
-                                                            </motion.button>
-                                                        ))}
-                                                    </div>
-
-                                                    {/* Control Action Bar */}
-                                                    <div className="flex items-center gap-4 mt-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleToggleHint}
-                                                            className={cn(
-                                                                "px-5 py-2 rounded-full text-xs font-bold border backdrop-blur-sm shadow-sm transition-all flex items-center gap-1.5",
-                                                                showHint 
-                                                                    ? "bg-amber-500/20 text-amber-800 border-amber-500/30" 
-                                                                    : "bg-white/40 text-slate-600 border-white/60 hover:bg-white/60"
-                                                            )}
-                                                        >
-                                                            💡 提示
-                                                        </button>
-                                                        
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleSkipSentence}
-                                                            className="px-5 py-2 rounded-full text-xs font-bold bg-white/40 text-slate-600 border border-white/60 hover:bg-white/60 backdrop-blur-sm shadow-sm transition-all flex items-center gap-1.5"
-                                                        >
-                                                            ⏭️ 跳过
-                                                        </button>
-
-                                                        <button
-                                                            type="button"
-                                                            disabled={rebuildAnswerTokens.length === 0}
-                                                            onClick={handleCheckAnswer}
-                                                            className={cn(
-                                                                "px-6 py-2 rounded-full text-xs font-black tracking-wide border shadow-md transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed",
-                                                                rebuildAnswerTokens.length > 0
-                                                                    ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white border-rose-500/20 hover:shadow-lg hover:scale-105"
-                                                                    : "bg-white/20 text-slate-400 border-white/30"
-                                                            )}
-                                                        >
-                                                            ✅ 检查
-                                                        </button>
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                /* Solved / Skipped Success Panel */
-                                                <motion.div
-                                                    initial={{ opacity: 0, scale: 0.95 }}
-                                                    animate={{ opacity: 1, scale: 1 }}
-                                                    className="w-full flex flex-col items-center gap-4 p-6 rounded-2xl bg-emerald-500/10 border border-emerald-400/30 shadow-[0_8px_32px_rgba(16,185,129,0.06)]"
-                                                >
-                                                    <div className="flex items-center gap-2 text-emerald-700">
-                                                        <span className="text-xl">🏆</span>
-                                                        <span className="font-black tracking-wider text-sm uppercase">拼句挑战已完成</span>
-                                                    </div>
-                                                    
-                                                    {playerState.currentSentenceIndex < session.sentences.length - 1 ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                void nextSentenceAction();
-                                                                revealControls();
-                                                            }}
-                                                            className="px-6 py-2.5 rounded-full text-xs font-black bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md hover:shadow-lg hover:scale-105 transition-all flex items-center gap-2 group cursor-pointer"
-                                                        >
-                                                            下一句 <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
-                                                        </button>
-                                                    ) : (
-                                                        <div className="text-emerald-700 text-xs font-bold">
-                                                            这是最后一句了，你太棒了！
-                                                        </div>
-                                                    )}
-                                                </motion.div>
-                                            )}
-                                        </div>
-                                    )}
                                 </div>
                             </motion.div>
                         </AnimatePresence>
                         {/* v14: Ethereal Glass Ribbon - Acoustic Progress Tracking */}
-                        <div className="w-full max-w-[36rem] px-12 group/progress">
+                        <div data-progress-bar="true" className="w-full max-w-[36rem] px-12 group/progress">
                             <div className="relative h-[6px] w-full rounded-full bg-white/12 border border-white/8 backdrop-blur-xl shadow-[inset_0_1px_2px_rgba(255,255,255,0.1)] overflow-visible transition-all duration-500 group-hover/progress:h-[8px]">
 
                                 {/* Micro-Milestone Markers (Sentence Boundaries) */}
@@ -2342,7 +2209,7 @@ function ListeningCabinPlayerView({
                                     void nextSentenceAction();
                                     revealControls();
                                 }}
-                                disabled={playerState.currentSentenceIndex >= session.sentences.length - 1 || !isSolved}
+                                disabled={playerState.currentSentenceIndex >= session.sentences.length - 1}
                                 className="ui-pressable text-[#121417] transition hover:opacity-60 disabled:opacity-20"
                                 style={getPressableStyle("rgba(0,0,0,0.03)", 2)}
                                 aria-label="下一句"
@@ -2351,15 +2218,15 @@ function ListeningCabinPlayerView({
                             </button>
                         </div>
 
-                        {/* Speed: Monospace Precision */}
-                        <div className="flex flex-col items-center gap-1.5 min-w-[4.5rem]">
+                        {/* Speed: Monospace Precision with Slider */}
+                        <div ref={speedContainerRef} className="relative flex flex-col items-center gap-1.5 min-w-[4.5rem]">
                             <span className="text-[8px] font-black tracking-[0.25em] text-[#94a3b8]/60 uppercase ml-0.5">Speed</span>
                             <button
                                 type="button"
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    cyclePlaybackRate();
+                                    setShowSpeedSlider((prev) => !prev);
                                     revealControls();
                                 }}
                                 className="ui-pressable inline-flex items-center justify-center text-[11px] font-bold tracking-[0.08em] text-[#121417] transition hover:text-blue-600"
@@ -2367,6 +2234,86 @@ function ListeningCabinPlayerView({
                                 aria-label={`播放速度 ${playerState.playbackRate.toFixed(2)}x`}
                             >
                                 {playerState.playbackRate.toFixed(2)}x
+                            </button>
+
+                            {/* Speed Slider Popover */}
+                            <AnimatePresence>
+                                {showSpeedSlider && (
+                                    <motion.div
+                                        initial={{ opacity: 0, scale: 0.9, y: 10, x: "-50%" }}
+                                        animate={{ opacity: 1, scale: 1, y: 0, x: "-50%" }}
+                                        exit={{ opacity: 0, scale: 0.9, y: 10, x: "-50%" }}
+                                        transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                                        className="absolute bottom-16 left-1/2 z-[1000] flex flex-col items-center gap-2 rounded-2xl bg-white/95 backdrop-blur-2xl border border-white/60 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.15)] min-w-[12rem]"
+                                        onClick={(e) => e.stopPropagation()}
+                                    >
+                                        <div className="flex w-full items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                            <span>Speed</span>
+                                            <span className="text-slate-800">{playerState.playbackRate.toFixed(2)}x</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0.5"
+                                            max="2.0"
+                                            step="0.05"
+                                            value={playerState.playbackRate}
+                                            onChange={(e) => {
+                                                changePlaybackRate(parseFloat(e.target.value));
+                                                revealControls();
+                                            }}
+                                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-500 focus:outline-none my-2"
+                                        />
+                                        <div className="flex w-full justify-between text-[9px] font-black text-slate-400 px-1 mt-1">
+                                            <button 
+                                                type="button"
+                                                onClick={() => { changePlaybackRate(0.5); revealControls(); }}
+                                                className="hover:text-slate-800"
+                                            >
+                                                0.5x
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => { changePlaybackRate(1.0); revealControls(); }}
+                                                className="hover:text-slate-800 font-extrabold text-slate-600"
+                                            >
+                                                1.0x
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => { changePlaybackRate(1.5); revealControls(); }}
+                                                className="hover:text-slate-800"
+                                            >
+                                                1.5x
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                onClick={() => { changePlaybackRate(2.0); revealControls(); }}
+                                                className="hover:text-slate-800"
+                                            >
+                                                2.0x
+                                            </button>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        {/* Blur: Monospace Precision */}
+                        <div className="flex flex-col items-center gap-1.5 min-w-[4.5rem]">
+                            <span className="text-[8px] font-black tracking-[0.25em] text-[#94a3b8]/60 uppercase ml-0.5">Blur</span>
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setBlurEnabled(!blurEnabled);
+                                    revealControls();
+                                }}
+                                className="ui-pressable inline-flex items-center justify-center text-[11px] font-bold tracking-[0.08em] text-[#121417] transition hover:text-blue-600"
+                                style={getPressableStyle("rgba(0,0,0,0.03)", 2)}
+                                aria-label={blurEnabled ? "关闭模糊窗" : "开启模糊窗"}
+                            >
+                                {blurEnabled ? "开启" : "关闭"}
                             </button>
                         </div>
                     </motion.div>
@@ -2452,6 +2399,100 @@ function ListeningCabinPlayerView({
                 </motion.div>
 
                 <AnimatePresence>
+                    {showTutorial && (
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/60 backdrop-blur-md px-4"
+                        >
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                                transition={{ type: "spring", duration: 0.5 }}
+                                className="relative w-full max-w-2xl overflow-hidden rounded-[3rem] border border-white/20 bg-white/85 p-8 md:p-10 shadow-[0_32px_64px_-12px_rgba(0,0,0,0.3)] backdrop-blur-2xl text-[#202325]"
+                            >
+                                {/* Ambient background glows */}
+                                <div className="absolute -left-20 -top-20 h-64 w-64 rounded-full bg-indigo-500/10 blur-[80px] pointer-events-none" />
+                                <div className="absolute -right-20 -bottom-20 h-64 w-64 rounded-full bg-pink-500/10 blur-[80px] pointer-events-none" />
+
+                                <div className="relative z-10">
+                                    {/* Header */}
+                                    <div className="mb-8 text-center">
+                                        <span className="inline-block rounded-full bg-indigo-100/60 px-4 py-1.5 text-xs font-black tracking-widest text-indigo-600 uppercase mb-3">
+                                            🎧 听力舱训练指南
+                                        </span>
+                                        <h2 className="text-3xl font-black text-slate-800 tracking-tight">
+                                            高效听力训练三步法
+                                        </h2>
+                                        <p className="mt-2 text-sm text-slate-500 font-medium">
+                                            请遵循科学的外语学习法，让耳朵和大脑同步进化
+                                        </p>
+                                    </div>
+
+                                    {/* Steps List */}
+                                    <div className="space-y-6 text-left">
+                                        {/* Step 1 */}
+                                        <div className="flex gap-4 p-4 rounded-2xl bg-white/50 border border-white/40 shadow-sm hover:shadow-md transition-all">
+                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-500 text-white shadow-[0_8px_16px_-4px_rgba(99,102,241,0.4)]">
+                                                <span className="font-extrabold text-lg">1</span>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                                                    先盲听 <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-md">第一步</span>
+                                                </h3>
+                                                <p className="mt-1 text-sm text-slate-600 leading-relaxed font-medium">
+                                                    努力地去听懂单词和句子，在脑子里直接建立英文映射，尽量**避免在大脑中翻译成中文**。
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Step 2 */}
+                                        <div className="flex gap-4 p-4 rounded-2xl bg-white/50 border border-white/40 shadow-sm hover:shadow-md transition-all">
+                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-pink-500 text-white shadow-[0_8px_16px_-4px_rgba(236,72,153,0.4)]">
+                                                <span className="font-extrabold text-lg">2</span>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                                                    影子跟读法 <span className="text-xs font-bold text-pink-500 bg-pink-50 px-2 py-0.5 rounded-md">第二步</span>
+                                                </h3>
+                                                <p className="mt-1 text-sm text-slate-600 leading-relaxed font-medium">
+                                                    看着原文或不看原文，让自己的发音**延迟音频 0.5 秒**左右，像影子一样紧跟在后面模仿读出。
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Step 3 */}
+                                        <div className="flex gap-4 p-4 rounded-2xl bg-white/50 border border-white/40 shadow-sm hover:shadow-md transition-all">
+                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-[0_8px_16px_-4px_rgba(245,158,11,0.4)]">
+                                                <span className="font-extrabold text-lg">3</span>
+                                            </div>
+                                            <div>
+                                                <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                                                    脱稿复述 <span className="text-xs font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-md">第三步</span>
+                                                </h3>
+                                                <p className="mt-1 text-sm text-slate-600 leading-relaxed font-medium">
+                                                    在音频暂停后，尝试根据脑海中的印象**口头复述刚刚听到的句子**，锻炼口语和语感输出。
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Footer Action */}
+                                    <div className="mt-8">
+                                        <button
+                                            onClick={() => setShowTutorial(false)}
+                                            className="ui-pressable w-full py-4 rounded-3xl bg-slate-900 hover:bg-slate-800 text-white font-black text-sm tracking-widest uppercase transition-all shadow-[0_12px_24px_-4px_rgba(15,23,42,0.3)]"
+                                            style={getPressableStyle("rgba(255,255,255,0.2)", 3)}
+                                        >
+                                            开始我的沉浸训练 🚀
+                                        </button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
                     {showEpicMasteryFlash && (
                         <motion.div
                             initial={{ opacity: 0 }}
@@ -2510,25 +2551,7 @@ function ListeningCabinPlayerView({
                 </AnimatePresence>
             </div>
 
-            {/* Tour Manually Trigger Button */}
-            <motion.button
-                initial={{ opacity: 0, scale: 0.8, rotate: -20 }}
-                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ delay: 1, type: "spring" as const, stiffness: 300, damping: 20 }}
-                whileHover={{ scale: 1.1, rotate: 15 }}
-                whileTap={{ scale: 0.9 }}
-                onClick={() => {
-                    if (showSettings) {
-                        setShowSettingsTour(true);
-                    } else {
-                        setShowPlayerTour(true);
-                    }
-                }}
-                className="fixed bottom-6 right-6 z-[2800] flex h-14 w-14 items-center justify-center rounded-full border-4 border-[#1e1b4b] bg-indigo-200 text-[#1e1b4b] shadow-[0_6px_0_0_#1e1b4b] active:translate-y-1 active:shadow-[0_2px_0_0_#1e1b4b]"
-                title="开启功能向导"
-            >
-                <Compass className="h-6 w-6 stroke-[2.5]" />
-            </motion.button>
+
         </motion.main>
     );
 }

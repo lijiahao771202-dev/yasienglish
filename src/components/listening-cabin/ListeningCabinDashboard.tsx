@@ -26,6 +26,7 @@ import {
     ChevronRight,
     ChevronLeft,
     Compass,
+    Archive,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -226,6 +227,7 @@ export default function ListeningCabinDashboard() {
     } = useListeningCabin();
 
     const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+    const [showArchived, setShowArchived] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [generateError, setGenerateError] = useState<string | null>(null);
     const [isGeneratingAiTopic, setIsGeneratingAiTopic] = useState(false);
@@ -387,25 +389,41 @@ export default function ListeningCabinDashboard() {
         style: "storytelling",
     });
 
-    const selectedSession = useMemo(
-        () => sessions.find((s: ListeningCabinSession) => s.id === selectedSessionId) || (sessions.length > 0 ? sessions[0] : null),
-        [sessions, selectedSessionId],
-    );
+    const activeSessions = useMemo(() => {
+        return sessions.filter((s: ListeningCabinSession) => !s.archived_at);
+    }, [sessions]);
+
+    const archivedSessions = useMemo(() => {
+        return sessions.filter((s: ListeningCabinSession) => !!s.archived_at);
+    }, [sessions]);
+
+    const displayedSessions = useMemo(() => {
+        return showArchived ? archivedSessions : activeSessions.slice(0, 12);
+    }, [showArchived, activeSessions, archivedSessions]);
+
+    const selectedSession = useMemo(() => {
+        const found = sessions.find((s: ListeningCabinSession) => s.id === selectedSessionId);
+        if (found) return found;
+        return activeSessions.length > 0 ? activeSessions[0] : (archivedSessions.length > 0 ? archivedSessions[0] : null);
+    }, [sessions, selectedSessionId, activeSessions, archivedSessions]);
 
     useEffect(() => {
         if (!selectedSessionId && sessions.length > 0) {
-            setSelectedSessionId(sessions[0].id);
+            const firstActive = activeSessions[0] || archivedSessions[0];
+            if (firstActive) {
+                setSelectedSessionId(firstActive.id);
+            }
         }
-    }, [sessions, selectedSessionId]);
+    }, [sessions, selectedSessionId, activeSessions, archivedSessions]);
 
     const mostRecentSessionId = useMemo(() => {
-        if (!sessions || sessions.length === 0) return null;
-        return sessions.reduce((latest: ListeningCabinSession, current: ListeningCabinSession) => {
+        if (!activeSessions || activeSessions.length === 0) return null;
+        return activeSessions.reduce((latest: ListeningCabinSession, current: ListeningCabinSession) => {
             const latestTime = latest.lastPlayedAt || latest.created_at;
             const currentTime = current.lastPlayedAt || current.created_at;
             return currentTime > latestTime ? current : latest;
         }).id;
-    }, [sessions]);
+    }, [activeSessions]);
 
     const lengthProfile = useMemo(
         () => resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength),
@@ -463,6 +481,16 @@ export default function ListeningCabinDashboard() {
             if (selectedSessionId === sessionId) {
                 setSelectedSessionId(null);
             }
+        }
+    };
+
+    const handleToggleArchiveSession = async (sessionId: string, currentArchived: boolean) => {
+        try {
+            await updateListeningCabinSession(sessionId, {
+                archived_at: currentArchived ? null : Date.now()
+            });
+        } catch (error) {
+            console.error("Failed to toggle archive status:", error);
         }
     };
 
@@ -893,14 +921,46 @@ export default function ListeningCabinDashboard() {
                                         </div>
                                         <p className="text-[12px] font-black text-theme-text-muted uppercase tracking-[0.3em] ml-13">Adventure Records</p>
                                     </div>
-                                    <div className="hidden sm:flex items-center gap-3 px-4 py-2 bg-theme-base-bg rounded-2xl border-[2px] border-theme-border text-[11px] font-black text-theme-text-muted uppercase tracking-widest shadow-sm">
-                                        <span className="w-2 h-2 rounded-full bg-theme-active-text animate-pulse" />
-                                        Ready for New Echoes
+                                    <div className="flex items-center p-1 bg-theme-base-bg rounded-[1.25rem] border-2 border-theme-border shadow-sm relative shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowArchived(false)}
+                                            className={cn(
+                                                "relative z-10 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-colors duration-300",
+                                                !showArchived ? "text-theme-base-bg" : "text-theme-text-muted hover:text-theme-text"
+                                            )}
+                                        >
+                                            进行中 ({activeSessions.length})
+                                            {!showArchived && (
+                                                <motion.div
+                                                    layoutId="active-tab-indicator"
+                                                    className="absolute inset-0 bg-theme-text rounded-lg -z-10"
+                                                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                                                />
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowArchived(true)}
+                                            className={cn(
+                                                "relative z-10 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-colors duration-300",
+                                                showArchived ? "text-theme-base-bg" : "text-theme-text-muted hover:text-theme-text"
+                                            )}
+                                        >
+                                            已归档 ({archivedSessions.length})
+                                            {showArchived && (
+                                                <motion.div
+                                                    layoutId="active-tab-indicator"
+                                                    className="absolute inset-0 bg-theme-text rounded-lg -z-10"
+                                                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                                                />
+                                            )}
+                                        </button>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                    {sessions.length > 0 ? sessions.slice(0, 12).map((session: ListeningCabinSession) => {
+                                    {displayedSessions.length > 0 ? displayedSessions.map((session: ListeningCabinSession) => {
                                         const masteredCount = session.sentences.filter(s => s.isMastered).length;
                                         const progress = session.sentenceCount > 0 
                                             ? Math.min(100, Math.round((masteredCount / session.sentenceCount) * 100))
@@ -911,6 +971,7 @@ export default function ListeningCabinDashboard() {
 
                                         return (
                                             <motion.div 
+                                                layout
                                                 key={session.id} 
                                                 whileHover={{ y: -8, scale: 1.02 }}
                                                 animate={isMostRecent && !isAllMastered(session) ? {
@@ -1043,6 +1104,13 @@ export default function ListeningCabinDashboard() {
                                                             <RotateCcw size={16} strokeWidth={2.5} className="group-hover/reset:-rotate-180 transition-transform duration-500" />
                                                         </button>
                                                         <button 
+                                                            onClick={() => handleToggleArchiveSession(session.id, !!session.archived_at)} 
+                                                            className="w-12 h-12 bg-theme-base-bg border-[3px] border-theme-border hover:bg-theme-active-bg text-theme-text-muted hover:text-theme-active-text rounded-[1.25rem] flex items-center justify-center transition-all active:scale-[0.97] shadow-[0_3px_0_0_var(--theme-shadow)] group/archive"
+                                                            title={session.archived_at ? "恢复" : "归档"}
+                                                        >
+                                                            <Archive size={16} strokeWidth={2.5} className="group-hover/archive:scale-110 transition-transform duration-300" />
+                                                        </button>
+                                                        <button 
                                                             onClick={() => handleDeleteSession(session.id)} 
                                                             className="w-12 h-12 flex items-center justify-center rounded-[1.25rem] bg-theme-base-bg border-[3px] border-theme-border hover:bg-red-50 hover:text-red-500 text-theme-text-muted transition-all active:scale-[0.97] shadow-[0_3px_0_0_var(--theme-shadow)] group/delete"
                                                             title="删除记录"
@@ -1055,8 +1123,13 @@ export default function ListeningCabinDashboard() {
                                         );
                                     }) : (
                                         <div className="lg:col-span-3 py-32 text-center rounded-[3.5rem] bg-theme-base-bg border-[4px] border-dashed border-theme-border">
-                                            <div className="text-7xl mb-6 opacity-40">🍯</div>
-                                            <p className="text-lg font-black text-theme-text-muted italic">空空如也，快去锻造你的第一段听力吧！</p>
+                                            <div className="text-7xl mb-6 opacity-40">{showArchived ? "📦" : "🍯"}</div>
+                                            <p className="text-lg font-black text-theme-text-muted italic">
+                                                {showArchived 
+                                                    ? "没有已归档的日志哦 ~" 
+                                                    : "空空如也，快去锻造你的第一段听力吧！"
+                                                }
+                                            </p>
                                         </div>
                                     )}
                                 </div>

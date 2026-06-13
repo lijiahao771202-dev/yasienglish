@@ -137,6 +137,7 @@ export interface ListeningCabinSession extends ListeningCabinGenerationResponse 
     lastPlayedAt: number | null;
     audioDurationMs?: number;
     practiceMode?: "listen" | "rebuild";
+    archived_at?: number | null;
 }
 
 export type ListeningCabinPlaybackMode =
@@ -822,7 +823,7 @@ export function normalizeListeningCabinRequest(
         sentenceLength,
         scriptLength,
         speakerPlan: normalizeSpeakerPlan(payload?.speakerPlan, scriptMode),
-        practiceMode: payload?.practiceMode === "rebuild" ? "rebuild" : "listen",
+        practiceMode: "listen",
     };
 }
 
@@ -1735,7 +1736,7 @@ export function createListeningCabinSession(params: {
         voice: primaryVoice,
         playbackRate: 1,
         showChineseSubtitle: params.showChineseSubtitle,
-        practiceMode: params.practiceMode ?? params.request.practiceMode ?? "listen",
+        practiceMode: "listen",
         lastSentenceIndex: 0,
         lastPlayedAt: null,
     };

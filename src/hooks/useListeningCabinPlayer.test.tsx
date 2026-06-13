@@ -1063,12 +1063,7 @@ describe("useListeningCabinPlayer", () => {
         expect(latestPlayer.playerState.isPlaying).toBe(true);
     });
 
-    it("forces single_pause mode when session practiceMode is rebuild", async () => {
-        const rebuildSession = {
-            ...buildSession(),
-            practiceMode: "rebuild" as const,
-        };
-
+    it("preserves the stop boundary when resuming a manually paused sentence in single-pause mode", async () => {
         getListeningCabinNarrationTtsPayloadMock.mockResolvedValue({
             audio: "mock://narration",
             marks: [],
@@ -1077,7 +1072,7 @@ describe("useListeningCabinPlayer", () => {
         await act(async () => {
             root.render(
                 <PlayerHarness
-                    session={rebuildSession}
+                    session={buildSession()}
                     onUpdate={(player) => {
                         latestPlayer = player;
                     }}
@@ -1087,14 +1082,40 @@ describe("useListeningCabinPlayer", () => {
 
         await flushMicrotasks();
 
-        if (!latestPlayer) {
+        if (!latestAudio || !latestPlayer) {
             throw new Error("Player did not initialize");
         }
 
+        // 1. Play in single_pause mode
         await act(async () => {
-            latestPlayer?.setAutoAllMode();
+            latestPlayer?.setSinglePauseMode();
+            await latestPlayer?.resumeOrPlay();
         });
 
-        expect(latestPlayer.playerState.playbackMode).toBe("single_pause");
+        // 2. Pause manually halfway through the sentence (e.g. at 1.0s)
+        await act(async () => {
+            latestAudio.currentTime = 1.0;
+            latestPlayer?.pausePlayback();
+        });
+
+        expect(latestPlayer.playerState.isPlaying).toBe(false);
+
+        // 3. Resume playback from 1.0s
+        await act(async () => {
+            await latestPlayer?.resumeOrPlay();
+        });
+
+        expect(latestPlayer.playerState.isPlaying).toBe(true);
+        expect(latestAudio.currentTime).toBe(1.0); // should resume from 1.0s
+
+        // 4. Play past the end of the sentence (e.g. to 3.1s)
+        await act(async () => {
+            latestAudio.currentTime = 3.1;
+            latestAudio.dispatch("timeupdate");
+        });
+
+        // 5. It should have hit the stop boundary and paused automatically
+        expect(latestPlayer.playerState.isPlaying).toBe(false);
     });
+
 });
