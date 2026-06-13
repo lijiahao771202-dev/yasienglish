@@ -637,11 +637,16 @@ function AppleKaraokeWord({
             }}
         >
             <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
-                <span className={cn(
-                    "inline-block", 
-                    isActive ? "active:text-blue-500" : "",
-                    isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
-                )}>
+                <span
+                    className={cn(
+                        "inline-block",
+                        isActive ? "active:text-blue-500" : "",
+                        isActive && displayInfo.isBlurred && "filter transition-all duration-300"
+                    )}
+                    style={isActive && displayInfo.isBlurred ? {
+                        filter: (groupReplayEnabled ? isHovered : true) ? "blur(0px)" : "blur(12px)"
+                    } : undefined}
+                >
                     {displayInfo.text}
                 </span>
             </span>
@@ -887,10 +892,15 @@ function renderSubtitleBlock(
                                             style={styleConfig}
                                         >
                                             <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
-                                                <span className={cn(
-                                                    "active:text-blue-500 inline-block",
-                                                    isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
-                                                )}>
+                                                <span
+                                                    className={cn(
+                                                        "active:text-blue-500 inline-block",
+                                                        isActive && displayInfo.isBlurred && "filter transition-all duration-300"
+                                                    )}
+                                                    style={isActive && displayInfo.isBlurred ? {
+                                                        filter: isHovered ? "blur(0px)" : "blur(12px)"
+                                                    } : undefined}
+                                                >
                                                     {displayInfo.text.split("").map((char, cIdx) => (
                                                         <motion.span
                                                             key={cIdx}
@@ -952,10 +962,15 @@ function renderSubtitleBlock(
                                         style={styleConfig}
                                     >
                                         <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
-                                            <span className={cn(
-                                                "active:text-blue-500 inline-block",
-                                                isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
-                                            )}>
+                                            <span
+                                                className={cn(
+                                                    "active:text-blue-500 inline-block",
+                                                    isActive && displayInfo.isBlurred && "filter transition-all duration-300"
+                                                )}
+                                                style={isActive && displayInfo.isBlurred ? {
+                                                    filter: isHovered ? "blur(0px)" : "blur(12px)"
+                                                } : undefined}
+                                            >
                                                 {displayInfo.text}
                                             </span>
                                         </span>
@@ -1067,10 +1082,15 @@ function renderSubtitleBlock(
                             style={styleConfig}
                         >
                             <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
-                                <span className={cn(
-                                    "active:text-blue-500 inline-block",
-                                    isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
-                                )}>
+                                <span
+                                    className={cn(
+                                        "active:text-blue-500 inline-block",
+                                        isActive && displayInfo.isBlurred && "filter transition-all duration-300"
+                                    )}
+                                    style={isActive && displayInfo.isBlurred ? {
+                                        filter: (groupReplayEnabled ? isHovered : true) ? "blur(0px)" : "blur(12px)"
+                                    } : undefined}
+                                >
                                     {displayInfo.text.split("").map((char, cIdx) => (
                                         <motion.span
                                             key={cIdx}
@@ -1156,10 +1176,15 @@ function renderSubtitleBlock(
                             style={styleConfig}
                         >
                             <span className="inline-block origin-bottom active:scale-[0.85] active:translate-y-[2px] transition-transform duration-100 ease-out select-none">
-                                <span className={cn(
-                                    "active:text-blue-500 inline-block",
-                                    isActive && displayInfo.isBlurred && "filter blur-[12px] group-hover:blur-none transition-all duration-300"
-                                )}>
+                                <span
+                                    className={cn(
+                                        "active:text-blue-500 inline-block",
+                                        isActive && displayInfo.isBlurred && "filter transition-all duration-300"
+                                    )}
+                                    style={isActive && displayInfo.isBlurred ? {
+                                        filter: (groupReplayEnabled ? isHovered : true) ? "blur(0px)" : "blur(12px)"
+                                    } : undefined}
+                                >
                                     {displayInfo.text}
                                 </span>
                             </span>
@@ -2039,9 +2064,11 @@ function ListeningCabinPlayerView({
                     return;
                 }
 
-                if (blurEnabled) {
-                    setRevealedGroupsCount((prev) => prev + 1);
+                if (audioRef.current && slicePlaybackListenerRef.current) {
+                    audioRef.current.removeEventListener("timeupdate", slicePlaybackListenerRef.current);
+                    slicePlaybackListenerRef.current = null;
                 }
+                void replayCurrentSentence();
             }}
         >
             {/* Phase 4: Prism & Fluid - Masterpiece Background */}
