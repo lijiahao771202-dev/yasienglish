@@ -1507,6 +1507,26 @@ function ListeningCabinPlayerView({
                         steps={settingsTourSteps} 
                     />
 
+                    {/* Blur Toggle */}
+                    <motion.button
+                        type="button"
+                        onClick={() => {
+                            setBlurEnabled(!blurEnabled);
+                            revealControls();
+                        }}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                        className={cn(
+                            "ui-pressable inline-flex h-9 px-4 items-center justify-center rounded-full text-[10px] font-black uppercase tracking-widest transition-all shadow-sm",
+                            blurEnabled 
+                                ? "bg-[#121417] text-white border border-[#121417]" 
+                                : "text-[#4c555b] bg-white/40 backdrop-blur-sm border border-transparent"
+                        )}
+                        style={getPressableStyle("rgba(67,83,99,0.08)", 2)}
+                    >
+                        {blurEnabled ? "模糊窗: 开启" : "模糊窗: 关闭"}
+                    </motion.button>
+
                     {/* Phase 24: Typographic Atelier Toggle */}
                     <motion.button
                         data-tour-target="player-settings"
@@ -2297,26 +2317,7 @@ function ListeningCabinPlayerView({
                                 )}
                             </AnimatePresence>
                         </div>
-
-                        {/* Blur: Monospace Precision */}
-                        <div className="flex flex-col items-center gap-1.5 min-w-[4.5rem]">
-                            <span className="text-[8px] font-black tracking-[0.25em] text-[#94a3b8]/60 uppercase ml-0.5">Blur</span>
-                            <button
-                                type="button"
-                                onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setBlurEnabled(!blurEnabled);
-                                    revealControls();
-                                }}
-                                className="ui-pressable inline-flex items-center justify-center text-[11px] font-bold tracking-[0.08em] text-[#121417] transition hover:text-blue-600"
-                                style={getPressableStyle("rgba(0,0,0,0.03)", 2)}
-                                aria-label={blurEnabled ? "关闭模糊窗" : "开启模糊窗"}
-                            >
-                                {blurEnabled ? "开启" : "关闭"}
-                            </button>
-                        </div>
-                    </motion.div>
+                     </motion.div>
                 </div>
 
                 {wordPopup && (
