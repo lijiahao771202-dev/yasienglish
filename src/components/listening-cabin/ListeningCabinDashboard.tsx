@@ -98,6 +98,10 @@ const playMasterySound = () => {
     }
 };
 
+function getMultiSpeakerMode(scriptMode: ListeningCabinScriptMode): "dialogue" | "podcast" | null {
+    return (scriptMode === "dialogue" || scriptMode === "podcast") ? scriptMode : null;
+}
+
 // NEW: Localized Note Input Component to prevent cursor jump on LiveQuery updates
 const SentenceNoteInput = ({ 
     session, 
@@ -214,8 +218,21 @@ const formatSessionTime = (isoString: number) => {
     });
 };
 
-function getMultiSpeakerMode(scriptMode: ListeningCabinScriptMode): MultiSpeakerMode | null {
-    return scriptMode === "monologue" ? null : scriptMode;
+const ARTICLE_DIFFICULTY_OPTIONS = [
+    { value: "B1", label: "四级", hint: "CET-4" },
+    { value: "B2", label: "六级", hint: "CET-6" },
+    { value: "C1", label: "雅思", hint: "IELTS" },
+    { value: "C2", label: "母语者", hint: "Native" },
+];
+
+function getDifficultyLabel(cefrLevel: string, scriptMode?: string) {
+    if (scriptMode === "article") {
+        if (cefrLevel === "B1") return "四级 (CET-4)";
+        if (cefrLevel === "B2") return "六级 (CET-6)";
+        if (cefrLevel === "C1") return "雅思 (IELTS)";
+        if (cefrLevel === "C2") return "母语者 (Native)";
+    }
+    return cefrLevel;
 }
 
 export default function ListeningCabinDashboard() {
@@ -879,29 +896,64 @@ export default function ListeningCabinDashboard() {
                                     transition={{ type: "spring" as const, damping: 20, stiffness: 100 }}
                                     className="relative group w-full max-w-4xl"
                                 >
-                                    <button
-                                        onClick={() => { setWizardStep(1); setShowWizard(true); }}
-                                        className="relative w-full min-h-[320px] bg-[color:var(--mist-cabin-entry)] border-[3px] border-[color:var(--mist-cabin-bd)] rounded-[3rem] p-10 lg:p-14 flex flex-col items-center justify-center text-center overflow-hidden shadow-[0_12px_0_0_var(--theme-shadow)] group active:scale-[0.98] transition-all"
-                                    >
-                                        <div className="relative z-10 flex flex-col items-center gap-8">
-                                            <motion.div 
-                                                whileHover={{ rotate: [0, -15, 15, 0], scale: 1.15 }}
-                                                transition={{ type: "spring" as const, stiffness: 400, damping: 12 }}
-                                                className="w-20 h-20 rounded-[1.75rem] bg-white flex items-center justify-center shadow-[0_16px_32px_-8px_rgba(255,165,0,0.15)] border-2 border-orange-50 group-hover:border-orange-100 transition-colors"
-                                            >
-                                                <div className="text-4xl">🪄</div>
-                                            </motion.div>
-                                            <div>
-                                                <h2 className="text-3xl sm:text-4xl font-black tracking-tighter text-[#4a3a2a] drop-shadow-sm mb-3">开启引导式锻造</h2>
-                                                <p className="text-[15px] text-[#8f8478] max-w-lg font-bold leading-relaxed opacity-80 mx-auto">
-                                                    超级可爱的导览体验，只需几步，即可定制专属于你的梦想英语听力 🌈
-                                                </p>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-5xl">
+                                        <button
+                                            onClick={() => {
+                                                setRequest(c => ({ ...c, scriptMode: "monologue" }));
+                                                setWizardStep(1);
+                                                setShowWizard(true);
+                                            }}
+                                            className="relative w-full min-h-[320px] bg-[color:var(--mist-cabin-entry)] border-[3px] border-[color:var(--mist-cabin-bd)] rounded-[3rem] p-10 flex flex-col items-center justify-center text-center overflow-hidden shadow-[0_12px_0_0_var(--theme-shadow)] group active:scale-[0.98] transition-all"
+                                        >
+                                            <div className="relative z-10 flex flex-col items-center gap-6">
+                                                <motion.div 
+                                                    whileHover={{ rotate: [0, -15, 15, 0], scale: 1.15 }}
+                                                    transition={{ type: "spring" as const, stiffness: 400, damping: 12 }}
+                                                    className="w-16 h-16 rounded-[1.5rem] bg-white flex items-center justify-center shadow-lg border-2 border-orange-50 group-hover:border-orange-100 transition-colors"
+                                                >
+                                                    <div className="text-3xl">💬</div>
+                                                </motion.div>
+                                                <div>
+                                                    <h2 className="text-2xl font-black tracking-tighter text-[#4a3a2a] drop-shadow-sm mb-2">对话式听力锻造</h2>
+                                                    <p className="text-[13px] text-[#8f8478] max-w-xs font-bold leading-relaxed opacity-80 mx-auto">
+                                                        单人口播、多人场景对话、播客访谈，体验真实自然的社交互动 🌈
+                                                    </p>
+                                                </div>
+                                                <div className="px-8 py-3 bg-gradient-to-r from-[#ff8ca0] to-[#ff6b95] text-white text-[12px] font-black uppercase tracking-[0.15em] rounded-full shadow-[0_12px_24px_-6px_rgba(255,107,149,0.3)] group-hover:shadow-[0_16px_32px_-6px_rgba(255,107,149,0.4)] group-hover:translate-y-[-2px] transition-all">
+                                                    Dialogue Mode ✨
+                                                </div>
                                             </div>
-                                            <div className="px-12 py-4 mt-2 bg-gradient-to-r from-[#ff8ca0] to-[#ff6b95] text-white text-[14px] font-black uppercase tracking-[0.2em] rounded-full shadow-[0_16px_32px_-8px_rgba(255,107,149,0.35)] group-hover:shadow-[0_20px_40px_-8px_rgba(255,107,149,0.45)] group-hover:translate-y-[-2px] transition-all">
-                                                Start Your Magic ✨
+                                        </button>
+
+                                        <button
+                                            onClick={() => {
+                                                setRequest(c => ({ ...c, scriptMode: "article" }));
+                                                setWizardStep(3);
+                                                setShowWizard(true);
+                                            }}
+                                            className="relative w-full min-h-[320px] bg-gradient-to-br from-blue-50/70 to-indigo-50/50 border-[3px] border-indigo-100 rounded-[3rem] p-10 flex flex-col items-center justify-center text-center overflow-hidden shadow-[0_12px_0_0_rgba(99,102,241,0.15)] group active:scale-[0.98] transition-all"
+                                        >
+                                            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl opacity-60 group-hover:opacity-100 transition-all duration-700" />
+                                            <div className="relative z-10 flex flex-col items-center gap-6">
+                                                <motion.div 
+                                                    whileHover={{ rotate: [0, -15, 15, 0], scale: 1.15 }}
+                                                    transition={{ type: "spring" as const, stiffness: 400, damping: 12 }}
+                                                    className="w-16 h-16 rounded-[1.5rem] bg-white flex items-center justify-center shadow-lg border-2 border-indigo-50 group-hover:border-indigo-100 transition-colors"
+                                                >
+                                                    <div className="text-3xl">📖</div>
+                                                </motion.div>
+                                                <div>
+                                                    <h2 className="text-2xl font-black tracking-tighter text-indigo-900 drop-shadow-sm mb-2">文章式听力锻造</h2>
+                                                    <p className="text-[13px] text-slate-500 max-w-xs font-bold leading-relaxed opacity-80 mx-auto">
+                                                        四级、六级、雅思或母语者篇章，以精美的段落布局呈现书面语精听 💎
+                                                    </p>
+                                                </div>
+                                                <div className="px-8 py-3 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white text-[12px] font-black uppercase tracking-[0.15em] rounded-full shadow-[0_12px_24px_-6px_rgba(99,102,241,0.3)] group-hover:shadow-[0_16px_32px_-6px_rgba(99,102,241,0.4)] group-hover:translate-y-[-2px] transition-all">
+                                                    Article Mode ✨
+                                                </div>
                                             </div>
-                                        </div>
-                                    </button>
+                                        </button>
+                                    </div>
                                 </motion.div>
 
                                 {generateError && (
@@ -1000,8 +1052,13 @@ export default function ListeningCabinDashboard() {
                                                 <div className="relative z-10" onClick={() => setSelectedSessionId(session.id)}>
                                                     <div className="flex flex-wrap items-center gap-2 items-center mb-6">
                                                         <span className="px-3.5 py-1.5 rounded-2xl text-[10px] font-black uppercase tracking-widest border-2 border-theme-border shadow-[0_2px_0_0_var(--theme-shadow)] bg-theme-base-bg text-theme-text-muted">
-                                                            {session.cefrLevel}
+                                                            {getDifficultyLabel(session.cefrLevel, session.scriptMode)}
                                                         </span>
+                                                        {session.scriptMode === "article" && (
+                                                            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border-[2px] border-blue-200 text-blue-600 rounded-2xl text-[10px] font-black shadow-sm">
+                                                                <span>📖 文章模式</span>
+                                                            </div>
+                                                        )}
                                                         <div className="flex items-center gap-1.5 px-3 py-1.5 bg-theme-card-bg rounded-2xl border-2 border-theme-border text-[10px] font-black text-theme-text tracking-tighter shadow-sm">
                                                             <Clock size={11} strokeWidth={3} />
                                                             {duration}
@@ -1191,7 +1248,9 @@ export default function ListeningCabinDashboard() {
                                                 </div>
                                                 <h2 className="text-4xl sm:text-5xl font-black text-[#4a3a2a] tracking-tighter leading-tight drop-shadow-sm max-w-2xl">{selectedSession.title}</h2>
                                                 <div className="flex items-center justify-center md:justify-start gap-3">
-                                                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">{selectedSession.cefrLevel} Level</span>
+                                                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                                                        {getDifficultyLabel(selectedSession.cefrLevel, selectedSession.scriptMode)} {selectedSession.scriptMode === "article" ? "文章" : "Level"}
+                                                    </span>
                                                     <span className="w-1.5 h-1.5 rounded-full bg-slate-200" />
                                                 </div>
                                             </div>
@@ -1590,7 +1649,7 @@ export default function ListeningCabinDashboard() {
                                 </div>
                                 <div data-tour-target="wizard-progress" className="flex items-center gap-5">
                                     <div className="flex gap-2 px-4 py-2 bg-slate-50/80 rounded-full border border-slate-100 shadow-inner">
-                                        {[1,2,3,4,5,6,7].map(step => (
+                                        {(request.scriptMode === "article" ? [3, 4, 5, 6, 7] : [1, 2, 3, 4, 5, 6, 7]).map(step => (
                                             <motion.div 
                                                 key={step} 
                                                 animate={{ 
@@ -1621,7 +1680,7 @@ export default function ListeningCabinDashboard() {
                                                 <p className="text-xs text-slate-400 mt-1 font-semibold">脚本的基础交互方式</p>
                                             </div>
                                             <div className="grid gap-4">
-                                                {LISTENING_CABIN_SCRIPT_MODE_OPTIONS.map(o => (
+                                                {LISTENING_CABIN_SCRIPT_MODE_OPTIONS.filter(o => o.value !== 'article').map(o => (
                                                     <motion.button 
                                                         key={o.value} 
                                                         whileHover={{ scale: 1.02, y: -2 }}
@@ -1703,24 +1762,44 @@ export default function ListeningCabinDashboard() {
                                                 <h3 className="text-lg font-extrabold text-slate-800 flex items-center gap-2">📚 难度等级</h3>
                                                 <p className="text-xs text-slate-400 mt-1 font-semibold">基于 CEFR 标准和词汇密度</p>
                                             </div>
-                                            <div className="grid grid-cols-3 gap-4">
-                                                {LISTENING_CABIN_CEFR_OPTIONS.map(o => (
-                                                    <motion.button 
-                                                        key={o} 
-                                                        whileHover={{ scale: 1.05, y: -4 }}
-                                                        whileTap={{ scale: 0.95 }}
-                                                        onClick={() => setRequest(c => ({ ...c, cefrLevel: o }))} 
-                                                        className={cn(
-                                                            "py-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center gap-1 active:scale-95 shadow-sm", 
-                                                            request.cefrLevel === o 
-                                                                ? "border-blue-400 bg-blue-50/60 text-blue-600 shadow-[0_12px_24px_-4px_rgba(59,130,246,0.1)]" 
-                                                                : "border-slate-100 bg-white/60 text-slate-400 hover:border-blue-200"
-                                                        )}
-                                                    >
-                                                        <p className="text-3xl font-black">{o}</p>
-                                                        <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Level</span>
-                                                    </motion.button>
-                                                ))}
+                                            <div className={cn("grid gap-4", request.scriptMode === "article" ? "grid-cols-2" : "grid-cols-3")}>
+                                                {request.scriptMode === "article" ? (
+                                                    ARTICLE_DIFFICULTY_OPTIONS.map(o => (
+                                                        <motion.button 
+                                                            key={o.value} 
+                                                            whileHover={{ scale: 1.05, y: -4 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                            onClick={() => setRequest(c => ({ ...c, cefrLevel: o.value as EnglishLevel }))} 
+                                                            className={cn(
+                                                                "py-5 rounded-[2.5rem] border-2 transition-all flex flex-col items-center gap-1 active:scale-95 shadow-sm", 
+                                                                request.cefrLevel === o.value 
+                                                                    ? "border-blue-400 bg-blue-50/60 text-blue-600 shadow-[0_12px_24px_-4px_rgba(59,130,246,0.1)]" 
+                                                                    : "border-slate-100 bg-white/60 text-slate-400 hover:border-blue-200"
+                                                            )}
+                                                        >
+                                                            <p className="text-2xl font-black">{o.label}</p>
+                                                            <span className="text-[10px] font-black uppercase tracking-widest opacity-50">{o.hint}</span>
+                                                        </motion.button>
+                                                    ))
+                                                ) : (
+                                                    LISTENING_CABIN_CEFR_OPTIONS.map(o => (
+                                                        <motion.button 
+                                                            key={o} 
+                                                            whileHover={{ scale: 1.05, y: -4 }}
+                                                            whileTap={{ scale: 0.95 }}
+                                                            onClick={() => setRequest(c => ({ ...c, cefrLevel: o }))} 
+                                                            className={cn(
+                                                                "py-6 rounded-[2.5rem] border-2 transition-all flex flex-col items-center gap-1 active:scale-95 shadow-sm", 
+                                                                request.cefrLevel === o 
+                                                                    ? "border-blue-400 bg-blue-50/60 text-blue-600 shadow-[0_12px_24px_-4px_rgba(59,130,246,0.1)]" 
+                                                                    : "border-slate-100 bg-white/60 text-slate-400 hover:border-blue-200"
+                                                            )}
+                                                        >
+                                                            <p className="text-3xl font-black">{o}</p>
+                                                            <span className="text-[10px] font-black uppercase tracking-widest opacity-50">Level</span>
+                                                        </motion.button>
+                                                    ))
+                                                )}
                                             </div>
                                             <div className="space-y-2">
                                                 <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">词汇密度</p>
@@ -1743,7 +1822,7 @@ export default function ListeningCabinDashboard() {
                                                 </div>
                                             </div>
                                             <div className="flex justify-between pt-5 items-center">
-                                                <button onClick={() => setWizardStep(2)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all">
+                                                <button onClick={() => setWizardStep(request.scriptMode === "article" ? 1 : 2)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-all">
                                                     <ChevronLeft size={16} strokeWidth={3} /> 返回
                                                 </button>
                                                 <motion.button 

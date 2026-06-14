@@ -78,10 +78,16 @@ function normalizeDraft(
 function buildModeSpecificIssues(request: ListeningCabinGenerationRequest, sentences: ListeningCabinSentence[]) {
     const issues: string[] = [];
 
-    if (request.scriptMode === "monologue") {
+    if (request.scriptMode === "monologue" || request.scriptMode === "article") {
         const hasSpeakerValue = sentences.some((sentence) => Boolean(sentence.speaker));
         if (hasSpeakerValue) {
-            issues.push("monologue mode should not include speaker fields");
+            issues.push(`${request.scriptMode} mode should not include speaker fields`);
+        }
+        if (request.scriptMode === "article") {
+            const missingParagraphIndex = sentences.some((sentence) => typeof sentence.paragraphIndex !== "number");
+            if (missingParagraphIndex) {
+                issues.push("article mode sentences must include paragraphIndex");
+            }
         }
     } else if (isListeningCabinMultiSpeakerMode(request.scriptMode)) {
         const speakerSet = new Set(sentences.map((sentence) => sentence.speaker?.trim()).filter(Boolean));

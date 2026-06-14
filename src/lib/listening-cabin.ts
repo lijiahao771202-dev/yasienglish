@@ -11,6 +11,7 @@ import {
     type TtsWordMark,
     type WordToken,
 } from "@/lib/read-speaking";
+import { LONGFORM_STYLE_OPTIONS } from "@/lib/ai-reading-generation";
 
 export type ListeningCabinScriptStyle =
     | "natural"
@@ -34,7 +35,7 @@ export type ListeningCabinLegacyScriptStyle =
 
 export type ListeningCabinTopicMode = "manual" | "random" | "hybrid";
 export type ListeningCabinTopicSource = "manual" | "pool" | "ai";
-export type ListeningCabinScriptMode = "monologue" | "dialogue" | "podcast";
+export type ListeningCabinScriptMode = "monologue" | "dialogue" | "podcast" | "article";
 export type ListeningCabinThinkingMode = "standard" | "deep";
 export type ListeningCabinLexicalDensity = "safe" | "balanced" | "challenging";
 export type ListeningCabinSentenceLength = "short" | "medium" | "long";
@@ -81,6 +82,7 @@ export interface ListeningCabinSentence {
     isMastered?: boolean;
     note?: string;
     senseGroups?: string[];
+    paragraphIndex?: number;
 }
 
 export interface ListeningCabinGenerationRequest {
@@ -233,6 +235,7 @@ export const LISTENING_CABIN_SCRIPT_MODE_OPTIONS: Array<Option<ListeningCabinScr
     { value: "monologue", label: "单人口播", hint: "默认模式，连续自然的单人讲述。" },
     { value: "dialogue", label: "对话模式", hint: "多人轮流发言，适合场景听力。" },
     { value: "podcast", label: "播客模式", hint: "主持人+嘉宾式表达，适合长段生活听力。" },
+    { value: "article", label: "文章模式", hint: "书面语篇章，分段排版，适合精读精听。" },
 ];
 
 export const LISTENING_CABIN_LEXICAL_DENSITY_OPTIONS: Array<Option<ListeningCabinLexicalDensity>> = [
@@ -490,6 +493,23 @@ export const LISTENING_CABIN_RANDOM_TOPIC_POOLS: Record<ListeningCabinScriptMode
         scenes: PODCAST_TOPIC_SCENES,
         angles: MODE_TOPIC_ANGLES,
     }),
+    article: buildModeRandomTopicPool({
+        modePrefix: "",
+        openers: [
+            "文章模式：一段关于",
+            "文章模式：一篇文章分析",
+            "文章模式：一篇关于",
+            "文章模式：一篇随笔关于",
+            "文章模式：一篇科普介绍",
+            "文章模式：一篇观点评论关于",
+        ],
+        scenes: MONOLOGUE_TOPIC_SCENES,
+        angles: [
+            "采用书面语篇章结构，但节奏适合听力",
+            "句式结构清晰，词汇符合对应等级难度",
+            "逻辑层层递进，过渡自然",
+        ],
+    }),
 };
 
 const SCRIPT_STYLE_SET = new Set<ListeningCabinScriptStyle>(
@@ -564,7 +584,7 @@ export const DEFAULT_LISTENING_CABIN_REQUEST: ListeningCabinGenerationRequest = 
 };
 
 export function isListeningCabinMultiSpeakerMode(scriptMode: ListeningCabinScriptMode) {
-    return scriptMode !== "monologue";
+    return scriptMode === "dialogue" || scriptMode === "podcast";
 }
 
 export function getVoiceLabel(voice: TtsVoice) {
@@ -1003,6 +1023,14 @@ export function pickListeningCabinAiTopicVariationHint(seedSource: string) {
     return AI_TOPIC_VARIATION_HINTS[hash % AI_TOPIC_VARIATION_HINTS.length] ?? AI_TOPIC_VARIATION_HINTS[0];
 }
 
+export function getReadingStyleForTopic(topic: string) {
+    const availableStyles = LONGFORM_STYLE_OPTIONS.filter((s) => s.id !== "custom");
+    const hash = Array.from(topic).reduce((acc, char) => {
+        return (acc * 33 + char.charCodeAt(0)) >>> 0;
+    }, 5381);
+    return availableStyles[hash % availableStyles.length] ?? availableStyles[0];
+}
+
 export function buildListeningCabinPrompt(params: {
     request: ListeningCabinGenerationRequest;
     effectivePrompt: string;
@@ -1022,23 +1050,72 @@ export function buildListeningCabinPrompt(params: {
     const speakerHint = speakerNames.join(", ");
     const expectedSpeakerCount = speakerNames.length;
 
-    return `
-You are writing a HIGH-QUALITY spoken-English listening script for Chinese learners.
+    const isArticle = request.scriptMode === "article";
 
-Primary objective:
+    let difficultyLabel: string = request.cefrLevel;
+    if (isArticle) {
+        if (request.cefrLevel === "B1") difficultyLabel = "四级 (CET-4)";
+        else if (request.cefrLevel === "B2") difficultyLabel = "六级 (CET-6)";
+        else if (request.cefrLevel === "C1") difficultyLabel = "雅思 (IELTS)";
+        else if (request.cefrLevel === "C2") difficultyLabel = "母语者级别 (Native Speaker)";
+    }
+
+    let styleSection = "";
+    if (isArticle) {
+        const selectedStyle = getReadingStyleForTopic(effectivePrompt);
+        styleSection = `- Style flavor: ${selectedStyle.name} (${selectedStyle.promptLabel})
+- Style lens: ${selectedStyle.lens}
+- Style constraint: ${selectedStyle.constraint}`;
+    } else {
+        styleSection = `- Style flavor: ${styleLabel}
+- Style direction: ${styleToneInstruction(request.style)}`;
+    }
+
+    const objectiveSection = isArticle
+        ? `Primary objective:
+- Produce a structured, written-style article/essay that is clear, engaging, and suitable for listening practice.
+- Use natural essay structure, academic or formal/semi-formal transitions.
+- The tone should match high-quality publications or exam reading passages.`
+        : `Primary objective:
 - Produce a natural spoken script for immersion listening.
 - This is NOT an article. Avoid essay tone and textbook structure.
-- Keep transitions smooth and conversational.
+- Keep transitions smooth and conversational.`;
+
+    let modeConstraintsSection = "";
+    if (isArticle) {
+        modeConstraintsSection = `- Must be written as a continuous article/essay. No speakers or back-and-forth conversation.
+- Group the sentences into logical paragraphs.
+- Every sentence MUST include a "paragraphIndex" field (integer, starting from 0 for the first paragraph, and incrementing by 1 for each subsequent paragraph). For example, sentences in the first paragraph have paragraphIndex 0, sentences in the second have paragraphIndex 1, and so on. Do not skip paragraph indices.`;
+    } else if (request.scriptMode === "monologue") {
+        modeConstraintsSection = `- Must be a SINGLE speaker monologue. No back-and-forth and no speaker labels.`;
+    } else if (request.scriptMode === "dialogue") {
+        modeConstraintsSection = `- Must be a DIALOGUE with ${expectedSpeakerCount} speakers.\n- You MUST use ALL configured speakers at least once.\n- Allowed speaker names: ${speakerHint || "Jenny, Ava"}.\n- Do not collapse multiple people into one voice or omit any configured speaker.\n- Each sentence must include a speaker field.`;
+    } else {
+        modeConstraintsSection = `- Must be a PODCAST-style conversation with EXACTLY ${expectedSpeakerCount} speakers.\n- You MUST use ALL configured speakers at least once.\n- Allowed speaker names: ${speakerHint || "Host Jenny, Emma"}.\n- The first listed speaker is the host and should open the episode, guide transitions, and close or summarize near the end.\n- The remaining speakers are distinct guests with different viewpoints or contributions.\n- Do not collapse, merge, rename, or omit any configured speaker.\n- If there are 4 configured speakers, keep all 4 active in the episode instead of drifting into a 2-person conversation.\n- Each sentence must include a speaker field.`;
+    }
+
+    let jsonSchemaStr = "";
+    if (isArticle) {
+        jsonSchemaStr = '{ "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast", "senseGroups": ["phrase 1", "phrase 2"], "paragraphIndex": 0 }';
+    } else if (request.scriptMode === "monologue") {
+        jsonSchemaStr = '{ "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast", "senseGroups": ["phrase 1", "phrase 2"] }';
+    } else {
+        jsonSchemaStr = `{ "speaker": "${(speakerPlan.assignments[0]?.speaker ?? "Jenny").replace(/"/g, "\\\"")}", "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast", "senseGroups": ["phrase 1", "phrase 2"] }`;
+    }
+
+    return `
+You are writing a HIGH-QUALITY ${isArticle ? "written-style article" : "spoken-English listening script"} for Chinese learners.
+
+${objectiveSection}
 
 Task setup:
 - Topic request: ${effectivePrompt}
 - Script mode: ${request.scriptMode}
 - Thinking mode: ${request.thinkingMode}
-- Style flavor: ${styleLabel}
-- Style direction: ${styleToneInstruction(request.style)}
-- CEFR target: ${request.cefrLevel}
+${styleSection}
+- CEFR target: ${request.cefrLevel} (Difficulty matched to: ${difficultyLabel})
 - Lexical density: ${request.lexicalDensity} (${lexicalDensityInstruction(request.lexicalDensity)})
-- Focus tags: ${focusLabels || "自然口语"}
+- Focus tags: ${focusLabels || (isArticle ? "书面表达" : "自然口语")}
 - Target words: around ${profile.targetWords} (acceptable ${profile.targetWordRange.min}-${profile.targetWordRange.max})
 - Target sentence count: keep it within ${profile.targetSentenceRange.min}-${profile.targetSentenceRange.max} sentences
 - Preferred sentence length: around ${profile.sentenceWordRange.min}-${profile.sentenceWordRange.max} words
@@ -1050,13 +1127,13 @@ Strict writing constraints:
 - Every sentence must include english + chinese.
 - Every sentence must include emotion + pace.
 - Every sentence must include a "senseGroups" array of strings, splitting the "english" sentence into natural spoken semantic/syntactic chunks (sense groups) for practice. Each chunk should usually be 1 to 5 words long (e.g. prepositional phrase, noun phrase, verb phrase). The concatenation of all elements in "senseGroups" (separated by space or naturally reconstructed) should exactly match the "english" field. Do not include separate punctuation marks as distinct elements in the array; keep them attached to their respective words.
-- english must sound spoken, rhythmic, and life-like.
+- english must sound ${isArticle ? "well-written, academic or formal, and structured" : "spoken, rhythmic, and life-like"}.
 - chinese should be concise and easy to map to the spoken line.
 - Use punctuation naturally to express emotion (comma, ellipsis, question mark, exclamation) without overusing.
-- You may use occasional natural repetition to express hesitation, emphasis, correction, or emotional pressure, for example repeating a word or short phrase once ("that, that is not true", "I just, I just froze"), but keep it rare and intentional.
+- You may use occasional natural repetition to express hesitation, emphasis, correction, or emotional pressure, for example repeating a word or short phrase once ("that, that is not true", "I just, I just froze"), but keep it rare and intentional (only if relevant, otherwise avoid in article mode).
 - Make the listening material memorable, not bland: include at least one concrete detail, one emotional beat, and one line that feels slightly unexpected but still believable.
 - No markdown, no extra explanation outside JSON.
-- Avoid rigid templates like "In conclusion", "This essay", "Firstly", "Secondly".
+- Avoid rigid templates like "In conclusion", "This essay", "Firstly", "Secondly" unless they fit the article topic naturally.
 
 Freshness and interest constraints:
 - ${buildTopicFreshnessInstruction(request)}
@@ -1064,19 +1141,13 @@ Freshness and interest constraints:
 - Keep the script useful for learners: vivid, but still easy to follow by ear.
 
 Mode constraints:
-${request.scriptMode === "monologue"
-        ? "- Must be a SINGLE speaker monologue. No back-and-forth and no speaker labels."
-        : request.scriptMode === "dialogue"
-            ? `- Must be a DIALOGUE with ${expectedSpeakerCount} speakers.\n- You MUST use ALL configured speakers at least once.\n- Allowed speaker names: ${speakerHint || "Jenny, Ava"}.\n- Do not collapse multiple people into one voice or omit any configured speaker.\n- Each sentence must include a speaker field.`
-            : `- Must be a PODCAST-style conversation with EXACTLY ${expectedSpeakerCount} speakers.\n- You MUST use ALL configured speakers at least once.\n- Allowed speaker names: ${speakerHint || "Host Jenny, Emma"}.\n- The first listed speaker is the host and should open the episode, guide transitions, and close or summarize near the end.\n- The remaining speakers are distinct guests with different viewpoints or contributions.\n- Do not collapse, merge, rename, or omit any configured speaker.\n- If there are 4 configured speakers, keep all 4 active in the episode instead of drifting into a 2-person conversation.\n- Each sentence must include a speaker field.`}
+${modeConstraintsSection}
 
 JSON schema:
 {
   "title": "short title",
   "sentences": [
-    ${request.scriptMode === "monologue"
-        ? '{ "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast", "senseGroups": ["phrase 1", "phrase 2"] }'
-        : `{ "speaker": "${(speakerPlan.assignments[0]?.speaker ?? "Jenny").replace(/"/g, "\\\"")}", "english": "sentence", "chinese": "翻译", "emotion": "neutral|calm|cheerful|excited|serious|sad|suspenseful|empathetic", "pace": "slow|normal|fast", "senseGroups": ["phrase 1", "phrase 2"] }`}
+    ${jsonSchemaStr}
   ]
 }
 `.trim();
@@ -1093,11 +1164,13 @@ export function buildListeningCabinAiRandomTopicPrompt(params: {
     variationHint?: string;
 }) {
     const styleLabel = LISTENING_CABIN_SCRIPT_STYLE_OPTIONS.find((option) => option.value === params.style)?.label ?? params.style;
-    const modeConstraint = params.scriptMode === "monologue"
-        ? "The topic must fit a single-speaker spoken monologue (teacher, explainer, storyteller, or personal sharing)."
-        : params.scriptMode === "dialogue"
-            ? "The topic must naturally fit a 2-4 speaker dialogue with turn-taking."
-            : "The topic must naturally fit a podcast-style host and guests conversation (2-4 speakers).";
+    const modeConstraint = params.scriptMode === "article"
+        ? "The topic must naturally fit a written-style article or essay (science, story, commentary, or reflective essay)."
+        : params.scriptMode === "monologue"
+            ? "The topic must fit a single-speaker spoken monologue (teacher, explainer, storyteller, or personal sharing)."
+            : params.scriptMode === "dialogue"
+                ? "The topic must naturally fit a 2-4 speaker dialogue with turn-taking."
+                : "The topic must naturally fit a podcast-style host and guests conversation (2-4 speakers).";
     const recentTopics = (params.recentTopics ?? [])
         .map((topic) => normalizeSentenceText(topic))
         .filter(Boolean)
@@ -1306,6 +1379,10 @@ export function normalizeListeningCabinSentences(
                     .map((g) => typeof g === "string" ? normalizeSentenceText(g) : "")
                     .filter((g) => g.trim().length > 0)
                 : undefined;
+            const paragraphIndexRaw = (item as { paragraphIndex?: unknown })?.paragraphIndex;
+            const paragraphIndex = typeof paragraphIndexRaw === "number" && Number.isInteger(paragraphIndexRaw)
+                ? paragraphIndexRaw
+                : undefined;
 
             if (!english || !chinese) {
                 return null;
@@ -1319,6 +1396,7 @@ export function normalizeListeningCabinSentences(
                 pace,
                 ...(isListeningCabinMultiSpeakerMode(scriptMode) && speaker ? { speaker } : {}),
                 ...(senseGroups && senseGroups.length > 0 ? { senseGroups } : {}),
+                ...(paragraphIndex !== undefined ? { paragraphIndex } : {}),
             } as ListeningCabinSentence;
         })
         .filter((item): item is ListeningCabinSentence => item !== null);
@@ -1595,6 +1673,42 @@ export function buildListeningCabinNarrationSegments(params: {
 }
 
 export function buildListeningCabinPlaybackChunks(sentences: ListeningCabinSentence[]) {
+    const hasParagraphIndex = sentences.some((s) => typeof s.paragraphIndex === "number");
+
+    if (hasParagraphIndex) {
+        const chunks: ListeningCabinPlaybackChunk[] = [];
+        let currentChunk: ListeningCabinPlaybackChunk | null = null;
+        let lastParagraphIndex: number | null = null;
+
+        sentences.forEach((sentence) => {
+            const text = normalizeSentenceText(sentence.english);
+            if (!text) return;
+
+            const pIdx = typeof sentence.paragraphIndex === "number" ? sentence.paragraphIndex : (lastParagraphIndex ?? 0) + 1;
+
+            if (currentChunk && pIdx === lastParagraphIndex) {
+                currentChunk.sentenceIndexes.push(sentence.index - 1);
+                currentChunk.text += " " + text;
+            } else {
+                if (currentChunk) {
+                    chunks.push(currentChunk);
+                }
+                currentChunk = {
+                    id: `p${pIdx}_${sentence.index}`,
+                    sentenceIndexes: [sentence.index - 1],
+                    text,
+                };
+                lastParagraphIndex = pIdx;
+            }
+        });
+
+        if (currentChunk) {
+            chunks.push(currentChunk);
+        }
+
+        return chunks;
+    }
+
     return sentences
         .map((sentence) => {
             const text = normalizeSentenceText(sentence.english);

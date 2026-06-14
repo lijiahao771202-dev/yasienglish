@@ -612,7 +612,8 @@ function AppleKaraokeWord({
         <motion.span
             data-word-popup-segment={word}
             className={cn(
-                "inline-block whitespace-nowrap focus:outline-none cursor-pointer hover:opacity-100 hover:!blur-none transition-all duration-200",
+                "inline-block whitespace-nowrap focus:outline-none cursor-pointer hover:opacity-100 transition-all duration-200",
+                !groupReplayEnabled && "hover:!blur-none",
                 (groupReplayEnabled && isLastOfGroup) ? "mr-[0.55em]" : "mr-[0.24em]"
             )}
             onClick={onClick}
@@ -641,10 +642,11 @@ function AppleKaraokeWord({
                     className={cn(
                         "inline-block",
                         isActive ? "active:text-blue-500" : "",
-                        isActive && displayInfo.isBlurred && "filter transition-all duration-300"
+                        isActive && displayInfo.isBlurred && "filter transition-all duration-300",
+                        isActive && displayInfo.isBlurred && !groupReplayEnabled && "group-hover:!blur-none"
                     )}
                     style={isActive && displayInfo.isBlurred ? {
-                        filter: (groupReplayEnabled ? isHovered : true) ? "blur(0px)" : "blur(12px)"
+                        filter: (groupReplayEnabled ? isHovered : false) ? "blur(0px)" : "blur(12px)"
                     } : undefined}
                 >
                     {displayInfo.text}
@@ -677,10 +679,12 @@ function renderSubtitleBlock(
     groupReplayEnabled: boolean = false,
     hoveredGroupIdx?: number | null,
     setHoveredGroupIdx?: (idx: number | null) => void,
-    wordTimings?: Array<Array<{ startMs: number; endMs: number } | null>> | null
+    wordTimings?: Array<Array<{ startMs: number; endMs: number } | null>> | null,
+    scriptMode?: import("@/lib/listening-cabin").ListeningCabinScriptMode
 ) {
     if (!sentences) return null;
-    return sentences.map((sentence, sIdx) => {
+    const isArticle = scriptMode === "article";
+    const content = sentences.map((sentence, sIdx) => {
         if (!sentence) return null;
         const isActive = (sentence.index - 1) === activeIndex;
         const sentenceWordTimings = wordTimings?.[sentence.index - 1] || null;
@@ -1085,10 +1089,11 @@ function renderSubtitleBlock(
                                 <span
                                     className={cn(
                                         "active:text-blue-500 inline-block",
-                                        isActive && displayInfo.isBlurred && "filter transition-all duration-300"
+                                        isActive && displayInfo.isBlurred && "filter transition-all duration-300",
+                                        isActive && displayInfo.isBlurred && !groupReplayEnabled && "group-hover:!blur-none"
                                     )}
                                     style={isActive && displayInfo.isBlurred ? {
-                                        filter: (groupReplayEnabled ? isHovered : true) ? "blur(0px)" : "blur(12px)"
+                                        filter: (groupReplayEnabled ? isHovered : false) ? "blur(0px)" : "blur(12px)"
                                     } : undefined}
                                 >
                                     {displayInfo.text.split("").map((char, cIdx) => (
@@ -1179,10 +1184,11 @@ function renderSubtitleBlock(
                                 <span
                                     className={cn(
                                         "active:text-blue-500 inline-block",
-                                        isActive && displayInfo.isBlurred && "filter transition-all duration-300"
+                                        isActive && displayInfo.isBlurred && "filter transition-all duration-300",
+                                        isActive && displayInfo.isBlurred && !groupReplayEnabled && "group-hover:!blur-none"
                                     )}
                                     style={isActive && displayInfo.isBlurred ? {
-                                        filter: (groupReplayEnabled ? isHovered : true) ? "blur(0px)" : "blur(12px)"
+                                        filter: (groupReplayEnabled ? isHovered : false) ? "blur(0px)" : "blur(12px)"
                                     } : undefined}
                                 >
                                     {displayInfo.text}
@@ -1207,6 +1213,29 @@ function renderSubtitleBlock(
             exit: { opacity: 0, transition: { duration: 0.3 } }
         };
 
+        if (isArticle) {
+            return (
+                <motion.span
+                    key={sentence.index}
+                    variants={transitionStyle === "mist" || transitionStyle === "classic" ? blockVariants : containerVariants}
+                    className={cn(
+                        "inline relative transition-all duration-500",
+                        blurEnabled && isActive && "group cursor-pointer"
+                    )}
+                    style={{
+                        fontFamily,
+                        pointerEvents: isActive ? "auto" : "none",
+                        opacity: isActive ? 1 : 0.22,
+                        WebkitFontSmoothing: "antialiased",
+                        display: "inline",
+                    }}
+                >
+                    {renderWords()}
+                    {" "}
+                </motion.span>
+            );
+        }
+
         return (
             <motion.div
                 key={sentence.index}
@@ -1226,6 +1255,16 @@ function renderSubtitleBlock(
             </motion.div>
         );
     });
+
+    if (isArticle) {
+        return (
+            <p className="text-justify leading-relaxed block w-full mb-8 text-slate-800 dark:text-slate-200">
+                {content}
+            </p>
+        );
+    }
+
+    return content;
 }
 
 function joinChineseSubtitle(sentences: ListeningCabinSentence[]) {
@@ -2665,7 +2704,8 @@ function ListeningCabinPlayerView({
                                             groupReplayEnabled,
                                             hoveredGroupIdx,
                                             setHoveredGroupIdx,
-                                            wordTimings
+                                            wordTimings,
+                                            session.scriptMode
                                         )}
                                     </h1>
 

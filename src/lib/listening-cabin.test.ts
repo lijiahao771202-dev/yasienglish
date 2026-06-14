@@ -23,6 +23,7 @@ import {
     resolveListeningCabinLengthProfile,
     resolveListeningCabinTopicPrompt,
     validateListeningCabinRequest,
+    type ListeningCabinSentence,
 } from "./listening-cabin";
 
 describe("listening cabin helpers", () => {
@@ -633,6 +634,60 @@ describe("listening cabin helpers", () => {
 
         // There shouldn't be any speaker label errors flagged now
         expect(lint.issues).not.toContain("monologue output contains speaker labels");
+    });
+
+    describe("Article Mode", () => {
+        it("parses paragraphIndex correctly in normalizeListeningCabinSentences", () => {
+            const raw = [
+                { english: "First sentence of first paragraph.", chinese: "第一段第一句。", paragraphIndex: 0 },
+                { english: "Second sentence of first paragraph.", chinese: "第一段第二句。", paragraphIndex: 0 },
+                { english: "First sentence of second paragraph.", chinese: "第二段第一句。", paragraphIndex: 1 },
+            ];
+            const normalized = normalizeListeningCabinSentences(raw, 5, "article");
+            expect(normalized).toHaveLength(3);
+            expect(normalized[0]?.paragraphIndex).toBe(0);
+            expect(normalized[1]?.paragraphIndex).toBe(0);
+            expect(normalized[2]?.paragraphIndex).toBe(1);
+        });
+
+        it("groups playback chunks by paragraphIndex in buildListeningCabinPlaybackChunks", () => {
+            const sentences: ListeningCabinSentence[] = [
+                { index: 1, english: "Sentence 1.", chinese: "句子1", paragraphIndex: 0 },
+                { index: 2, english: "Sentence 2.", chinese: "句子2", paragraphIndex: 0 },
+                { index: 3, english: "Sentence 3.", chinese: "句子3", paragraphIndex: 1 },
+            ];
+            const chunks = buildListeningCabinPlaybackChunks(sentences);
+            expect(chunks).toHaveLength(2);
+            expect(chunks[0]).toEqual({
+                id: "p0_1",
+                sentenceIndexes: [0, 1],
+                text: "Sentence 1. Sentence 2.",
+            });
+            expect(chunks[1]).toEqual({
+                id: "p1_3",
+                sentenceIndexes: [2],
+                text: "Sentence 3.",
+            });
+        });
+
+        it("maps CEFR levels to Article difficulty labels in buildListeningCabinPrompt", () => {
+            const request = normalizeListeningCabinRequest({
+                prompt: "About AI.",
+                topicMode: "manual",
+                scriptMode: "article",
+                cefrLevel: "C1",
+            });
+            const profile = resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength);
+            const prompt = buildListeningCabinPrompt({
+                request,
+                effectivePrompt: request.prompt,
+                profile,
+                speakerPlan: request.speakerPlan,
+            });
+
+            expect(prompt).toContain("雅思 (IELTS)");
+            expect(prompt).toContain("written-style article");
+        });
     });
 });
 
