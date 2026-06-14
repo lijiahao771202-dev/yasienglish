@@ -1311,7 +1311,7 @@ export function lintListeningCabinDraft(params: {
 
     const essayLikePattern = /\b(in conclusion|this essay|firstly|secondly|to summarize|moreover)\b/i;
 
-    if (request.scriptMode === "monologue") {
+    if (request.scriptMode === "monologue" || request.scriptMode === "article") {
         const configSpeakers = request.speakerPlan?.assignments?.map((a) => a.speaker).filter(Boolean) || [];
         const escapedSpeakers = configSpeakers.map((s) => s.replace(/[-\/\\^$*+?.()|[\]{}]/g, "\\$&"));
         const speakerNamesPattern = ["Speaker\\s*\\d*", "Narrator", "Host", "Guest\\s*\\d*", "Voice\\s*\\d*", ...escapedSpeakers].join("|");
@@ -1319,11 +1319,11 @@ export function lintListeningCabinDraft(params: {
 
         const hasSpeakerLabels = sentences.some((sentence) => monologueSpeakerLabelRegex.test(sentence.english));
         if (hasSpeakerLabels) {
-            issues.push("monologue output contains speaker labels");
+            issues.push(`${request.scriptMode} output contains speaker labels`);
         }
 
         if (speakers.length > 1) {
-            issues.push("monologue output has multiple speakers");
+            issues.push(`${request.scriptMode} output has multiple speakers`);
         }
     } else {
         const modeLabel = request.scriptMode === "podcast" ? "podcast" : "dialogue";
@@ -1335,9 +1335,11 @@ export function lintListeningCabinDraft(params: {
         }
     }
 
-    const essayLineCount = sentences.filter((sentence) => essayLikePattern.test(sentence.english)).length;
-    if (essayLineCount >= 2) {
-        issues.push("script sounds like a written essay instead of spoken audio");
+    if (request.scriptMode !== "article") {
+        const essayLineCount = sentences.filter((sentence) => essayLikePattern.test(sentence.english)).length;
+        if (essayLineCount >= 2) {
+            issues.push("script sounds like a written essay instead of spoken audio");
+        }
     }
 
     const missingChinese = sentences.some((sentence) => !normalizeSentenceText(sentence.chinese));

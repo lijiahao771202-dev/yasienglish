@@ -688,6 +688,36 @@ describe("listening cabin helpers", () => {
             expect(prompt).toContain("雅思 (IELTS)");
             expect(prompt).toContain("written-style article");
         });
+
+        it("allows essay-like patterns and single speaker for article mode in lintListeningCabinDraft", () => {
+            const request = normalizeListeningCabinRequest({
+                prompt: "AI future.",
+                topicMode: "manual",
+                scriptMode: "article",
+                scriptLength: "short",
+                sentenceLength: "medium",
+                cefrLevel: "C1",
+            });
+            const profile = resolveListeningCabinLengthProfile(request.scriptLength, request.sentenceLength);
+            const sentences: ListeningCabinSentence[] = [
+                { index: 1, english: "Firstly, artificial intelligence is rapidly transforming almost every single aspect of our modern society.", chinese: "首先，人工智能正在迅速改变我们的现代社会。" },
+                { index: 2, english: "Secondly, it raises very significant concerns about the privacy of our personal user data.", chinese: "其次，它引发了对用户数据隐私的重大担忧。" },
+                { index: 3, english: "Furthermore, advanced automation systems might displace a massive number of traditional workers in offices.", chinese: "此外，自动化可能会取代许多传统工作。" },
+                { index: 4, english: "However, it also creates many exciting new employment opportunities in the software engineering sector.", chinese: "然而，它也在软件工程领域创造了新的机遇。" },
+                { index: 5, english: "Moreover, modern education systems must adapt quickly to this new technological and digital landscape.", chinese: "此外，教育系统必须适应这一新的技术格局。" },
+                { index: 6, english: "Therefore, young students need to learn how to cooperate effectively with smart AI systems.", chinese: "因此，学生需要学习如何与AI工具合作。" },
+                { index: 7, english: "Indeed, the future of our jobs will look completely different compared to the past.", chinese: "的确，未来的工作将与今天大不相同。" },
+                { index: 8, english: "In conclusion, we definitely need balanced regulation policies to guide this historical technology development.", chinese: "总之，我们需要平衡的监管来引导这一进步。" },
+            ];
+            const result = lintListeningCabinDraft({
+                title: "Test Article",
+                sentences,
+                request,
+                profile,
+            });
+            expect(result.isValid).toBe(true);
+            expect(result.issues).toHaveLength(0);
+        });
     });
 });
 
